@@ -902,7 +902,8 @@ string NFinput::initStartSpecies(
 								string eqCompNameToCompare=mt->getComponentName(eqCompClass[eq]);
 								//cout<<"comparing to: "<<eqCompNameToCompare<<endl;
 								bool foundMatch=false;
-								for(unsigned int ucn=0;ucn<usedComponentNames.size(); ucn++) {
+								unsigned int ucnSize = usedComponentNames.size();
+								for(unsigned int ucn=0;ucn<ucnSize; ucn++) {
 									if(usedComponentNames.at(ucn).compare(eqCompNameToCompare)==0) {
 										foundMatch=true; break;
 									}
@@ -923,7 +924,8 @@ string NFinput::initStartSpecies(
 								return "";
 							}
 						} else {
-							for(unsigned int ucn=0;ucn<usedComponentNames.size(); ucn++) {
+							unsigned int ucnSize = usedComponentNames.size();
+							for(unsigned int ucn=0;ucn<ucnSize; ucn++) {
 								if(usedComponentNames.at(ucn).compare(compName)==0) {
 									cout<<"Specified the same component multiple times, when creating species: "<<speciesName<<endl;
 									// AS2023 - fails now return empty strings
