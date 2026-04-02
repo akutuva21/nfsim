@@ -1129,6 +1129,10 @@ double System::sim(double duration, long int sampleTimes, bool verbose)
 				cout << "Fire returned" << endl;
 			}
 		}
+
+		// Replenish fixed species after reaction fires
+		replenishFixedSpecies();
+
 		tryToDump();
 
 	}
@@ -1208,6 +1212,9 @@ double System::stepTo(double stoppingTime)
 
 		nextReaction->fire(randElement);
 
+		// Replenish fixed species after reaction fires
+		replenishFixedSpecies();
+
 		// Recompute all propensities at each step to ensure time-dependent functions are updated correctly
 		if (hasTimeDependentFunctions) {
 			for(unsigned int r=0; r<allReactions.size(); r++) {
@@ -1250,6 +1257,9 @@ void System::singleStep()
 	nextReaction->fire(randElement);
 	cout<<"  -System time is now at time: "<<current_time<<endl;
 
+	// Replenish fixed species after reaction fires
+	replenishFixedSpecies();
+
 	globalEventCounter++;
 }
 
@@ -1277,6 +1287,47 @@ void System::equilibrate(double duration, int statusReports)
 	}
 
 }
+
+void System::replenishFixedSpecies() {
+	for (unsigned int i = 0; i < allMoleculeTypes.size(); i++) {
+		MoleculeType *mt = allMoleculeTypes[i];
+		if (!mt->isFixed()) continue;
+
+		int current = mt->getMoleculeCount();
+		int target = mt->getFixedCount();
+
+		// Replenish: create new default-state molecules
+		while (current < target) {
+			Molecule *fresh = (mt->getFixedCompartment() != nullptr)
+				? mt->genDefaultMolecule(mt->getFixedCompartment())
+				: mt->genDefaultMolecule();
+
+			// genDefaultMolecule adds to the molecule list but doesn't prepare
+			// or add to reactions/observables, so we do it via addMoleculeToRunningSystem
+			// Actually genDefaultMolecule already calls mList->create(m);
+			// then addMoleculeToRunningSystem also prepares it.
+
+			fresh->setUpLocalFunctionList();
+			fresh->prepareForSimulation();
+			fresh->setAlive(true);
+			fresh->addToObservables();
+			mt->updateRxnMembership(fresh);
+			current++;
+		}
+
+		// Suppress: remove excess molecules if a reaction created more
+		while (current > target) {
+			Molecule *excess = mt->getMolecule(current - 1);
+			if (excess != nullptr) {
+				mt->removeMoleculeFromRunningSystem(excess);
+				current--;
+			} else {
+				break;
+			}
+		}
+	}
+}
+
 
 void System::saveConcentrations() {
 	if (savedSnapshot == nullptr) {
