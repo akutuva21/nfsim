@@ -1,0 +1,42 @@
+begin model
+begin parameters
+    vol_CP 100
+    vol_NU 20
+end parameters
+
+begin compartments
+    CP 3 vol_CP
+    NU 3 vol_NU
+end compartments
+
+begin molecule types
+    A(s~U~P)
+end molecule types
+
+begin seed species
+    A(s~U)@CP  100
+end seed species
+
+begin observables
+    Molecules A_CP A()@CP
+    Molecules A_NU A()@NU
+    Molecules A_U_CP A(s~U)@CP
+    Molecules A_P_CP A(s~P)@CP
+    Molecules A_U_NU A(s~U)@NU
+    Molecules A_P_NU A(s~P)@NU
+end observables
+
+begin reaction rules
+    # Phosphorylate A in CP - if moving from CP to NU doesn't trigger rxn update, this will still fire and A in NU will become P
+    Rule1: A(s~U)@CP -> A(s~P)@CP  1000
+
+    # Transport A from CP to NU
+    Rule2: A()@CP -> A()@NU  1000
+
+    # Dephosphorylate A in NU
+    Rule3: A(s~P)@NU -> A(s~U)@NU  1000
+end reaction rules
+end model
+
+generate_network({overwrite=>1})
+simulate({method=>"nf",t_end=>10,n_steps=>10})

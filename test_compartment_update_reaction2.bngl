@@ -1,0 +1,39 @@
+begin model
+begin parameters
+    vol_CP 100
+    vol_NU 20
+end parameters
+
+begin compartments
+    CP 3 vol_CP
+    NU 3 vol_NU
+end compartments
+
+begin molecule types
+    A(s~U~P)
+end molecule types
+
+begin seed species
+    A(s~U)@CP  100
+end seed species
+
+begin observables
+    Molecules A_CP A()@CP
+    Molecules A_NU A()@NU
+    Molecules A_U_CP A(s~U)@CP
+    Molecules A_P_CP A(s~P)@CP
+    Molecules A_U_NU A(s~U)@NU
+    Molecules A_P_NU A(s~P)@NU
+end observables
+
+begin reaction rules
+    # Transport A from CP to NU
+    Rule2: A()@CP -> A()@NU  1000
+
+    # Only phosphorylate A in NU
+    Rule3: A(s~U)@NU -> A(s~P)@NU  1000000000
+end reaction rules
+end model
+
+generate_network({overwrite=>1})
+simulate({method=>"nf",t_end=>10,n_steps=>10})

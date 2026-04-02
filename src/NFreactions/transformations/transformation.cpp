@@ -599,15 +599,26 @@ MoveTransformation::MoveTransformation(Compartment * newCompartment, TemplateMol
 
 void MoveTransformation::apply(Mapping *m, MappingSet **ms)
 {
-	m->getMolecule()->setCompartment(newCompartment);
+	Molecule *mol = m->getMolecule();
+	mol->setCompartment(newCompartment);
+
+	if (mol->getComplex()) {
+		mol->getComplex()->unsetCanonical();
+	}
 }
 
 void MoveTransformation::apply(Mapping *m, MappingSet **ms, string &logstr)
 {
-	m->getMolecule()->setCompartment(newCompartment);
+	Molecule *mol = m->getMolecule();
+	mol->setCompartment(newCompartment);
+
+	if (mol->getComplex()) {
+		mol->getComplex()->unsetCanonical();
+	}
+
 	if (!logstr.empty()) {
 		logstr += "          [\"Move\","
-		       + to_string(m->getMolecule()->getUniqueID()) 
+		       + to_string(mol->getUniqueID())
 			   + ",\"" + (newCompartment ? newCompartment->getId() : "") + "\"],\n";
 	}
 }

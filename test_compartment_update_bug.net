@@ -1,0 +1,28 @@
+# Created by BioNetGen 2.9.3
+begin parameters
+    1 vol_CP     100  # Constant
+    2 vol_NU     20  # Constant
+    3 _rateLaw1  1000  # Constant
+    4 _rateLaw2  1000  # Constant
+    5 _rateLaw3  1000  # Constant
+end parameters
+begin species
+    1 @CP::A(s~U) 100
+    2 @CP::A(s~P) 0
+    3 @NU::A(s~U) 0
+    4 @NU::A(s~P) 0
+end species
+begin reactions
+    1 1 2 _rateLaw1 #Rule1
+    2 1 3 _rateLaw2 #Rule2
+    3 2 4 _rateLaw2 #Rule2
+    4 4 3 _rateLaw3 #Rule3
+end reactions
+begin groups
+    1 A_CP                 1,2
+    2 A_NU                 3,4
+    3 A_U_CP               1
+    4 A_P_CP               2
+    5 A_U_NU               3
+    6 A_P_NU               4
+end groups
