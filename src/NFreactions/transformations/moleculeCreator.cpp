@@ -43,6 +43,9 @@ MoleculeCreator::~MoleculeCreator()
 void
 MoleculeCreator::create()
 {
+    if (molecule_type->getIsFixed() && molecule_type->getMoleculeCount() >= molecule_type->getFixedCount()) {
+        return;
+    }
 
 	if ( isPopulationType() )
 	{
@@ -70,6 +73,9 @@ MoleculeCreator::create()
 Molecule *
 MoleculeCreator::create_molecule()
 {
+    if (molecule_type->getIsFixed() && molecule_type->getMoleculeCount() >= molecule_type->getFixedCount()) {
+        return NULL;
+    }
 
 	if ( isPopulationType() )
 	{
@@ -100,6 +106,9 @@ MoleculeCreator::create_molecule()
 Molecule *
 MoleculeCreator::create_molecule(string &logstr)
 {
+    if (molecule_type->getIsFixed() && molecule_type->getMoleculeCount() >= molecule_type->getFixedCount()) {
+        return NULL;
+    }
 
 	if ( isPopulationType() )
 	{

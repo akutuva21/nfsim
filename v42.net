@@ -1,0 +1,25 @@
+# Created by BioNetGen 2.9.3
+begin parameters
+    1 kf     0.01  # Constant
+    2 kr     1.0  # Constant
+    3 kd     0.1  # Constant
+    4 ks     10.0  # Constant
+end parameters
+begin species
+    1 $A(b) 10
+    2 B(a) 100
+    3 A(b!1).B(a!1) 0
+end species
+begin reactions
+    1 1,2 3 kf #_R1
+    2 2 0 kd #_R2
+    3 0 2 ks #_R3
+    4 3 1,2 kr #_reverse__R1
+end reactions
+begin groups
+    1 Afree                1
+    2 Bfree                2
+    3 AB                   3
+    4 Atot                 1,3
+    5 Btot                 2,3
+end groups

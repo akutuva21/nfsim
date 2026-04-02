@@ -494,6 +494,9 @@ string ReactionClass::fire(double random_A_number, bool track) {
 	// (this is useful for updating Species Observables and TypeII functions, so keep the info handy).
 	// NOTE: this is a brute force approach: check complex of each molecule. there may be a more
 	//  elegant way to do this, but it's tricky to get it right.
+	// replenish any fixed species that were consumed
+	system->replenishFixedSpecies();
+
 	if (system->isUsingComplex()) {
 		std::unordered_set<Complex*> productComplexSet;
 		Complex * complex;

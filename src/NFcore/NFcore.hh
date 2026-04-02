@@ -392,6 +392,9 @@ namespace NFcore
 			void addOutputter(Outputter *op);
 			void dumpOutputters();
 
+			/* Called after each reaction fire to replenish fixed species */
+			void replenishFixedSpecies();
+
 
 			/* functions needed while running the simulation */
 			// NETGEN
@@ -760,6 +763,12 @@ namespace NFcore
 			// query or set population type
 			bool isPopulationType() const { return population_type; };
 
+			// fixed species support
+			void setFixed(bool fixed, int count);
+			bool getIsFixed() const { return isFixed; };
+			int getFixedCount() const { return fixedCount; };
+			void replenishMolecule(Molecule* consumed);
+
 			bool isIntegerComponent(string cName) const;
 			bool isIntegerComponent(int cIndex) const;
 
@@ -899,6 +908,8 @@ namespace NFcore
 			bool *isIntegerCompState;
 			const bool population_type;
 
+			bool isFixed;
+			int fixedCount;
 
 			//set of variables to keep track of equivalent (aka symmetric) components
 			int n_eqComp;

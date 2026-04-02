@@ -116,6 +116,24 @@ System::System(string name, bool useComplex, int globalMoleculeLimit)
 
 
 
+void System::replenishFixedSpecies() {
+    for (int i = 0; i < allMoleculeTypes.size(); i++) {
+        MoleculeType* mt = allMoleculeTypes[i];
+        if (mt->getIsFixed()) {
+            int current = mt->getMoleculeCount();
+            int target = mt->getFixedCount();
+
+            while (current < target) {
+                Molecule* fresh = mt->genDefaultMolecule();
+                if (fresh != nullptr) {
+                    fresh->updateRxnMembership(nullptr, false);
+                    current++;
+                }
+            }
+        }
+    }
+}
+
 System::~System()
 {
 	if(ds!=0) delete ds;

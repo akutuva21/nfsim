@@ -365,6 +365,8 @@ void AddMoleculeTransform::apply_and_map(MappingSet *ms)
 	// create molecule and get pointer
 	new_molecule = this->mc->create_molecule();
 
+	if (new_molecule == NULL) return;
+
 	// point mappings to the new molecule
 	unsigned int n_mappings = ms->getNumOfMappings();
 	for ( unsigned int im = 0;  im < n_mappings;  ++im )
@@ -377,6 +379,8 @@ void AddMoleculeTransform::apply_and_map(MappingSet *ms, string &logstr)
 {
 	// create molecule and get pointer
 	new_molecule = this->mc->create_molecule(logstr);
+
+	if (new_molecule == NULL) return;
 
 	// point mappings to the new molecule
 	unsigned int n_mappings = ms->getNumOfMappings();

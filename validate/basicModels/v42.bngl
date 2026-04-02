@@ -1,0 +1,30 @@
+begin model
+begin parameters
+  kf  0.01    # binding rate
+  kr  1.0     # unbinding rate
+  kd  0.1     # degradation rate of B
+  ks  10.0    # synthesis rate of B
+end parameters
+begin molecule types
+  A(b)
+  B(a)
+end molecule types
+begin seed species
+  $A(b)  10    # FIXED: always 10 free A molecules
+  B(a)   100   # normal species
+end seed species
+begin observables
+  Molecules Afree  A(b)       # should stay at 10
+  Molecules Bfree  B(a)       # fluctuates
+  Molecules AB     A(b!1).B(a!1)  # complexes formed
+  Molecules Atot   A()        # total A (free + bound) - will be > 10
+  Molecules Btot   B()        # total B
+end observables
+begin reaction rules
+  A(b) + B(a) <-> A(b!1).B(a!1)  kf, kr
+  B(a) -> 0  kd
+  0 -> B(a)  ks
+end reaction rules
+end model
+generate_network({overwrite=>1});
+writeXML();

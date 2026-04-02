@@ -1,0 +1,24 @@
+BioNetGen version 2.9.3
+Reading from file ./basicModels/v42.bngl (level 0)
+Read 4 parameters.
+Read 2 molecule types.
+Read 2 species.
+Read 5 observable(s).
+Read 3 reaction rule(s).
+ACTION: generate_network( v42 )
+WARNING: Removing old network file basicModels/v42.net.
+Iteration   0:     2 species      0 rxns  0.00e+00 CPU s
+Iteration   1:     3 species      3 rxns  0.00e+00 CPU s
+Iteration   2:     3 species      4 rxns  0.00e+00 CPU s
+Cumulative CPU time for each rule
+Rule   1:     2 reactions 0.00e+00 CPU s 0.00e+00 CPU s/rxn
+Rule   2:     1 reactions 0.00e+00 CPU s 0.00e+00 CPU s/rxn
+Rule   3:     1 reactions 0.00e+00 CPU s 0.00e+00 CPU s/rxn
+Total   :     4 reactions 0.00e+00 CPU s 0.00e+00 CPU s/rxn
+Wrote network in net format to basicModels/v42.net.
+CPU TIME: generate_network 0.00 s.
+WARNING: writeFile(): Overwriting existing file basicModels/v42.xml.
+Wrote model in xml format to basicModels/v42.xml.
+CPU TIME: writeXML 0.00 s.
+Finished processing file ./basicModels/v42.bngl.
+CPU TIME: total 0.02 s.

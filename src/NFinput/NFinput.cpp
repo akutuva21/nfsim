@@ -811,6 +811,13 @@ string NFinput::initStartSpecies(
 			}
 
 
+			// Parse Fixed attribute
+			bool isFixed = false;
+			const char* fixedAttr = pSpec->Attribute("Fixed");
+			if (fixedAttr != nullptr && string(fixedAttr) == "1") {
+				isFixed = true;
+			}
+
 			// Give our users a nice little message...
 			if(verbose) cout<<"\t\tCreating "<<specCountInteger<<" instances of the Species: "<<speciesName<<endl;
 
@@ -1124,6 +1131,23 @@ string NFinput::initStartSpecies(
 						cout<<"!!!!Invalid site value for bond: '"<<bondId<<"' when creating species '"<<speciesName<<"'. Quitting"<<endl;
 						// AS2023 - fails now return empty strings
 						return "";
+					}
+				}
+			}
+
+			if (isFixed) {
+				if (molecules.size() > 0) {
+					int numberOfMoleculesInSpecies = molecules.size();
+					if (numberOfMoleculesInSpecies > 1) {
+						cerr << "WARNING: Fixed species with multiple molecules ("
+							 << speciesName << ") is not yet supported in NFsim. "
+							 << "Only single-molecule fixed species are supported." << endl;
+					} else if (numberOfMoleculesInSpecies == 1 && molecules.at(0).size() > 0) {
+						MoleculeType* mt = molecules.at(0).at(0)->getMoleculeType();
+						mt->setFixed(true, specCountInteger);
+						if (verbose) {
+							cout << "\t\t\tSpecies '" << speciesName << "' marked as FIXED with count " << specCountInteger << endl;
+						}
 					}
 				}
 			}

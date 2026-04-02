@@ -693,8 +693,11 @@ string TransformationSet::transform(MappingSet **mappingSets, bool tracking)
 	int size = addMoleculeTransformations.size();
 	if(size>0) {
 		for(int i=0; i<size; i++) {
-			// AS2023 - since we are in the tracking call, track the application
-			addMoleculeTransformations.at(i)->apply_and_map( mappingSets[n_reactants+i], logstr );
+			if (tracking) {
+				addMoleculeTransformations.at(i)->apply_and_map( mappingSets[n_reactants+i], logstr );
+			} else {
+				addMoleculeTransformations.at(i)->apply_and_map( mappingSets[n_reactants+i] );
+			}
 		}
 	}
 
@@ -702,8 +705,11 @@ string TransformationSet::transform(MappingSet **mappingSets, bool tracking)
 	size = addSpeciesTransformations.size();
 	if(size>0) {
 		for(int i=0; i<size; i++) {
-			// AS2023 - since we are in the tracking call, track the application
-			addSpeciesTransformations.at(i)->apply(NULL, NULL, logstr);
+			if (tracking) {
+				addSpeciesTransformations.at(i)->apply(NULL, NULL, logstr);
+			} else {
+				addSpeciesTransformations.at(i)->apply(NULL, NULL);
+			}
 		}
 	}
 
@@ -728,15 +734,17 @@ string TransformationSet::transform(MappingSet **mappingSets, bool tracking)
 				}
 				if ( transformations[r].at(t)->getRemovalType()==(int)TransformationFactory::COMPLETE_SPECIES_REMOVAL )
 				{	// complex deletion: flag connected molecules for deletion
-					// AS2023 - since we are in the tracking call, track the deletion events
-					mol->traverseBondedNeighborhood(deleteList,ReactionClass::NO_LIMIT, logstr);
+					if (tracking) {
+						mol->traverseBondedNeighborhood(deleteList,ReactionClass::NO_LIMIT, logstr);
+					} else {
+						mol->traverseBondedNeighborhood(deleteList,ReactionClass::NO_LIMIT);
+					}
 				}
 				else
 				{	// molecule deletion: flag this molecule for deletion
 					// track deletions if tracking is on
 					// this has to be done here
 					if (tracking) {
-						// AS2023 - since we are in the tracking call, track the deletion operations
 						logstr += "          [\"Delete\"," + to_string(mol->getUniqueID()) + "],\n";
 					}
 					deleteList.push_back( mol );
@@ -744,8 +752,16 @@ string TransformationSet::transform(MappingSet **mappingSets, bool tracking)
 			}
 			else
 			{	// handle other transforms
-				// AS2023 - since we are in the tracking call, track the operation
-				transformations[r].at(t)->apply(ms->get(t), mappingSets, logstr);
+				Mapping *mapObj = ms->get(t);
+				if (!mapObj || mapObj->getMolecule() == NULL) {
+					// This can happen if an addMolecule transform returned NULL (e.g. for fixed species)
+					continue;
+				}
+				if (tracking) {
+					transformations[r].at(t)->apply(mapObj, mappingSets, logstr);
+				} else {
+					transformations[r].at(t)->apply(mapObj, mappingSets);
+				}
 			}
 		}
 	}

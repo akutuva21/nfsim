@@ -152,6 +152,8 @@ void MoleculeType::init(
 
 	mList = new MoleculeList(this,2,system->getGlobalMoleculeLimit());
 	n_eqComp = 0;
+	isFixed = false;
+	fixedCount = 0;
 }
 
 
@@ -445,6 +447,26 @@ int MoleculeType::getCompIndexFromName(string cName) const
 	cerr<<"!!! warning !!! cannot find site name "<< cName << " in MoleculeType: "<<name<<endl;
 	this->printDetails();
 	exit(1);
+}
+
+void MoleculeType::setFixed(bool fixed, int count) {
+    isFixed = fixed;
+    fixedCount = count;
+}
+
+void MoleculeType::replenishMolecule(Molecule* consumed) {
+    // This is called when a fixed-type molecule is consumed by a reaction.
+    // 1. The consumed molecule has already been removed by the reaction transform.
+    // 2. Create a new default-state molecule of this type.
+    // Uses the existing genDefaultMolecule() infrastructure.
+
+    Molecule* fresh = this->genDefaultMolecule();
+    // If compartments are in use, place in the same compartment as the consumed molecule was
+    if (consumed->getCompartment() != nullptr) {
+        fresh->setCompartment(consumed->getCompartment());
+    }
+    // Register with reactions
+    // fresh->updateRxnMembership(); // The prompt explicitly states: "All transformation apply() methods must be 'dumb' setters. They must NEVER call updateRxnMembership()... Downstream reactant list and observable updates are inherently handled automatically post-fire in ReactionClass::fire()"
 }
 
 int MoleculeType::getStateValueFromName(int cIndex, string stateName) const
