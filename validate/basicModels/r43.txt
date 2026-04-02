@@ -1,0 +1,2 @@
+Fixed species clamping during degradation only
+-sim 10 -oSteps 10 -cb

@@ -1140,13 +1140,10 @@ string NFinput::initStartSpecies(
 			// Set the species as fixed if requested
 			if (speciesIsFixed) {
 				// We expect a single molecule species
-				int molCount = 0;
-				for (TiXmlElement *m = pListOfMol->FirstChildElement("Molecule"); m != nullptr; m = m->NextSiblingElement("Molecule")) {
-					molCount++;
-				}
-				if (molCount > 1) {
-					cerr << "WARNING: Fixed multi-molecule species '" << speciesName
+				if (molecules.size() > 1) {
+					cerr << "ERROR: Fixed multi-molecule species '" << speciesName
 						 << "' is not supported in NFsim. Only single-molecule fixed species are supported." << endl;
+					return "";
 				} else {
 					TiXmlElement *pFirstMol = pListOfMol->FirstChildElement("Molecule");
 					if (pFirstMol && pFirstMol->Attribute("name")) {

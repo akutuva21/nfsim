@@ -71,7 +71,7 @@ class TestNFSimFile(ParametrizedTestCase):
     def BNGtrajectoryGeneration(self, outputDirectory, fileNumber):
         bngFileName = os.path.join(outputDirectory, 'v{0}.bngl'.format(fileNumber))
         with open(os.devnull, "w") as fnull:
-            subprocess.check_call(['perl', bngPath, '-outdir', outputDirectory, '-log', bngFileName], stdout=fnull)
+            subprocess.check_call(['perl', bngPath, '-outdir', outputDirectory, bngFileName], stdout=fnull)
 
     def NFsimtrajectoryGeneration(self, outputDirectory, fileNumber, runOptions, seed=None):
         runOptions = [x.strip() for x in runOptions.split(' ') if x.strip()]
@@ -176,7 +176,7 @@ class TestIssueRegressions(unittest.TestCase):
 
         bngFileName = os.path.join(outputDirectory, 'v{0}.bngl'.format(fileNumber))
         with open(os.devnull, "w") as fnull:
-            subprocess.check_call(['perl', bngPath, '-outdir', outputDirectory, '-log', bngFileName], stdout=fnull)
+            subprocess.check_call(['perl', bngPath, '-outdir', outputDirectory, bngFileName], stdout=fnull)
 
     def _run_nfsim(self, outputDirectory, fileNumber, runOptions):
         runOptions = [x.strip() for x in runOptions.split(' ') if x.strip()]

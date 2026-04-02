@@ -18,3 +18,12 @@ build_win/
 
 # AI
 .jules
+
+# General BNG/NFsim artifacts
+*.log
+*.species
+*.gdat
+*.net
+*.xml
+*.tsv
+*.json
