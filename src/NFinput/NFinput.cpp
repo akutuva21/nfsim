@@ -1140,23 +1140,17 @@ string NFinput::initStartSpecies(
 			// Set the species as fixed if requested
 			if (speciesIsFixed) {
 				// We expect a single molecule species
-				if (molecules.size() > 1) {
+				if (molecules.size() == 1 && molecules.at(0).size() > 0) {
+					MoleculeType *mt = molecules.at(0).at(0)->getMoleculeType();
+					mt->setFixed(true, specCountInteger, speciesCompartment);
+					if (verbose) {
+						cout << "\t\tSpecies '" << mt->getName()
+							 << "' marked as FIXED (count=" << specCountInteger << ")." << endl;
+					}
+				} else {
 					cerr << "ERROR: Fixed multi-molecule species '" << speciesName
 						 << "' is not supported in NFsim. Only single-molecule fixed species are supported." << endl;
 					return "";
-				} else {
-					TiXmlElement *pFirstMol = pListOfMol->FirstChildElement("Molecule");
-					if (pFirstMol && pFirstMol->Attribute("name")) {
-						string moleculeTypeName = pFirstMol->Attribute("name");
-						MoleculeType *mt = s->getMoleculeTypeByName(moleculeTypeName);
-						if (mt != nullptr) {
-							mt->setFixed(true, specCountInteger, speciesCompartment);
-							if (verbose) {
-								cout << "\t\tSpecies '" << moleculeTypeName
-									 << "' marked as FIXED with count " << specCountInteger << endl;
-							}
-						}
-					}
 				}
 			}
 
