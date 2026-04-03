@@ -1293,42 +1293,39 @@ void System::replenishFixedSpecies() {
 		MoleculeType *mt = allMoleculeTypes[i];
 		if (!mt->isFixed()) continue;
 
-		int currentFree = 0;
-		for (int j = 0; j < mt->getMoleculeCount(); ++j) {
-			Molecule *m = mt->getMolecule(j);
-			// Count as "free" if it's a single molecule complex and in the correct compartment
-			if (m->getComplex()->getComplexSize() == 1) {
-				if (mt->getFixedCompartment() == nullptr || m->getCompartment() == mt->getFixedCompartment()) {
-					currentFree++;
-				}
-			}
+		int current = mt->getMoleculeCount();
+		int target = mt->getFixedCount();
+
+		// Replenish: create new default-state molecules
+		while (current < target) {
+			Molecule *fresh = (mt->getFixedCompartment() != nullptr)
+				? mt->genDefaultMolecule(mt->getFixedCompartment())
+				: mt->genDefaultMolecule();
+
+			// genDefaultMolecule adds to the molecule list but doesn't prepare
+			// or add to reactions/observables, so we do it via addMoleculeToRunningSystem
+			// Actually genDefaultMolecule already calls mList->create(m);
+			// then addMoleculeToRunningSystem also prepares it.
+
+			fresh->setUpLocalFunctionList();
+			fresh->prepareForSimulation();
+			fresh->setAlive(true);
+			fresh->addToObservables();
+			mt->updateRxnMembership(fresh);
+			current++;
 		}
 
-		int target = mt->getFixedCount();
-		// Replenish if we are below the target
-		while (currentFree < target) {
-			Molecule *fresh = mt->genDefaultMolecule(mt->getFixedCompartment());
-			mt->addMoleculeToRunningSystem(fresh);
-			currentFree++;
-		}
-		// Remove excess if we are above the target (e.g. from unbinding or state reversal)
-		while (currentFree > target) {
-			bool removed = false;
-			for (int j = 0; j < mt->getMoleculeCount(); ++j) {
-				Molecule *m = mt->getMolecule(j);
-				if (m->getComplex()->getComplexSize() == 1) {
-					if (mt->getFixedCompartment() == nullptr || m->getCompartment() == mt->getFixedCompartment()) {
-						mt->removeMoleculeFromRunningSystem(m);
-						currentFree--;
-						removed = true;
-						break;
-					}
-				}
+		// Suppress: remove excess molecules if a reaction created more
+		while (current > target) {
+			Molecule *excess = mt->getMolecule(current - 1);
+			if (excess != nullptr) {
+				mt->removeMoleculeFromRunningSystem(excess);
+				current--;
+			} else {
+				break;
 			}
-			if (!removed) break; // Should not happen if count logic is consistent
 		}
 	}
-	recompute_A_tot();
 }
 
 

@@ -1,25 +1,20 @@
-# BNG/NFsim results -- ignore globally
-__pycache__/
-
-# Root-level artifacts (common BNG outputs that land in root incorrectly)
-/*.gdat
-/*.net
-/*.species
-/*.xml
-/*.tsv
-/*.log
-/*.json
-
-# Directory-specific ignores for generated artifacts
-validate/basicModels/v*_*_*.gdat
-validate/basicModels/v*_*_*.log
-validate/basicModels/v*_*_*.species
-# (Usually we don't ignore the base vXX.xml or vXX_ssa.gdat if they are the reference files)
-
-# Build artifacts
-build/
+build
+.vscode
+build_test_files
+validate/basicModels/*.*dat
+validate/basicModels/*.net
+validate/basicModels/*.xml
+validate/basicModels/*.tsv
+validate/basicModels/*.json
+test/Issue37/test2.nfevent.json
+test/Issue37/test.nfevent.json
+test/Issue37/out.gdat
+test/Issue37/issue37_test2.species
+test/Issue37/issue37_test2.gdat
 bin/NFsim
+
 build_native/
 build_win/
-.vscode/
-build_test_files/
+
+# AI
+.jules

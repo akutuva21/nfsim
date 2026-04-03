@@ -21,10 +21,11 @@ begin observables
   Molecules Btot  B()
 end observables
 begin reaction rules
-  A(b) + B(a) <-> A(b!1).B(a!1) kf, kr
+  A(b) + B(a) -> A(b!1).B(a!1) kf
+  A(b!1).B(a!1) -> A(b) + B(a) kr
   B(a) -> 0 kd
   0 -> B(a) ks
 end reaction rules
 generate_network({overwrite=>1})
-simulate_nf({t_end=>10, n_steps=>10})
+simulate_nf({t_end=>10, n_steps=>10, out_dir=>"test/testSuite/v42"})
 end model

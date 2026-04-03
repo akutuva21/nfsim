@@ -110,8 +110,7 @@ void MoleculeType::init(
 	vector <bool> isIntegerComponent,
 	System *system)
 {
-	// Basics... (Note: isFixed_, fixedCount_, and fixedCompartment_ are 
-	// initialized in the constructor initializer list, not here in init())
+	//Basics...
 	this->name=name;
 	this->numOfComponents=compName.size();
 

@@ -1,2 +1,0 @@
-Fixed species clamping during binding and degradation
--sim 10 -oSteps 10 -cb

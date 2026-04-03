@@ -1,2 +1,0 @@
-Compartmentalized fixed species clamping
--sim 10 -oSteps 10 -cb
