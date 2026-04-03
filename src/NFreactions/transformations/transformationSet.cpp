@@ -914,9 +914,13 @@ bool TransformationSet::getListOfProducts(MappingSet **mappingSets, list <Molecu
 			// is this molecule already on the product list?
 			if ( product_set.find( molecule ) == product_set.end() )
 			{	// Traverse neighbor and add molecules to list
-				molecule->traverseBondedNeighborhood(products,traversalLimit);
-				for (auto m : products) {
-					product_set.insert(m);
+			bool was_empty = products.empty();
+			auto last = was_empty ? products.end() : std::prev(products.end());
+			molecule->traverseBondedNeighborhood(products, traversalLimit);
+			// Sync only newly appended molecules into the set
+			auto it = was_empty ? products.begin() : std::next(last);
+			for (; it != products.end(); ++it) {
+				product_set.insert(*it);
 				}
 				//molecule->traverseBondedNeighborhoodForUpdate(products,traversalLimit);
 			}
