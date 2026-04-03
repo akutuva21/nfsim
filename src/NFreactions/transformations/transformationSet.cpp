@@ -711,7 +711,8 @@ string TransformationSet::transform(MappingSet **mappingSets, bool tracking)
 	for(unsigned int r=0; r<getNmappingSets(); r++)
 	{
 		MappingSet *ms = mappingSets[r];
-		for ( unsigned int t=0;  t<transformations[r].size();  t++ )
+		unsigned int n_transformations = transformations[r].size();
+		for ( unsigned int t=0;  t<n_transformations;  t++ )
 		{
 			if( transformations[r].at(t)->getType()==(int)TransformationFactory::REMOVE )
 			{	// handle deletions
