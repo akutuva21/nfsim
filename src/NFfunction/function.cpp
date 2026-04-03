@@ -159,80 +159,10 @@ void GlobalFunction::printDetails()
 // AS-2021
 void GlobalFunction::loadParamFile(string filePath) 
 {
-	// setup our vectors
-	vector <double> time;
-	vector <double> values;
-	// open file for reading
-	ifstream file(filePath.c_str());
-	// Report if file doesn't exist
-	if(!file.good()){
-		cerr<<"Error preparing function "<<this->name<<" in class GlobalFunction!!"<<endl;
-		cerr<<"File doesn't look like it exists"<<endl;
-		cerr<<"Quitting."<<endl;
-		exit(1);
-	}
-
-	try {
-		// strings for looping over the file
-		string a,b;
-		bool hasDirection = false;
-		bool isIncreasing = false;
-		double prevTime = 0.0;
-		bool first = true;
-
-		while (file >> a >> b) {
-			// convert a to double
-			double t = NFutil::convertToDouble(a);
-			time.push_back(t);
-
-			// convert b to double
-			double v = NFutil::convertToDouble(b);
-			values.push_back(v);
-
-			if (first) {
-				prevTime = t;
-				first = false;
-			} else {
-				if (t == prevTime) {
-					cerr<<"Error in function "<<this->name<<" in class GlobalFunction!!"<<endl;
-					cerr<<"Time values in data file must be strictly monotonic. Found duplicate time: "<<t<<endl;
-					cerr<<"Quitting."<<endl;
-					exit(1);
-				}
-
-				if (!hasDirection) {
-					isIncreasing = (t > prevTime);
-					hasDirection = true;
-				} else {
-					if ((isIncreasing && t < prevTime) || (!isIncreasing && t > prevTime)) {
-						cerr<<"Error in function "<<this->name<<" in class GlobalFunction!!"<<endl;
-						cerr<<"Time values in data file must be strictly monotonic."<<endl;
-						cerr<<"Quitting."<<endl;
-						exit(1);
-					}
-				}
-				prevTime = t;
-			}
-		}
-
-		if (time.size() == 0) {
-			cerr<<"Error in function "<<this->name<<" in class GlobalFunction!!"<<endl;
-			cerr<<"Data file is empty or invalid format."<<endl;
-			cerr<<"Quitting."<<endl;
-			exit(1);
-		}
-
-		// put the vectors into data vector
-		this->data.push_back(time);
-		this->data.push_back(values);
-	} catch (exception const & e) {
-		cerr<<"Error preparing function "<<this->name<<" in class GlobalFunction!!"<<endl;
-		cerr<<"Failed to either open or read the file, or invalid number format."<<endl;
-		cerr<<e.what()<<endl;
-		cerr<<"Quitting."<<endl;
-		exit(1);
-	}
-	return;
+	string callerName = this->name + " in class GlobalFunction";
+	NFutil::TimeSeries ts = NFutil::loadTimeSeries(filePath, callerName);
+	this->data.push_back(ts.time);
+	this->data.push_back(ts.values);
 }
 
 void GlobalFunction::addCounterPointer(double *counter){
@@ -334,6 +264,7 @@ void GlobalFunction::fileUpdate() {
 			currInd += 1;
 		}
 	} else {
+		// Defensive: should never reach here if loadParamFile validated correctly
 		cerr<<"Error in function "<<this->name<<" in class GlobalFunction!!"<<endl;
 		cerr<<"Time values in data file must be strictly monotonic. Found duplicate time: "<<data[0][currInd]<<endl;
 		cerr<<"Quitting."<<endl;
