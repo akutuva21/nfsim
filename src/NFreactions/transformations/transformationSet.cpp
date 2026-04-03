@@ -1,6 +1,7 @@
 #include "transformationSet.hh"
 #include "transformation.hh"
 #include <queue>
+#include <unordered_set>
 
 using namespace NFcore;
 
@@ -883,6 +884,7 @@ bool TransformationSet::checkMolecularity( MappingSet ** mappingSets )
 bool TransformationSet::getListOfProducts(MappingSet **mappingSets, list <Molecule *> &products, int traversalLimit)
 {
 	//if(!finalized) { cerr<<"TransformationSet cannot apply a transform if it is not finalized!"<<endl; exit(1); }
+	std::unordered_set<Molecule*> product_set(products.begin(), products.end());
 	list <Molecule *>::iterator molIter;
 	for(unsigned int r=0; r<n_reactants; r++)
 	{
@@ -910,9 +912,12 @@ bool TransformationSet::getListOfProducts(MappingSet **mappingSets, list <Molecu
 			Molecule * molecule = mappingSets[r]->get(0)->getMolecule();
 
 			// is this molecule already on the product list?
-			if ( std::find( products.begin(), products.end(), molecule ) == products.end() )
+			if ( product_set.find( molecule ) == product_set.end() )
 			{	// Traverse neighbor and add molecules to list
 				molecule->traverseBondedNeighborhood(products,traversalLimit);
+				for (auto m : products) {
+					product_set.insert(m);
+				}
 				//molecule->traverseBondedNeighborhoodForUpdate(products,traversalLimit);
 			}
 		}
@@ -933,9 +938,10 @@ bool TransformationSet::getListOfProducts(MappingSet **mappingSets, list <Molecu
 		Molecule * molecule = addmol->get_population_pointer();
 
 		// is this molecule already on the product list?
-		if ( std::find( products.begin(), products.end(), molecule ) == products.end() )
+		if ( product_set.find( molecule ) == product_set.end() )
 		{	// Add molecule to list
 			products.push_back( molecule );
+			product_set.insert( molecule );
 		}
 	}
 
@@ -955,6 +961,7 @@ bool TransformationSet::getListOfAddedMolecules(MappingSet **mappingSets, list <
 // bool TransformationSet::getListOfAddedMolecules(MappingSet **mappingSets, vector <Molecule *> &products, int traversalLimit)
 {
 	//if(!finalized) { cerr<<"TransformationSet cannot apply a transform if it is not finalized!"<<endl; exit(1); }
+	std::unordered_set<Molecule*> product_set(products.begin(), products.end());
 
 	// Add new molecules (particle type) to the list of products
 	list <Molecule *>::iterator molIter;
@@ -968,9 +975,10 @@ bool TransformationSet::getListOfAddedMolecules(MappingSet **mappingSets, list <
 		if ( molecule->isPopulationType() ) continue;
 
 		// Is the molecule already in the products list?  If not, add to list.
-		if ( std::find( products.begin(), products.end(), molecule ) == products.end() )
+		if ( product_set.find( molecule ) == product_set.end() )
 		{	// Add molecule to list.
 			products.push_back( molecule );
+			product_set.insert( molecule );
 			// NOTE: we don't need to traverse neighbors. All new molecules will be put in this
 			//  list separately and old molecules that bind to new molecules will be traversed elsewhere
 		}
