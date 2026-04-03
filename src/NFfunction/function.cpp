@@ -166,41 +166,74 @@ void GlobalFunction::loadParamFile(string filePath)
 	ifstream file(filePath.c_str());
 	// Report if file doesn't exist
 	if(!file.good()){
-		cout<<"Error preparing function "<<this->name<<" in class GlobalFunction!!"<<endl;
-		cout<<"File doesn't look like it exists"<<endl;
-		cout<<"Quitting."<<endl;
+		cerr<<"Error preparing function "<<this->name<<" in class GlobalFunction!!"<<endl;
+		cerr<<"File doesn't look like it exists"<<endl;
+		cerr<<"Quitting."<<endl;
 		exit(1);
 	}
-	// TODO: Err out this doesn't work
+
 	try {
 		// strings for looping over the file
-		string line, word, content;
 		string a,b;
-		// TODO: Err out if the format is wrong
+		bool hasDirection = false;
+		bool isIncreasing = false;
+		double prevTime = 0.0;
+		bool first = true;
+
 		while (file >> a >> b) {
 			// convert a to double
-			istringstream aos(a);
-			double d;
-			aos >> d;
-			// add it to time
-			time.push_back(d);
+			double t = NFutil::convertToDouble(a);
+			time.push_back(t);
+
 			// convert b to double
-			istringstream bos(b);
-			bos >> d;
-			// add it to values
-			values.push_back(d);
+			double v = NFutil::convertToDouble(b);
+			values.push_back(v);
+
+			if (first) {
+				prevTime = t;
+				first = false;
+			} else {
+				if (t == prevTime) {
+					cerr<<"Error in function "<<this->name<<" in class GlobalFunction!!"<<endl;
+					cerr<<"Time values in data file must be strictly monotonic. Found duplicate time: "<<t<<endl;
+					cerr<<"Quitting."<<endl;
+					exit(1);
+				}
+
+				if (!hasDirection) {
+					isIncreasing = (t > prevTime);
+					hasDirection = true;
+				} else {
+					if ((isIncreasing && t < prevTime) || (!isIncreasing && t > prevTime)) {
+						cerr<<"Error in function "<<this->name<<" in class GlobalFunction!!"<<endl;
+						cerr<<"Time values in data file must be strictly monotonic."<<endl;
+						cerr<<"Quitting."<<endl;
+						exit(1);
+					}
+				}
+				prevTime = t;
+			}
 		}
+
+		if (time.size() == 0) {
+			cerr<<"Error in function "<<this->name<<" in class GlobalFunction!!"<<endl;
+			cerr<<"Data file is empty or invalid format."<<endl;
+			cerr<<"Quitting."<<endl;
+			exit(1);
+		}
+
 		// put the vectors into data vector
 		this->data.push_back(time);
 		this->data.push_back(values);
 	} catch (exception const & e) {
-		cout<<"Error preparing function "<<this->name<<" in class GlobalFunction!!"<<endl;
-		cout<<"Failed to either open or read the file."<<endl;
-		cout<<"Quitting."<<endl;
+		cerr<<"Error preparing function "<<this->name<<" in class GlobalFunction!!"<<endl;
+		cerr<<"Failed to either open or read the file, or invalid number format."<<endl;
+		cerr<<e.what()<<endl;
+		cerr<<"Quitting."<<endl;
 		exit(1);
-	};
+	}
 	return;
-};
+}
 
 void GlobalFunction::addCounterPointer(double *counter){
 	this->ctrType = "Observable";
@@ -282,10 +315,7 @@ void GlobalFunction::fileUpdate() {
 		if (ctrVal>=data[0][currInd+1]) {
 			currInd += 1;
 		}
-	// note that this makes no sense if they are equal
-	// TODO: Raise error if they are equal. Better yet, parse 
-	// it ahead of time and make sure that doesn't happen
-	} else {
+	} else if (data[0][currInd] > data[0][currInd+1]) {
 		// next point is lower than the current point, we
 		// are waiting for the counter value to be lower 
 		// than our current point
@@ -303,6 +333,11 @@ void GlobalFunction::fileUpdate() {
 		if (ctrVal<=data[0][currInd+1]) {
 			currInd += 1;
 		}
+	} else {
+		cerr<<"Error in function "<<this->name<<" in class GlobalFunction!!"<<endl;
+		cerr<<"Time values in data file must be strictly monotonic. Found duplicate time: "<<data[0][currInd]<<endl;
+		cerr<<"Quitting."<<endl;
+		exit(1);
 	}
 	// // return value from the value array
 	p->DefineConst(ctrName,data[1][currInd]);
