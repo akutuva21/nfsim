@@ -1145,8 +1145,9 @@ string NFinput::initStartSpecies(
 					molCount++;
 				}
 				if (molCount > 1) {
-					cerr << "WARNING: Fixed multi-molecule species '" << speciesName
+					cerr << "ERROR: Fixed multi-molecule species '" << speciesName
 						 << "' is not supported in NFsim. Only single-molecule fixed species are supported." << endl;
+					return "";
 				} else {
 					TiXmlElement *pFirstMol = pListOfMol->FirstChildElement("Molecule");
 					if (pFirstMol && pFirstMol->Attribute("name")) {

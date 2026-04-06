@@ -1289,11 +1289,21 @@ void System::equilibrate(double duration, int statusReports)
 }
 
 void System::replenishFixedSpecies() {
+	bool updated = false;
 	for (unsigned int i = 0; i < allMoleculeTypes.size(); i++) {
 		MoleculeType *mt = allMoleculeTypes[i];
 		if (!mt->isFixed()) continue;
 
-		int current = mt->getMoleculeCount();
+		int current = 0;
+		// Count only free molecules in the assigned compartment
+		for (int j = 0; j < mt->getMoleculeCount(); j++) {
+			Molecule *m = mt->getMolecule(j);
+			if (m->isAlive() && m->getDegree() == 0 &&
+				(mt->getFixedCompartment() == nullptr || m->getCompartment() == mt->getFixedCompartment())) {
+				current++;
+			}
+		}
+
 		int target = mt->getFixedCount();
 
 		// Replenish: create new default-state molecules
@@ -1302,29 +1312,33 @@ void System::replenishFixedSpecies() {
 				? mt->genDefaultMolecule(mt->getFixedCompartment())
 				: mt->genDefaultMolecule();
 
-			// genDefaultMolecule adds to the molecule list but doesn't prepare
-			// or add to reactions/observables, so we do it via addMoleculeToRunningSystem
-			// Actually genDefaultMolecule already calls mList->create(m);
-			// then addMoleculeToRunningSystem also prepares it.
-
-			fresh->setUpLocalFunctionList();
-			fresh->prepareForSimulation();
-			fresh->setAlive(true);
-			fresh->addToObservables();
-			mt->updateRxnMembership(fresh);
+			mt->addMoleculeToRunningSystem(fresh);
+			updated = true;
 			current++;
 		}
 
 		// Suppress: remove excess molecules if a reaction created more
 		while (current > target) {
-			Molecule *excess = mt->getMolecule(current - 1);
-			if (excess != nullptr) {
-				mt->removeMoleculeFromRunningSystem(excess);
-				current--;
-			} else {
-				break;
+			bool removed = false;
+			// Find a free molecule to remove
+			for (int j = mt->getMoleculeCount() - 1; j >= 0; j--) {
+				Molecule *excess = mt->getMolecule(j);
+				if (excess->isAlive() && excess->getDegree() == 0 &&
+					(mt->getFixedCompartment() == nullptr || excess->getCompartment() == mt->getFixedCompartment())) {
+					mt->removeMoleculeFromRunningSystem(excess);
+					removed = true;
+					updated = true;
+					current--;
+					break;
+				}
 			}
+			// If we couldn't find a free one to remove, break the loop
+			if (!removed) break;
 		}
+	}
+
+	if (updated) {
+		recompute_A_tot();
 	}
 }
 
