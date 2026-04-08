@@ -124,6 +124,13 @@ namespace NFutil {
 	string toString(int x);
 
 
+	//!  Tests the toString function for correct double to string conversion
+	/*!
+			@author Michael Sneddon
+	*/
+	void test_toString();
+
+
 	//! Removes leading and trailing whitespace (including tabs) from the string
 	/*!
 	 */

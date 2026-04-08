@@ -106,6 +106,49 @@ string NFutil::toString(double x)
 	}
 	return o.str();
 }
+
+void NFutil::test_toString()
+{
+	std::cout << "Beginning tests for NFutil::toString(double)..." << std::endl;
+
+	std::vector<double> test_cases = {
+		0.0,
+		-0.0,
+		1.0,
+		-1.0,
+		3.14159,
+		-42.5,
+		1e6,
+		-1e6,
+		1e-6,
+		-1e-6,
+		123456789.12345
+	};
+
+	int passed = 0;
+	int failed = 0;
+
+	for (double val : test_cases) {
+		std::ostringstream expected_stream;
+		expected_stream << val;
+		std::string expected = expected_stream.str();
+
+		std::string actual = NFutil::toString(val);
+
+		if (actual == expected) {
+			passed++;
+		} else {
+			std::cerr << "Test failed for value: " << val << std::endl;
+			std::cerr << "Expected: '" << expected << "', Actual: '" << actual << "'" << std::endl;
+			failed++;
+		}
+	}
+
+	std::cout << "Tests completed. Passed: " << passed << ", Failed: " << failed << std::endl;
+	if (failed > 0) {
+		exit(1);
+	}
+}
 string NFutil::toString(int x)
 {
 	std::ostringstream o;
