@@ -165,7 +165,7 @@
 
 
 #include "NFsim.hh"
-
+#include "NFtest/conversion/conversion_test.hh"
 
 #include <iostream>
 #include <string>
@@ -313,6 +313,10 @@ int main(int argc, char *argv[])
 				}
 				if(test=="tlbr") {
 					NFtest_tlbr::run(argMap);
+					foundATest=true;
+				}
+				if(test=="conversion") {
+					NFtest_conversion::run();
 					foundATest=true;
 				}
 				if(test=="mathFuncParser") {
