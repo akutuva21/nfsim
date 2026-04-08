@@ -532,12 +532,11 @@ void CompositeFunction::enableFileDependency(string filePath) {
 	// load file
 	// cout<<"file dependency of function: "<<name<<endl;
 	// cout<<"file: "<<filePath<<endl;
-	// TODO: Err out if this fails
 	try {
 		this->loadParamFile(filePath);
 	} catch (exception const & e) {
-		cout<<"Error preparing function "<<name<<" in class GlobalFunction!!"<<endl;
-		cout<<"Quitting."<<endl;
+		cerr<<"Error preparing function "<<name<<" in class CompositeFunction!!"<<endl;
+		cerr<<"Quitting."<<endl;
 		exit(1);
 	};
 	// we just want to keep a record of this
@@ -559,11 +558,15 @@ double CompositeFunction::getCounterValue() {
 		ctrVal = FuncFactory::Eval(this->funcPtr->p);
 	} else if (ctrType == "System") {
 		ctrVal = this->sysPtr->getCurrentTime();
+	} else {
+		throw std::runtime_error("Invalid ctrType in CompositeFunction::getCounterValue()");
 	}
 	return ctrVal;
 }
 void CompositeFunction::fileUpdate() {
-	// TODO: Error checking and reporting
+	if (data.size() < 2 || dataLen == 0) {
+		throw std::runtime_error("Error in CompositeFunction::fileUpdate(): Data file is empty or missing columns.");
+	}
 	
 	// get counter val
 	double ctrVal = this->getCounterValue();
@@ -598,6 +601,9 @@ void CompositeFunction::fileUpdate() {
 		if (ctrVal>=data[0][currInd+1]) {
 			currInd += 1;
 		}
+	// note that this makes no sense if they are equal
+	// TODO: Raise error if they are equal. Better yet, parse
+	// it ahead of time and make sure that doesn't happen
 	} else if (data[0][currInd] > data[0][currInd+1]) {
 		// next point is lower than the current point, we
 		// are waiting for the counter value to be lower 
@@ -618,10 +624,7 @@ void CompositeFunction::fileUpdate() {
 		}
 	} else {
 		// Defensive: should never reach here if loadParamFile validated correctly
-		cerr<<"Error in function "<<this->name<<" in class CompositeFunction!!"<<endl;
-		cerr<<"Time values in data file must be strictly monotonic. Found duplicate time: "<<data[0][currInd]<<endl;
-		cerr<<"Quitting."<<endl;
-		exit(1);
+		throw std::runtime_error("Error in function " + this->name + " in class CompositeFunction!! Time values in data file must be strictly monotonic. Found duplicate time.");
 	}
 	// // return value from the value array
 	p->DefineConst(ctrName,data[1][currInd]);
