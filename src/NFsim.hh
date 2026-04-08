@@ -33,6 +33,7 @@
 //#include "NFtest/compare/compare.hh"
 //#include  "NFtest/transformations/transformations.hh"
 #include  "NFtest/simple_system/simple_system.hh"
+#include  "NFtest/random/test_random.hh"
 #include  "NFtest/transcription/transcription.hh"
 #include  "NFtest/tlbr/tlbr.hh"
 #include  "NFtest/agentcell/agentcell.hh"

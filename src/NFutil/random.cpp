@@ -120,6 +120,9 @@ int NFutil::RANDOM_INT(unsigned long min, unsigned long max)
 /* Seed the number generator with a positive 32 bit integer */
 void NFutil::SEED_RANDOM( unsigned long seedInt ){
     getIRand().seed(seedInt);
+    getDRand().seed(seedInt);
+    getDRandClosed().seed(seedInt);
+    getDRandOpen().seed(seedInt);
     initflag = 0;
 }
 
