@@ -165,7 +165,7 @@
 
 
 #include "NFsim.hh"
-
+#include "NFtest/random/test_random.hh"
 
 #include <iostream>
 #include <string>
@@ -317,6 +317,10 @@ int main(int argc, char *argv[])
 				}
 				if(test=="mathFuncParser") {
 					FuncFactory::test();
+					foundATest=true;
+				}
+				if(test=="random") {
+					NFtest_random::run();
 					foundATest=true;
 				}
 
