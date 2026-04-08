@@ -185,8 +185,9 @@ void GlobalFunction::enableFileDependency(string filePath) {
 	try {
 		this->loadParamFile(filePath);
 	} catch (exception const & e) {
-		cout<<"Error preparing function "<<name<<" in class GlobalFunction!!"<<endl;
-		cout<<"Quitting."<<endl;
+		cerr<<"Error preparing function "<<name<<" in class GlobalFunction!!"<<endl;
+		cerr<<e.what()<<endl;
+		cerr<<"Quitting."<<endl;
 		exit(1);
 	};
 	// we just want to keep a record of this
@@ -203,16 +204,45 @@ void GlobalFunction::enableFileDependency(string filePath) {
 double GlobalFunction::getCounterValue() {
 	// depending on the type of the observable counter
 	// get the actual value
-	double ctrVal;
+	double ctrVal = 0.0;
 	if (ctrType == "Observable") {
+		if (counter == NULL) {
+			cerr<<"Error in function "<<name<<": counter pointer is NULL!"<<endl;
+			exit(1);
+		}
 		ctrVal = (*counter);
 	} else if (ctrType == "System") {
+		if (sysPtr == NULL) {
+			cerr<<"Error in function "<<name<<": system pointer is NULL!"<<endl;
+			exit(1);
+		}
 		ctrVal = this->sysPtr->getCurrentTime();
+	} else {
+		cerr<<"Error in function "<<name<<": invalid ctrType '"<<ctrType<<"'!"<<endl;
+		exit(1);
 	}
 	return ctrVal;
 }
 void GlobalFunction::fileUpdate() {
-	// TODO: Error checking and reporting
+	if (data.empty() || data.size() < 2 || dataLen == 0) {
+		cerr<<"Error in function "<<this->name<<" in class GlobalFunction!!"<<endl;
+		cerr<<"Time series data is empty or invalid."<<endl;
+		cerr<<"Quitting."<<endl;
+		exit(1);
+	}
+	if (p == NULL) {
+		cerr<<"Error in function "<<this->name<<" in class GlobalFunction!!"<<endl;
+		cerr<<"Parser pointer is NULL."<<endl;
+		cerr<<"Quitting."<<endl;
+		exit(1);
+	}
+	if (ctrName.empty()) {
+		cerr<<"Error in function "<<this->name<<" in class GlobalFunction!!"<<endl;
+		cerr<<"Counter name is empty."<<endl;
+		cerr<<"Quitting."<<endl;
+		exit(1);
+	}
+
 	// get counter val
 	double ctrVal = this->getCounterValue();
 	// basic step function implementation
