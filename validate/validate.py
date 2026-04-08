@@ -260,6 +260,74 @@ class TestIssueRegressions(unittest.TestCase):
         self.assertTrue(np.isfinite(nf[-1, acIdx]), 'Issue #52 failed: final AC is not finite')
         self.assertGreaterEqual(nf[-1, acIdx], 0.0, 'Issue #52 failed: final AC is negative')
 
+    def test_molecule_creator_missing_template(self):
+        xml_path = os.path.join(mfolder, 'test_missing_template.xml')
+        # Create the XML if it doesn't exist
+        if not os.path.exists(xml_path):
+            with open(xml_path, "w") as f:
+                f.write("""<?xml version="1.0" encoding="UTF-8"?>
+<sbml xmlns="http://www.sbml.org/sbml/level3" level="3" version="1">
+  <model id="test_missing_template">
+    <ListOfParameters>
+      <Parameter id="k1" value="10"/>
+    </ListOfParameters>
+    <ListOfMoleculeTypes>
+      <MoleculeType id="A" name="A" population="1"/>
+    </ListOfMoleculeTypes>
+    <ListOfSpecies>
+    </ListOfSpecies>
+    <ListOfReactionRules>
+      <ReactionRule id="RR1" name="Synthesis">
+        <ListOfReactantPatterns>
+        </ListOfReactantPatterns>
+        <ListOfProductPatterns>
+          <ProductPattern id="RR1_PP1">
+            <ListOfMolecules>
+              <Molecule id="RR1_PP1_M1" name="A"/>
+            </ListOfMolecules>
+          </ProductPattern>
+        </ListOfProductPatterns>
+        <RateLaw id="RR1_RateLaw" type="Ele">
+          <ListOfRateConstants>
+            <RateConstant value="k1"/>
+          </ListOfRateConstants>
+        </RateLaw>
+        <Map>
+        </Map>
+        <ListOfOperations>
+          <Add id="RR1_PP1_M1"/>
+        </ListOfOperations>
+      </ReactionRule>
+    </ListOfReactionRules>
+    <ListOfObservables>
+      <Observable id="O1" name="A_total" type="Molecules">
+        <ListOfPatterns>
+          <Pattern id="O1_P1">
+            <ListOfMolecules>
+              <Molecule id="O1_P1_M1" name="A"/>
+            </ListOfMolecules>
+          </Pattern>
+        </ListOfPatterns>
+      </Observable>
+    </ListOfObservables>
+    <ListOfFunctions>
+    </ListOfFunctions>
+  </model>
+</sbml>""")
+
+        with open(os.devnull, "w") as fnull:
+            try:
+                out = subprocess.check_output(
+                    [nfsimPath, '-xml', xml_path, '-sim', '10'],
+                    stderr=subprocess.STDOUT
+                )
+                self.fail("NFsim should have exited with an error when template is missing.")
+            except subprocess.CalledProcessError as e:
+                # Expecting an exit with an error code (1)
+                self.assertEqual(e.returncode, 1)
+                output = e.output.decode('utf-8')
+                self.assertIn("could not find molecule matching template", output)
+
 if __name__ == "__main__":
     suite = unittest.TestSuite()
     if len(sys.argv) > 1:
