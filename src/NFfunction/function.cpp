@@ -212,7 +212,11 @@ double GlobalFunction::getCounterValue() {
 	return ctrVal;
 }
 void GlobalFunction::fileUpdate() {
-	// TODO: Error checking and reporting
+	if (data.size() < 2 || dataLen == 0) {
+		cerr<<"Error in function "<<this->name<<" in class GlobalFunction!!"<<endl;
+		cerr<<"Data array from file is empty or invalid."<<endl;
+		exit(1);
+	}
 	// get counter val
 	double ctrVal = this->getCounterValue();
 	// basic step function implementation
@@ -240,9 +244,16 @@ void GlobalFunction::fileUpdate() {
 			p->DefineConst(ctrName,0);
 			return;
 		} 
+
+		if (currInd > 0 && ctrVal < data[0][currInd]) {
+			cerr<<"Error in function "<<this->name<<" in class GlobalFunction!!"<<endl;
+			cerr<<"Counter value went backwards, which is not supported."<<endl;
+			exit(1);
+		}
+
 		// go up by one if the counter value got past 
 		// the next value in the array
-		if (ctrVal>=data[0][currInd+1]) {
+		while (currInd < dataLen - 1 && ctrVal>=data[0][currInd+1]) {
 			currInd += 1;
 		}
 	} else if (data[0][currInd] > data[0][currInd+1]) {
@@ -258,9 +269,16 @@ void GlobalFunction::fileUpdate() {
 			p->DefineConst(ctrName,0);
 			return;
 		}
+
+		if (currInd > 0 && ctrVal > data[0][currInd]) {
+			cerr<<"Error in function "<<this->name<<" in class GlobalFunction!!"<<endl;
+			cerr<<"Counter value went backwards, which is not supported."<<endl;
+			exit(1);
+		}
+
 		// go up by one if the counter value got past 
 		// the next value in the array
-		if (ctrVal<=data[0][currInd+1]) {
+		while (currInd < dataLen - 1 && ctrVal<=data[0][currInd+1]) {
 			currInd += 1;
 		}
 	} else {
