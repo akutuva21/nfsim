@@ -181,12 +181,11 @@ void GlobalFunction::addSystemPointer(System *s) {
 
 void GlobalFunction::enableFileDependency(string filePath) {
 	// load file
-	// TODO: Err out if this fails
 	try {
 		this->loadParamFile(filePath);
 	} catch (exception const & e) {
-		cout<<"Error preparing function "<<name<<" in class GlobalFunction!!"<<endl;
-		cout<<"Quitting."<<endl;
+		cerr<<"Error preparing function "<<name<<" in class GlobalFunction!!"<<endl;
+		cerr<<"Quitting."<<endl;
 		exit(1);
 	};
 	// we just want to keep a record of this
@@ -208,11 +207,15 @@ double GlobalFunction::getCounterValue() {
 		ctrVal = (*counter);
 	} else if (ctrType == "System") {
 		ctrVal = this->sysPtr->getCurrentTime();
+	} else {
+		throw std::runtime_error("Invalid ctrType in GlobalFunction::getCounterValue()");
 	}
 	return ctrVal;
 }
 void GlobalFunction::fileUpdate() {
-	// TODO: Error checking and reporting
+	if (data.size() < 2 || dataLen == 0) {
+		throw std::runtime_error("Error in GlobalFunction::fileUpdate(): Data file is empty or missing columns.");
+	}
 	// get counter val
 	double ctrVal = this->getCounterValue();
 	// basic step function implementation
@@ -245,6 +248,9 @@ void GlobalFunction::fileUpdate() {
 		if (ctrVal>=data[0][currInd+1]) {
 			currInd += 1;
 		}
+	// note that this makes no sense if they are equal
+	// TODO: Raise error if they are equal. Better yet, parse
+	// it ahead of time and make sure that doesn't happen
 	} else if (data[0][currInd] > data[0][currInd+1]) {
 		// next point is lower than the current point, we
 		// are waiting for the counter value to be lower 
@@ -265,10 +271,7 @@ void GlobalFunction::fileUpdate() {
 		}
 	} else {
 		// Defensive: should never reach here if loadParamFile validated correctly
-		cerr<<"Error in function "<<this->name<<" in class GlobalFunction!!"<<endl;
-		cerr<<"Time values in data file must be strictly monotonic. Found duplicate time: "<<data[0][currInd]<<endl;
-		cerr<<"Quitting."<<endl;
-		exit(1);
+		throw std::runtime_error("Error in function " + this->name + " in class GlobalFunction!! Time values in data file must be strictly monotonic. Found duplicate time.");
 	}
 	// // return value from the value array
 	p->DefineConst(ctrName,data[1][currInd]);
