@@ -81,6 +81,15 @@ namespace NFutil {
 	*/
 	int RANDOM_INT(unsigned long min, unsigned long max);
 
+	//!  Tests the random number generators
+	/*!
+		Tests the random number generation functions, such as RANDOM_CLOSED(), to ensure
+		they stay within the expected bounds and operate correctly.
+		    @author Testing Improvement
+	*/
+	void testRandom();
+
+
 	//!  Normally distributed random number with mean 0 and variance 1.
 	/*!
 		Returns a normally distributed random number.

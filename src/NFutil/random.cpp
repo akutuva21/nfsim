@@ -123,6 +123,60 @@ void NFutil::SEED_RANDOM( unsigned long seedInt ){
     initflag = 0;
 }
 
+void NFutil::testRandom()
+{
+	cout<<"Beginning diagnostic tests for random numbers..."<<endl;
+
+	cout<<" 1) test RANDOM_CLOSED() bounds: ";
+	bool closedPass = true;
+	for (int i = 0; i < 100000; ++i) {
+		double val = NFutil::RANDOM_CLOSED();
+		if (val < 0.0 || val > 1.0) {
+			closedPass = false;
+			cout<<"fail! RANDOM_CLOSED returned "<<val<<endl;
+			break;
+		}
+	}
+	if (closedPass) {
+		cout<<"pass."<<endl;
+	}
+
+	cout<<" 2) test RANDOM_OPEN() bounds: ";
+	bool openPass = true;
+	for (int i = 0; i < 100000; ++i) {
+		double val = NFutil::RANDOM_OPEN();
+		if (val <= 0.0 || val >= 1.0) {
+			openPass = false;
+			cout<<"fail! RANDOM_OPEN returned "<<val<<endl;
+			break;
+		}
+	}
+	if (openPass) {
+		cout<<"pass."<<endl;
+	}
+
+	cout<<" 3) test RANDOM(max) bounds: ";
+	bool randomPass = true;
+	double max = 5.0;
+	for (int i = 0; i < 100000; ++i) {
+		double val = NFutil::RANDOM(max);
+		if (val < 0.0 || val > max) {
+			randomPass = false;
+			cout<<"fail! RANDOM(max) returned "<<val<<endl;
+			break;
+		}
+	}
+	if (randomPass) {
+		cout<<"pass."<<endl;
+	}
+
+	if (closedPass && openPass && randomPass) {
+		cout << "\nAll random number diagnostic tests passed successfully!" << endl;
+	} else {
+		cout << "\nSome random number diagnostic tests failed!" << endl;
+	}
+}
+
 
 
 
