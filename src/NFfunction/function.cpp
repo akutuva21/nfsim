@@ -181,12 +181,12 @@ void GlobalFunction::addSystemPointer(System *s) {
 
 void GlobalFunction::enableFileDependency(string filePath) {
 	// load file
-	// TODO: Err out if this fails
 	try {
 		this->loadParamFile(filePath);
 	} catch (exception const & e) {
-		cout<<"Error preparing function "<<name<<" in class GlobalFunction!!"<<endl;
-		cout<<"Quitting."<<endl;
+		cerr<<"Error preparing function "<<name<<" in class GlobalFunction!!"<<endl;
+		cerr<<e.what()<<endl;
+		cerr<<"Quitting."<<endl;
 		exit(1);
 	};
 	// we just want to keep a record of this
@@ -212,7 +212,12 @@ double GlobalFunction::getCounterValue() {
 	return ctrVal;
 }
 void GlobalFunction::fileUpdate() {
-	// TODO: Error checking and reporting
+	if (data.empty() || data[0].empty()) {
+		cerr << "Error updating function " << name << " in class GlobalFunction!!" << endl;
+		cerr << "No file data available." << endl;
+		cerr << "Quitting." << endl;
+		exit(1);
+	}
 	// get counter val
 	double ctrVal = this->getCounterValue();
 	// basic step function implementation
