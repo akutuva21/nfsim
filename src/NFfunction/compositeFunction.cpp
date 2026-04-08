@@ -532,12 +532,12 @@ void CompositeFunction::enableFileDependency(string filePath) {
 	// load file
 	// cout<<"file dependency of function: "<<name<<endl;
 	// cout<<"file: "<<filePath<<endl;
-	// TODO: Err out if this fails
 	try {
 		this->loadParamFile(filePath);
 	} catch (exception const & e) {
-		cout<<"Error preparing function "<<name<<" in class GlobalFunction!!"<<endl;
-		cout<<"Quitting."<<endl;
+		cerr<<"Error preparing function "<<name<<" in class CompositeFunction!!"<<endl;
+		cerr<<e.what()<<endl;
+		cerr<<"Quitting."<<endl;
 		exit(1);
 	};
 	// we just want to keep a record of this
@@ -563,7 +563,12 @@ double CompositeFunction::getCounterValue() {
 	return ctrVal;
 }
 void CompositeFunction::fileUpdate() {
-	// TODO: Error checking and reporting
+	if (data.empty() || data[0].empty()) {
+		cerr << "Error updating function " << name << " in class CompositeFunction!!" << endl;
+		cerr << "No file data available." << endl;
+		cerr << "Quitting." << endl;
+		exit(1);
+	}
 	
 	// get counter val
 	double ctrVal = this->getCounterValue();
