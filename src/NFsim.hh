@@ -36,6 +36,7 @@
 #include  "NFtest/transcription/transcription.hh"
 #include  "NFtest/tlbr/tlbr.hh"
 #include  "NFtest/agentcell/agentcell.hh"
+#include  "NFtest/conversion/conversion.hh"
 
 
 
