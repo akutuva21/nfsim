@@ -19,13 +19,26 @@ TimeSeries NFutil::loadTimeSeries(const std::string& filePath, const std::string
 	}
 
 	try {
-		std::string a, b;
+		std::string line, a, b, extra;
 		bool hasDirection = false;
 		bool isIncreasing = false;
 		double prevTime = 0.0;
 		bool first = true;
 
-		while (file >> a >> b) {
+		while (std::getline(file, line)) {
+			// Skip empty lines
+			if (line.empty()) continue;
+
+			std::istringstream iss(line);
+			if (!(iss >> a >> b)) {
+				// Line doesn't have at least two tokens
+				throw std::runtime_error("Invalid file format: Each line must contain at least two numbers.");
+			}
+			if (iss >> extra) {
+				// Line has more than two tokens
+				throw std::runtime_error("Invalid file format: Each line must contain exactly two numbers.");
+			}
+
 			double t = NFutil::convertToDouble(a);
 			ts.time.push_back(t);
 
