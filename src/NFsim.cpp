@@ -307,6 +307,10 @@ int main(int argc, char *argv[])
 					NFtest_ss::run();
 					foundATest=true;
 				}
+				if(test=="random") {
+					NFtest_random::run();
+					foundATest=true;
+				}
 				if(test=="transcription") {
 					NFtest_transcription::run();
 					foundATest=true;
