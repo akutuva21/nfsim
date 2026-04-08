@@ -319,6 +319,10 @@ int main(int argc, char *argv[])
 					FuncFactory::test();
 					foundATest=true;
 				}
+				if(test=="random") {
+					NFtest_random::run();
+					foundATest=true;
+				}
 
 				if(!foundATest) {
 					cout<<"  That test could not be identified!!  Skipping!"<<endl;
