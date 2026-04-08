@@ -532,12 +532,15 @@ void CompositeFunction::enableFileDependency(string filePath) {
 	// load file
 	// cout<<"file dependency of function: "<<name<<endl;
 	// cout<<"file: "<<filePath<<endl;
-	// TODO: Err out if this fails
 	try {
 		this->loadParamFile(filePath);
+		if (data.size() < 2 || data[0].size() == 0) {
+			throw std::runtime_error("Loaded data is empty or improperly formatted.");
+		}
 	} catch (exception const & e) {
-		cout<<"Error preparing function "<<name<<" in class GlobalFunction!!"<<endl;
-		cout<<"Quitting."<<endl;
+		cerr<<"Error preparing function "<<name<<" in class CompositeFunction!!"<<endl;
+		cerr<<e.what()<<endl;
+		cerr<<"Quitting."<<endl;
 		exit(1);
 	};
 	// we just want to keep a record of this
@@ -554,16 +557,26 @@ void CompositeFunction::enableFileDependency(string filePath) {
 double CompositeFunction::getCounterValue() {
 	// depending on the type of the observable counter
 	// get the actual value
-	double ctrVal;
+	double ctrVal = 0.0;
 	if (ctrType == "Function") {
 		ctrVal = FuncFactory::Eval(this->funcPtr->p);
 	} else if (ctrType == "System") {
 		ctrVal = this->sysPtr->getCurrentTime();
+	} else {
+		cerr << "Error in function " << this->name << " in class CompositeFunction!!" << endl;
+		cerr << "Invalid counter type: " << ctrType << endl;
+		cerr << "Quitting." << endl;
+		exit(1);
 	}
 	return ctrVal;
 }
 void CompositeFunction::fileUpdate() {
-	// TODO: Error checking and reporting
+	if (data.size() < 2 || data[0].empty()) {
+		cerr << "Error in function " << this->name << " in class CompositeFunction!!" << endl;
+		cerr << "Data for file function is improperly sized or empty." << endl;
+		cerr << "Quitting." << endl;
+		exit(1);
+	}
 	
 	// get counter val
 	double ctrVal = this->getCounterValue();
