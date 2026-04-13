@@ -38,6 +38,8 @@ System::System(string name)
 	rxnIndexMap=0;
 	useBinaryOutput=false;
 	outputEventCounter=false;
+	outputMoleculeTypesFile=false;
+	outputRxnFiringCountsFile=false;
 	globalEventCounter=0;
 	onTheFlyObservables=true;
 	universalTraversalLimit=-1;
@@ -73,6 +75,8 @@ System::System(string name, bool useComplex)
 	useBinaryOutput=false;
 	onTheFlyObservables=true;
 	outputEventCounter=false;
+	outputMoleculeTypesFile=false;
+	outputRxnFiringCountsFile=false;
 	globalEventCounter=0;
 	universalTraversalLimit=-1;
 	ds=0;
@@ -104,6 +108,8 @@ System::System(string name, bool useComplex, int globalMoleculeLimit)
 	rxnIndexMap=0;
 	useBinaryOutput=false;
 	outputEventCounter=false;
+	outputMoleculeTypesFile=false;
+	outputRxnFiringCountsFile=false;
 	globalEventCounter=0;
 	onTheFlyObservables=true;
 	universalTraversalLimit=-1;

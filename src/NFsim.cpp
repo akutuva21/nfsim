@@ -526,32 +526,33 @@ System *initSystemFromFlags(map<string,string> argMap, bool verbose)
 				}
 
 
+				if (argMap.find("printmoltypes")!=argMap.end()) {
+					s->setOutputMoleculeTypes(true);
+				}
+
+				if (argMap.find("printrxncounts")!=argMap.end()) {
+					s->setOutputRxnFiringCounts(true);
+				}
+
 				//Register the output file location, if given
 				if (argMap.find("o")!=argMap.end()) {
 					string outputFileName = argMap.find("o")->second;
 					s->registerOutputFileLocation(outputFileName);
 					s->outputAllObservableNames();
-					if (argMap.find("printmoltypes")!=argMap.end()) {
-						s->registerMoleculeTypeFileLocation(
-										outputFileName.replace(
-												outputFileName.end()-5,
-												outputFileName.end(),
-												".molecule_type_list.tsv"));
-						s->setOutputMoleculeTypes(true);
-					} else {
-						s->setOutputMoleculeTypes(false);
-					};
 					
-					if (argMap.find("printrxncounts")!=argMap.end()) {
-						s->registerRxnListFileLocation(
-										outputFileName.replace(
-												outputFileName.end()-23,
-												outputFileName.end(),
-												".rxn_list.tsv"));
-						s->setOutputRxnFiringCounts(true);
-					} else {
-						s->setOutputRxnFiringCounts(false);
-					};
+					string molTypeFileName = outputFileName;
+					s->registerMoleculeTypeFileLocation(
+									molTypeFileName.replace(
+											molTypeFileName.end()-5,
+											molTypeFileName.end(),
+											".molecule_type_list.tsv"));
+
+					string rxnCountsFileName = outputFileName;
+					s->registerRxnListFileLocation(
+									rxnCountsFileName.replace(
+											rxnCountsFileName.end()-5,
+											rxnCountsFileName.end(),
+											".rxn_list.tsv"));
 
 				} else {
 					if(s->isOutputtingBinary()) {
