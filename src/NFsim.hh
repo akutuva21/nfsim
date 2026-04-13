@@ -37,6 +37,7 @@
 #include  "NFtest/tlbr/tlbr.hh"
 #include  "NFtest/agentcell/agentcell.hh"
 #include  "NFtest/dor_population_error/test_dor_population.hh"
+#include  "NFtest/scheduler/scheduler.hh"
 #include  "NFtest/util/util_test.hh"
 
 
