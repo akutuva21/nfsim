@@ -212,7 +212,6 @@ double GlobalFunction::getCounterValue() {
 	return ctrVal;
 }
 void GlobalFunction::fileUpdate() {
-	// TODO: Error checking and reporting
 	// get counter val
 	double ctrVal = this->getCounterValue();
 	// basic step function implementation
@@ -240,9 +239,18 @@ void GlobalFunction::fileUpdate() {
 			p->DefineConst(ctrName,0);
 			return;
 		} 
+
+		if (ctrVal < data[0][currInd]) {
+			cerr<<"Error in function "<<this->name<<" in class GlobalFunction!!"<<endl;
+			cerr<<"Backward counter leaps are unsupported. Counter went backward from "
+			    <<data[0][currInd]<<" to "<<ctrVal<<"."<<endl;
+			cerr<<"Quitting."<<endl;
+			exit(1);
+		}
+
 		// go up by one if the counter value got past 
 		// the next value in the array
-		if (ctrVal>=data[0][currInd+1]) {
+		while (currInd < dataLen - 1 && ctrVal>=data[0][currInd+1]) {
 			currInd += 1;
 		}
 	} else if (data[0][currInd] > data[0][currInd+1]) {
@@ -258,9 +266,18 @@ void GlobalFunction::fileUpdate() {
 			p->DefineConst(ctrName,0);
 			return;
 		}
+
+		if (ctrVal > data[0][currInd]) {
+			cerr<<"Error in function "<<this->name<<" in class GlobalFunction!!"<<endl;
+			cerr<<"Backward counter leaps are unsupported. Counter went backward from "
+			    <<data[0][currInd]<<" to "<<ctrVal<<"."<<endl;
+			cerr<<"Quitting."<<endl;
+			exit(1);
+		}
+
 		// go up by one if the counter value got past 
 		// the next value in the array
-		if (ctrVal<=data[0][currInd+1]) {
+		while (currInd < dataLen - 1 && ctrVal<=data[0][currInd+1]) {
 			currInd += 1;
 		}
 	} else {
