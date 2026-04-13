@@ -1333,8 +1333,20 @@ bool TemplateMolecule::compare(Molecule *m, ReactantContainer *rc, MappingSet *m
 							continue; 
 						} //keep going if we can't match
 						else{
-							if(symmetricMappingSet)
-								symmetricMappingSet->push_back(newMS);
+							if(symmetricMappingSet) {
+								bool isDuplicate = false;
+								for (vector<MappingSet*>::iterator msIt = symmetricMappingSet->begin(); msIt != symmetricMappingSet->end(); ++msIt) {
+									if (MappingSet::checkForEquality(newMS, *msIt)) {
+										isDuplicate = true;
+										break;
+									}
+								}
+								if (!isDuplicate) {
+									symmetricMappingSet->push_back(newMS);
+								} else {
+									rc->removeMappingSet(newMS->getId());
+								}
+							}
 						}
 					} else {
 						//cout<<"could not map other side!"<<endl;
@@ -1370,7 +1382,18 @@ bool TemplateMolecule::compare(Molecule *m, ReactantContainer *rc, MappingSet *m
 						continue; 
 					}
 					else if(symmetricMappingSet ){
-						symmetricMappingSet->push_back(newMS);
+						bool isDuplicate = false;
+						for (vector<MappingSet*>::iterator msIt = symmetricMappingSet->begin(); msIt != symmetricMappingSet->end(); ++msIt) {
+							if (MappingSet::checkForEquality(newMS, *msIt)) {
+								isDuplicate = true;
+								break;
+							}
+						}
+						if (!isDuplicate) {
+							symmetricMappingSet->push_back(newMS);
+						} else {
+							rc->removeMappingSet(newMS->getId());
+						}
 					}
 				}
 			}
