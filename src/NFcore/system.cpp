@@ -40,6 +40,8 @@ System::System(string name)
 	outputEventCounter=false;
 	globalEventCounter=0;
 	onTheFlyObservables=true;
+	outputMoleculeTypesFile=false;
+	outputRxnFiringCountsFile=false;
 	universalTraversalLimit=-1;
 	ds=0;
 	selector = 0;
@@ -75,6 +77,8 @@ System::System(string name, bool useComplex)
 	outputEventCounter=false;
 	globalEventCounter=0;
 	universalTraversalLimit=-1;
+	outputMoleculeTypesFile=false;
+	outputRxnFiringCountsFile=false;
 	ds=0;
 	selector = 0;
 	csvFormat = false;
@@ -106,6 +110,8 @@ System::System(string name, bool useComplex, int globalMoleculeLimit)
 	outputEventCounter=false;
 	globalEventCounter=0;
 	onTheFlyObservables=true;
+	outputMoleculeTypesFile=false;
+	outputRxnFiringCountsFile=false;
 	universalTraversalLimit=-1;
 	ds=0;
 	selector = 0;
@@ -1156,7 +1162,6 @@ double System::sim(double duration, long int sampleTimes, bool verbose)
 		logstr = "";
 	}
 	// Write list of molecule_types and reactions along with reaction firing counts
-	// TODO: Make this optional!
 	if (this->outputMoleculeTypesFile) {
 		outputAllMoleculeTypes();
 	}
