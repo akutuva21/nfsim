@@ -563,7 +563,12 @@ double CompositeFunction::getCounterValue() {
 	return ctrVal;
 }
 void CompositeFunction::fileUpdate() {
-	// TODO: Error checking and reporting
+	if (data.size() < 2 || dataLen == 0) {
+		cerr << "Error in function " << this->name << " in class CompositeFunction!!" << endl;
+		cerr << "Function dependency file must contain at least two columns and one row of data." << endl;
+		cerr << "Quitting." << endl;
+		exit(1);
+	}
 	
 	// get counter val
 	double ctrVal = this->getCounterValue();
