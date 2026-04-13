@@ -536,10 +536,8 @@ void CompositeFunction::enableFileDependency(string filePath) {
 	try {
 		this->loadParamFile(filePath);
 	} catch (exception const & e) {
-		cout<<"Error preparing function "<<name<<" in class GlobalFunction!!"<<endl;
-		cout<<"Quitting."<<endl;
-		exit(1);
-	};
+		throw std::runtime_error("Error preparing function " + name + " in class CompositeFunction!!\n" + string(e.what()));
+	}
 	// we just want to keep a record of this
 	this->filePath = filePath;
 	// this sets it up so that this function knows it's supposed
