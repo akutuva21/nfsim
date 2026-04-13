@@ -212,9 +212,17 @@ double GlobalFunction::getCounterValue() {
 	return ctrVal;
 }
 void GlobalFunction::fileUpdate() {
-	// TODO: Error checking and reporting
+	// Error checking and reporting
+	if (data.size() < 2 || dataLen <= 0 || currInd < 0) {
+		cerr << "Error in function " << this->name << " in class GlobalFunction!!" << endl;
+		cerr << "Data array is improperly initialized." << endl;
+		cerr << "Quitting." << endl;
+		exit(1);
+	}
+
 	// get counter val
 	double ctrVal = this->getCounterValue();
+
 	// basic step function implementation
 	// if we got past the last point, keep returning
 	// the last point
@@ -225,6 +233,25 @@ void GlobalFunction::fileUpdate() {
 	} else if (currInd==dataLen-1) {
 		p->DefineConst(ctrName,data[1][currInd]);
 		return;
+	}
+
+	// Check for backward counter leaps
+	if (currInd > 0 && currInd < dataLen) {
+		if (data[0][currInd-1] < data[0][currInd]) {
+			if (ctrVal < data[0][currInd-1]) {
+				cerr << "Error in function " << this->name << " in class GlobalFunction!!" << endl;
+				cerr << "Backward counter leaps are unsupported. Time values must be strictly forward-moving." << endl;
+				cerr << "Quitting." << endl;
+				exit(1);
+			}
+		} else if (data[0][currInd-1] > data[0][currInd]) {
+			if (ctrVal > data[0][currInd-1]) {
+				cerr << "Error in function " << this->name << " in class GlobalFunction!!" << endl;
+				cerr << "Backward counter leaps are unsupported. Time values must be strictly forward-moving." << endl;
+				cerr << "Quitting." << endl;
+				exit(1);
+			}
+		}
 	}
 	// a simple way to do interval locating 
 	if (data[0][currInd] < data[0][currInd+1]) {
