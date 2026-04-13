@@ -1073,7 +1073,7 @@ bool TemplateMolecule::compare(Molecule *m, ReactantContainer *rc, MappingSet *m
 	// Track if we're in a nested disjoint match to prevent counter reset
 	bool head = false;
 	bool isRealHead = false;  // True only for the outermost disjoint pattern
-	
+
 	if(this->n_connectedTo>0) {
 		holdMolClearToEnd = true;
 		head = true;
@@ -1163,7 +1163,7 @@ bool TemplateMolecule::compare(Molecule *m, ReactantContainer *rc, MappingSet *m
 	//Now for the tricky and fun part.  The actual traversal....
 	//Cycle through the bonds
 
-	
+
 
 	for(int b=0; b<n_bonds; b++)
 	{
@@ -1252,7 +1252,7 @@ bool TemplateMolecule::compare(Molecule *m, ReactantContainer *rc, MappingSet *m
 	//////////////////////////////////////////////////////////////////////////
 	//Now go through each of the symmetric sites and try to map them
 
-	
+
 	for(int c=0; c<n_symComps; c++)
 	{
 		//if(this->uniqueTemplateID==41)cout<<"comparing symComp["<<c<<"]: "<<symCompName[c]<<endl;
@@ -1330,7 +1330,7 @@ bool TemplateMolecule::compare(Molecule *m, ReactantContainer *rc, MappingSet *m
 						if(!match) {
 							if(symmetricMappingSet)
 								rc->removeMappingSet(newMS->getId());
-							continue; 
+							continue;
 						} //keep going if we can't match
 						else{
 							if(symmetricMappingSet)
@@ -1364,10 +1364,10 @@ bool TemplateMolecule::compare(Molecule *m, ReactantContainer *rc, MappingSet *m
 
 					bool match=t2->compare(m2,rc,newMS,holdMolClearToEnd);
 					if(!match) {
-						if(symmetricMappingSet ){ 
+						if(symmetricMappingSet ){
 							rc->removeMappingSet(newMS->getId());
 						}
-						continue; 
+						continue;
 					}
 					else if(symmetricMappingSet ){
 						symmetricMappingSet->push_back(newMS);
@@ -1397,7 +1397,7 @@ bool TemplateMolecule::compare(Molecule *m, ReactantContainer *rc, MappingSet *m
 
 	//Great, if we got here, everything matched up, all components can be mapped, and
 	//we just have to double check if our mappings are valid...
-	
+
 	if(this->n_symComps>1) {
 		if(!isSymMapValid()) {
 			//oh no!  we were so close, but in the end, we couldn't get a unique
@@ -1466,11 +1466,11 @@ bool TemplateMolecule::compare(Molecule *m, ReactantContainer *rc, MappingSet *m
 				if(s_disjointIterCount > MAX_DISJOINT_ITER) {
 					static int s_disjointWarnCount = 0;
 					if(s_disjointWarnCount++ < 5) {
-						cerr << "[WARN] Disjoint pattern matching exceeded " << MAX_DISJOINT_ITER 
+						cerr << "[WARN] Disjoint pattern matching exceeded " << MAX_DISJOINT_ITER
 							 << " iterations, aborting match" << endl;
 						if(s_disjointWarnCount == 5) cerr << "[INFO] Further disjoint warnings suppressed for this session." << endl;
 					}
-					
+
 					if(head) {
 						list <Molecule *> clearList;
 						m->traverseBondedNeighborhood(clearList,ReactionClass::NO_LIMIT);
@@ -1509,7 +1509,7 @@ bool TemplateMolecule::compare(Molecule *m, ReactantContainer *rc, MappingSet *m
 						break;
 					}
 				}
-				
+
 				// If we failed, cache the result to avoid redundant expensive recursions
 				if(!canMatchThis) {
 					s_failedMatchCache.insert({connectedTo[cTo], (*molIter)});
@@ -1518,7 +1518,7 @@ bool TemplateMolecule::compare(Molecule *m, ReactantContainer *rc, MappingSet *m
 				// If we hit the limit in a recursive call, bail out immediately
 				if(s_disjointIterCount > MAX_DISJOINT_ITER) break;
 			}
-			
+
 			if(!canMatch) {
 				// We also need to fail fast here if the limit was hit inside the loop
 				if(s_disjointIterCount > MAX_DISJOINT_ITER) {
@@ -1532,7 +1532,7 @@ bool TemplateMolecule::compare(Molecule *m, ReactantContainer *rc, MappingSet *m
 						(*clrIt)->isMatchedTo=0;
 					}
 				}
-				clear(); 
+				clear();
 				return false;
 			}
 		}
@@ -1545,7 +1545,7 @@ bool TemplateMolecule::compare(Molecule *m, ReactantContainer *rc, MappingSet *m
 		for(molIter=molList.begin(); molIter!=molList.end(); molIter++) {
 			(*molIter)->isMatchedTo=0;
 		}
-		
+
 	}
 	///  End handle connected-to
 
@@ -1655,14 +1655,14 @@ bool TemplateMolecule::isTemplateCompatible(TemplateMolecule * tm) {
 					if (compStateConstraint_Constraint[i] != tm->compStateConstraint_Constraint[j]) {
 						return false;
 					}
-			} 
+			}
 		}
 		for(int j=0; j<tm->n_compStateExclusion; j++) {
 			if (tm->compStateExclusion_Comp[j] == compStateConstraint_Comp[i]) {
 					if (compStateConstraint_Constraint[i] != tm->compStateExclusion_Exclusion[j]) {
 						return false;
 					}
-			} 
+			}
 		}
 	}
 
@@ -1674,14 +1674,14 @@ bool TemplateMolecule::isTemplateCompatible(TemplateMolecule * tm) {
 					if (compStateExclusion_Exclusion[i] != tm->compStateConstraint_Constraint[j]) {
 						return false;
 					}
-			} 
+			}
 		}
 		for(int j=0; j<tm->n_compStateExclusion; j++) {
 			if (tm->compStateExclusion_Comp[j] == compStateExclusion_Comp[i]) {
 					if (compStateExclusion_Exclusion[i] != tm->compStateExclusion_Exclusion[j]) {
 						return false;
 					}
-			} 
+			}
 		}
 	}
 
@@ -1693,7 +1693,7 @@ bool TemplateMolecule::isTemplateCompatible(TemplateMolecule * tm) {
 		for(int j=0; j<tm->n_emptyComps; j++) {
 			if (tm->emptyComps[j] == bondComp[b]) {
 				return false;
-			} 
+			}
 		}
 
 		//Check if this component is among the bondComps in the target TemplateMolecule
@@ -1708,7 +1708,7 @@ bool TemplateMolecule::isTemplateCompatible(TemplateMolecule * tm) {
 
 				// If the two bonding partners are not bonded on the same site, then return false
 				if (bondPartnerCompIndex[b] != tm->bondPartnerCompIndex[j]) return false;
-			} 
+			}
 		}
 	}
 
@@ -2201,19 +2201,18 @@ bool TemplateMolecule::checkSymmetryAroundBond(TemplateMolecule *tm1, TemplateMo
 
 bool TemplateMolecule::isMoleculeTypeAndComponentPresent(MoleculeType * mt, int cIndex) {
 	if (this->getMoleculeType() != mt) return false;
-	
-	// Check if this component is uniquely mapped via any empty/occupied/bond/state constraints
-	if (this->compIsAlwaysMapped[cIndex]) return true;
 
-	// Check if this component is required by a symmetric component constraint
-	for(int i=0; i<n_symComps; i++) {
-		int *molEqComp;
-		int n_molEqComp = 0;
-		mt->getEquivalencyClass(molEqComp, n_molEqComp, this->symCompName[i]);
-		for(int j=0; j<n_molEqComp; j++) {
-			if (molEqComp[j] == cIndex) return true;
-		}
+	// First make a joint vector of components specified in the TemplateMolecule
+	// TODO: ensure this is what is supposed to be done
+	for(int i=0; i<n_emptyComps; i++) {
+		if (this->emptyComps[i] == cIndex) return true;
 	}
-	
+	for(int i=0; i<n_occupiedComps; i++) {
+		if (this->occupiedComps[i] == cIndex) return true;
+	}
+	for(int i=0; i<n_bonds; i++) {
+		if (this->bondComp[i] == cIndex) return true;
+	}
+
 	return false;
 }

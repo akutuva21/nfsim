@@ -1,0 +1,39 @@
+--- src/NFcore/templateMolecule.cpp
++++ src/NFcore/templateMolecule.cpp
+@@ -2203,24 +2203,14 @@
+	if (this->getMoleculeType() != mt) return false;
+
+-	// First make a joint vector of components specified in the TemplateMolecule
+-	// TODO: ensure this is what is supposed to be done
+-	for(int i=0; i<n_emptyComps; i++) {
+-		if (this->emptyComps[i] == cIndex) return true;
+-	}
+-	for(int i=0; i<n_occupiedComps; i++) {
+-		if (this->occupiedComps[i] == cIndex) return true;
+-	}
+-	for(int i=0; i<n_bonds; i++) {
+-		if (this->bondComp[i] == cIndex) return true;
+-	}
+-
+-	for(int i=0; i<n_compStateConstraint; i++) {
+-		if (this->compStateConstraint_Comp[i] == cIndex) return true;
+-	}
+-	for(int i=0; i<n_compStateExclusion; i++) {
+-		if (this->compStateExclusion_Comp[i] == cIndex) return true;
+-	}
+-	if (n_symComps > 0) {
+-		string cName = mt->getComponentName(cIndex);
+-		for(int i=0; i<n_symComps; i++) {
+-			if (this->symCompName[i] == cName) return true;
++	// Check if this component is uniquely mapped via any empty/occupied/bond/state constraints
++	if (this->compIsAlwaysMapped[cIndex]) return true;
++
++	// Check if this component is required by a symmetric component constraint
++	for(int i=0; i<n_symComps; i++) {
++		int *molEqComp;
++		int n_molEqComp = 0;
++		mt->getEquivalencyClass(molEqComp, n_molEqComp, this->symCompName[i]);
++		for(int j=0; j<n_molEqComp; j++) {
++			if (molEqComp[j] == cIndex) return true;
+		}
+	}

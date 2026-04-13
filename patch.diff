@@ -1,0 +1,22 @@
+--- src/NFcore/templateMolecule.cpp
++++ src/NFcore/templateMolecule.cpp
+@@ -2213,6 +2213,19 @@
+	for(int i=0; i<n_bonds; i++) {
+		if (this->bondComp[i] == cIndex) return true;
+	}
++
++	for(int i=0; i<n_compStateConstraint; i++) {
++		if (this->compStateConstraint_Comp[i] == cIndex) return true;
++	}
++	for(int i=0; i<n_compStateExclusion; i++) {
++		if (this->compStateExclusion_Comp[i] == cIndex) return true;
++	}
++	if (n_symComps > 0) {
++		string cName = mt->getComponentName(cIndex);
++		for(int i=0; i<n_symComps; i++) {
++			if (this->symCompName[i] == cName) return true;
++		}
++	}
+
+	return false;
+ }
