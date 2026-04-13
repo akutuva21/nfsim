@@ -536,8 +536,9 @@ void CompositeFunction::enableFileDependency(string filePath) {
 	try {
 		this->loadParamFile(filePath);
 	} catch (exception const & e) {
-		cout<<"Error preparing function "<<name<<" in class GlobalFunction!!"<<endl;
-		cout<<"Quitting."<<endl;
+		cerr<<"Error preparing function "<<name<<" in class CompositeFunction!!"<<endl;
+		cerr<<e.what()<<endl;
+		cerr<<"Quitting."<<endl;
 		exit(1);
 	};
 	// we just want to keep a record of this
