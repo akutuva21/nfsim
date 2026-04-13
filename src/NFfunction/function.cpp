@@ -181,14 +181,12 @@ void GlobalFunction::addSystemPointer(System *s) {
 
 void GlobalFunction::enableFileDependency(string filePath) {
 	// load file
-	// TODO: Err out if this fails
 	try {
 		this->loadParamFile(filePath);
 	} catch (exception const & e) {
-		cout<<"Error preparing function "<<name<<" in class GlobalFunction!!"<<endl;
-		cout<<"Quitting."<<endl;
-		exit(1);
-	};
+		string msg = "Error preparing function " + name + " in class GlobalFunction!!\n" + e.what();
+		throw std::runtime_error(msg);
+	}
 	// we just want to keep a record of this
 	this->filePath = filePath;
 	// this sets it up so that this function knows it's supposed
