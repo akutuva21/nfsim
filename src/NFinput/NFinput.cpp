@@ -1620,26 +1620,27 @@ bool NFinput::initReactionRules(
 				string reactantId, productId;
 				for ( pMap = pListOfMaps->FirstChildElement("MapItem"); pMap != 0; pMap = pMap->NextSiblingElement("MapItem"))
 				{
-					// TODO: these don't have to exist
-					if ( !pMap->Attribute("sourceID") | !pMap->Attribute("targetID") ) {
-						continue;
+						// sourceID or targetID may be legitimately absent during molecule
+						// synthesis or degradation; bypass partner mapping step in such cases
+						if ( !pMap->Attribute("sourceID") || !pMap->Attribute("targetID") ) {
+							continue;
+						}
+						reactantId = pMap->Attribute("sourceID");
+						productId = pMap->Attribute("targetID");
+						if ((reactantId.size() == 0) || (productId.size() == 0)) {
+							cerr<<"Map in reaction "<<rxnName<<" without a valid reactant or product ID.  Quiting"<<endl;
+							return false;
+						}
+						// Assign reactant and product template molecules to each
+						// other if they exist. Arvind Rasi Subramaniam
+						auto reactantIt = reactants.find(reactantId);
+						auto productIt = products.find(productId);
+						if ((reactantIt != reactants.end()) &&
+								(productIt != products.end())) {
+							reactantIt->second->setMappedPartner(productIt->second);
+							productIt->second->setMappedPartner(reactantIt->second);
+						}
 					}
-					reactantId = pMap->Attribute("sourceID");
-					productId = pMap->Attribute("targetID");
-					if ((reactantId.size() == 0) || (productId.size() == 0)) {
-						cerr<<"Map in reaction "<<rxnName<<" without a valid reactant or product ID.  Quiting"<<endl;
-						return false;
-					}
-					// Assign reactant and product template molecules to each
-					// other if they exist. Arvind Rasi Subramaniam
-					auto reactantIt = reactants.find(reactantId);
-					auto productIt = products.find(productId);
-					if ((reactantIt != reactants.end()) &
-							(productIt != products.end())) {
-						reactantIt->second->setMappedPartner(productIt->second);
-						productIt->second->setMappedPartner(reactantIt->second);
-					}
-				}
 
 
 				///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
