@@ -202,15 +202,29 @@ ReactionClass * NFtest_transcription::createReactionRNAdegrades(MoleculeType *mo
 ReactionClass * NFtest_transcription::createReactionRNAtranscribed(MoleculeType *molRNA, double rate)
 {
 	vector <TemplateMolecule *> templates;
-	vector <TemplateMolecule *> newProduct;
+	vector <MoleculeType *> productMoleculeTypes;
+	productMoleculeTypes.push_back(molRNA);
 
-	TemplateMolecule *newRnaTemp = new TemplateMolecule(molRNA);
-	newProduct.push_back(newRnaTemp);
+	vector<int> empty_vec;
+	vector < vector <int> > stateInformation;
+	stateInformation.push_back(empty_vec);
+	stateInformation.push_back(empty_vec);
+	stateInformation.push_back(empty_vec);
+
+	vector < vector <int> > bindingSiteInformation;
+	bindingSiteInformation.push_back(empty_vec);
+	bindingSiteInformation.push_back(empty_vec);
+	bindingSiteInformation.push_back(empty_vec);
+	bindingSiteInformation.push_back(empty_vec);
+
+
+
+
 
 
 
 	TransformationSet *ts = new TransformationSet(templates);
-	SpeciesCreator *sc = new SpeciesCreator(newProduct);
+	SpeciesCreator *sc = new SpeciesCreator(productMoleculeTypes, stateInformation, bindingSiteInformation);
 	ts->addAddSpecies(sc);
 	ts->finalize();
 
