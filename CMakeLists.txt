@@ -14,8 +14,10 @@ set(SUB_DIRS
     src/NFtest/transcription
     src/NFtest/tlbr
     src/NFtest/simple_system
+    src/NFtest/util
     src/NFtest/agentcell/cell
     src/NFtest/agentcell
+    src/NFtest/util
     src/NFscheduler
     src/NFreactions/transformations
     src/NFreactions/reactions
