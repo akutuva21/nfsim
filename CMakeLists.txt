@@ -10,6 +10,7 @@ set(SUB_DIRS
     src/nauty24
     src/NFutil
     src/NFutil/MTrand
+    src/NFtest/dor_population_error
     src/NFtest/transcription
     src/NFtest/tlbr
     src/NFtest/simple_system

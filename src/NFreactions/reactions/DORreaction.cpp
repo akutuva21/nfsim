@@ -41,7 +41,7 @@ DORRxnClass::DORRxnClass(
 					{   // DOR reactant is a population!
 						cout<<"Error when creating DORRxnClass: "<<name<<endl;
 						cout<<"DOR reactant cannot be a population type."<<endl;
-						exit(1);
+						throw std::runtime_error("DOR reactant cannot be a population type.");
 					}
 
 					DORreactantIndex=r;

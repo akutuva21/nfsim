@@ -36,6 +36,7 @@
 #include  "NFtest/transcription/transcription.hh"
 #include  "NFtest/tlbr/tlbr.hh"
 #include  "NFtest/agentcell/agentcell.hh"
+#include  "NFtest/dor_population_error/test_dor_population.hh"
 
 
 
