@@ -391,11 +391,9 @@ bool BasicRxnClass::tryToAdd(Molecule *m, unsigned int reactantPos)
 	// 	}
 	// }
 
-	//Here we get the standard update...
-	while(m->getRxnListMappingId(rxnIndex)>=0) {
-		rl->removeMappingSet(m->getRxnListMappingId(rxnIndex));
-		m->deleteRxnListMappingId(rxnIndex,m->getRxnListMappingId(rxnIndex));
-		//m->setRxnListMappingId(rxnIndex,Molecule::NOT_IN_RXN);
+	set<int> oldMappings;
+	if(!rl->getHasClonedMappings()) {
+		oldMappings = m->getRxnListMappingSet(rxnIndex);
 	}
 
 	//Try to map it!
@@ -411,13 +409,17 @@ bool BasicRxnClass::tryToAdd(Molecule *m, unsigned int reactantPos)
 		for(vector<MappingSet *>::iterator it=symmetricMappingSet.begin();it!=symmetricMappingSet.end();++it){
 			rl->removeMappingSet((*it)->getId());
 		}
+
+		// Also remove all old mappings, since the molecule no longer matches at all
+		for(set<int>::iterator it=oldMappings.begin(); it!=oldMappings.end(); ++it) {
+			rl->removeMappingSet(*it);
+			m->deleteRxnListMappingId(rxnIndex, *it);
+		}
 	} else {
 		//cout << "should be in normal reaction, confirm push"<<endl;
 		//ms->printDetails();
 		
-		//TODO: it is necessary to remove elements that are not used anymore from the rl as well as from the m
-		//for that
-		//m->setRxnListMappingId(rxnIndex,-1);
+		set<int> usedOldMappings;
 
 		if (symmetricMappingSet.size() > 0){
             rl->removeMappingSet(ms->getId());
@@ -425,14 +427,31 @@ bool BasicRxnClass::tryToAdd(Molecule *m, unsigned int reactantPos)
 					int mapIndex = checkForEquality(m,*it,rxnIndex,rl);
 					if(mapIndex >= 0){
 						rl->removeMappingSet((*it)->getId());
+						usedOldMappings.insert(mapIndex);
 					}
 					else{
 						m->setRxnListMappingId(rxnIndex,(*it)->getId());
+						usedOldMappings.insert((*it)->getId());
 					}
             }
 		}
 		else{
-			m->setRxnListMappingId(rxnIndex,ms->getId());
+			int mapIndex = checkForEquality(m,ms,rxnIndex,rl);
+			if(mapIndex >= 0) {
+				rl->removeMappingSet(ms->getId());
+				usedOldMappings.insert(mapIndex);
+			} else {
+				m->setRxnListMappingId(rxnIndex,ms->getId());
+				usedOldMappings.insert(ms->getId());
+			}
+		}
+
+		// remove elements that are not used anymore from the rl as well as from the m
+		for(set<int>::iterator it=oldMappings.begin(); it!=oldMappings.end(); ++it) {
+			if (usedOldMappings.find(*it) == usedOldMappings.end()) {
+				rl->removeMappingSet(*it);
+				m->deleteRxnListMappingId(rxnIndex, *it);
+			}
 		}
 		
 	}
