@@ -166,6 +166,7 @@
 
 #include "NFsim.hh"
 #include "NFtest/util/test_util.hh"
+#include "NFtest/mapping/test_mapping.hh"
 
 #include <iostream>
 #include <string>
@@ -325,6 +326,10 @@ int main(int argc, char *argv[])
 				}
 				if(test=="util") {
 					NFtest_util::run();
+					foundATest=true;
+				}
+				if(test=="mapping") {
+					NFtest_mapping::run();
 					foundATest=true;
 				}
 
