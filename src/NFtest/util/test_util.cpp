@@ -1,6 +1,10 @@
 #include "test_util.hh"
+#include "../../NFcore/moleculeLists/moleculeList.hh"
+#include "../../NFcore/NFcore.hh"
 #include <iostream>
 #include <stdexcept>
+#include <vector>
+#include <string>
 
 using namespace std;
 using namespace NFutil;
@@ -57,4 +61,32 @@ void NFtest_util::run()
 
 	cout << "  RANDOM_INT tests passed!" << endl;
 	cout << "NFutil tests completed successfully." << endl;
+
+	cout << "Running NFcore::MoleculeList tests..." << endl;
+
+	NFcore::System *s = new NFcore::System("test_system");
+
+	std::vector<std::string> compName;
+	std::vector<std::string> defaultCompState;
+
+	// Use the 4-argument constructor that matches the prototype:
+	// MoleculeType(string name, vector<string> &compName, vector<string> &defaultCompState, System *s);
+	NFcore::MoleculeType *mt = new NFcore::MoleculeType("TestMol", compName, defaultCompState, s);
+
+	NFcore::MoleculeList *molList = new NFcore::MoleculeList(mt, 10, NFcore::MoleculeList::NO_LIMIT);
+
+	// Create a dummy molecule list id and null pointer
+	NFcore::Molecule *m = NULL;
+	int listId = 0;
+
+	// Should handle out of bounds gracefully and print a warning instead of exiting
+	cout << "  Testing remove out of bounds gracefully..." << endl;
+	molList->remove(listId, m);
+	cout << "  Testing remove out of bounds passed (didn't crash)." << endl;
+
+	delete molList;
+	// System automatically destroys the molecule types it contains when it is deleted
+	delete s;
+
+	cout << "MoleculeList tests completed successfully." << endl;
 }
