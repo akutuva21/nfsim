@@ -1,6 +1,7 @@
 #include "test_util.hh"
 #include <iostream>
 #include <stdexcept>
+#include <cmath>
 
 using namespace std;
 using namespace NFutil;
@@ -56,5 +57,30 @@ void NFtest_util::run()
 	}
 
 	cout << "  RANDOM_INT tests passed!" << endl;
+
+	cout << "  Testing RANDOM_GAUSSIAN..." << endl;
+
+	double sum = 0.0;
+	double sumSq = 0.0;
+
+	for (int i = 0; i < NUM_ITERATIONS; ++i) {
+		double val = NFutil::RANDOM_GAUSSIAN();
+		sum += val;
+		sumSq += val * val;
+	}
+
+	double mean = sum / NUM_ITERATIONS;
+	double variance = (sumSq / NUM_ITERATIONS) - (mean * mean);
+	double stddev = std::sqrt(variance);
+
+	if (std::abs(mean) > 0.05) {
+		throw std::runtime_error("RANDOM_GAUSSIAN mean is not close to 0: " + std::to_string(mean));
+	}
+	if (std::abs(stddev - 1.0) > 0.05) {
+		throw std::runtime_error("RANDOM_GAUSSIAN standard deviation is not close to 1: " + std::to_string(stddev));
+	}
+
+	cout << "  RANDOM_GAUSSIAN tests passed!" << endl;
+
 	cout << "NFutil tests completed successfully." << endl;
 }
