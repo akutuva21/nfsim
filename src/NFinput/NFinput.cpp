@@ -1863,9 +1863,13 @@ bool NFinput::initReactionRules(
 					} else {
 						site1 = pDeleteBond->Attribute("site1");
 						site2 = pDeleteBond->Attribute("site2");
-						//Skip this if we are messing with a bond in the product pattern....
-						// @TODO:  FIX THIS!  should reject adds in molecule species that are newly added!
-						//if(site1.find("RP")>=0 || site2.find("RP")>=0) continue;
+
+						// Skip this if we are messing with a bond in the product pattern.
+						// We reject (skip) adds in molecule species that are newly added.
+						// If a component lookup name doesn't contain "_RP", it wasn't in the Reactant Pattern.
+						if(site1.find("RP") == string::npos || site2.find("RP") == string::npos) {
+							continue;
+						}
 					}
 
 
