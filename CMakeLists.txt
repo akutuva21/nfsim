@@ -17,6 +17,7 @@ set(SUB_DIRS
     src/NFtest/agentcell/cell
     src/NFtest/agentcell
     src/NFtest/util
+    src/NFtest/transformations
     src/NFscheduler
     src/NFreactions/transformations
     src/NFreactions/reactions
@@ -45,12 +46,6 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR} include ${SUB_DIRS})
 file(GLOB_RECURSE src_files  "${CMAKE_CURRENT_SOURCE_DIR}/src/*cpp")
 file(GLOB_RECURSE c_src_files  "${CMAKE_CURRENT_SOURCE_DIR}/src/*c")
 
-# Some branches contain both test_util.cpp and util_test.cpp defining the same
-# NFtest_util::run() symbol. Prefer test_util.cpp and drop util_test.cpp to
-# keep a single definition during link.
-if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/src/NFtest/util/util_test.cpp")
-    list(FILTER src_files EXCLUDE REGEX "[/\\\\]src[/\\\\]NFtest[/\\\\]util[/\\\\]util_test\\.cpp$")
-endif()
 
 set(SRC_FILES
     ${src_files}
