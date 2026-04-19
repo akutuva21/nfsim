@@ -27,37 +27,52 @@ SpeciesCreator::SpeciesCreator(
 
 		//Save the configuration of states we have to set
 		//nd prefix stands for non-default
-		n_ndStates = stateInformation.at(0).size();
-		ndStateMolecule = new int [n_ndStates];
-		ndStateIndex = new int [n_ndStates];
-		ndStateValue = new int [n_ndStates];
+		if (!stateInformation.empty() && !stateInformation.at(0).empty()) {
+			n_ndStates = stateInformation.at(0).size();
+			ndStateMolecule = new int [n_ndStates];
+			ndStateIndex = new int [n_ndStates];
+			ndStateValue = new int [n_ndStates];
 
-		for(unsigned int s=0; s<n_ndStates; s++)
-		{
-			ndStateMolecule[s]=stateInformation.at(0).at(s);
-			ndStateIndex[s]=stateInformation.at(1).at(s);
-			ndStateValue[s]=stateInformation.at(2).at(s);
+			for(unsigned int s=0; s<n_ndStates; s++)
+			{
+				ndStateMolecule[s]=stateInformation.at(0).at(s);
+				ndStateIndex[s]=stateInformation.at(1).at(s);
+				ndStateValue[s]=stateInformation.at(2).at(s);
 
-			cout<<"state"<<s<<" : "<<ndStateMolecule[s]<<" "<< ndStateIndex[s]<<" "<<ndStateValue[s]<<endl;
+				cout<<"state"<<s<<" : "<<ndStateMolecule[s]<<" "<< ndStateIndex[s]<<" "<<ndStateValue[s]<<endl;
+			}
+		} else {
+			n_ndStates = 0;
+			ndStateMolecule = NULL;
+			ndStateIndex = NULL;
+			ndStateValue = NULL;
 		}
 
 		//Save the bonds that we have to create
-		n_bonds = bindingSiteInformation.at(0).size();
-		bMolecule1 = new int [n_bonds];
-		bMolecule2 = new int [n_bonds];
-		bSite1 = new int [n_bonds];
-		bSite2 = new int [n_bonds];
+		if (!bindingSiteInformation.empty() && !bindingSiteInformation.at(0).empty()) {
+			n_bonds = bindingSiteInformation.at(0).size();
+			bMolecule1 = new int [n_bonds];
+			bMolecule2 = new int [n_bonds];
+			bSite1 = new int [n_bonds];
+			bSite2 = new int [n_bonds];
 
-		for(unsigned int b=0; b<n_bonds; b++)
-		{
-			bMolecule1[b]=bindingSiteInformation.at(0).at(b);
-			bMolecule2[b]=bindingSiteInformation.at(2).at(b);
-			bSite1[b]=bindingSiteInformation.at(1).at(b);
-			bSite2[b]=bindingSiteInformation.at(3).at(b);
+			for(unsigned int b=0; b<n_bonds; b++)
+			{
+				bMolecule1[b]=bindingSiteInformation.at(0).at(b);
+				bMolecule2[b]=bindingSiteInformation.at(2).at(b);
+				bSite1[b]=bindingSiteInformation.at(1).at(b);
+				bSite2[b]=bindingSiteInformation.at(3).at(b);
 
-			cout<<"bonds"<<b<<" : "<<bMolecule1[b]<<","<<bSite1[b]<<"  to  "<<bMolecule2[b]<<","<<bSite2[b]<<endl;
+				cout<<"bonds"<<b<<" : "<<bMolecule1[b]<<","<<bSite1[b]<<"  to  "<<bMolecule2[b]<<","<<bSite2[b]<<endl;
 
 
+			}
+		} else {
+			n_bonds = 0;
+			bMolecule1 = NULL;
+			bMolecule2 = NULL;
+			bSite1 = NULL;
+			bSite2 = NULL;
 		}
 
 	} catch(std::exception& err){
@@ -66,15 +81,6 @@ SpeciesCreator::SpeciesCreator(
 		exit(1);
 	}
 }
-
-SpeciesCreator::SpeciesCreator(vector <TemplateMolecule *> &templates)
-{
-
-	cerr<<"Calling an old and nonfunctional SpeciesCreator constructor.  Quitting."<<endl;
-	exit(1);
-}
-
-
 
 SpeciesCreator::~SpeciesCreator()
 {
