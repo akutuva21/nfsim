@@ -3,7 +3,7 @@
 
 #include "../../NFutil/NFutil.hh"
 
-namespace NFtest_util
+namespace NFtest_test_util
 {
 	void run();
 }
