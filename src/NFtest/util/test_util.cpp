@@ -1,6 +1,7 @@
 #include "test_util.hh"
 #include <iostream>
 #include <stdexcept>
+#include "../../NFutil/MTrand/mtrand.h"
 
 using namespace std;
 using namespace NFutil;
@@ -10,6 +11,40 @@ void NFtest_util::run()
 	cout << "Running NFutil tests..." << endl;
 
 	const int NUM_ITERATIONS = 100000;
+
+	cout << "  Testing MTRand_int32 initialization error paths..." << endl;
+
+	// Test case: null pointer
+	try {
+		unsigned long* null_array = nullptr;
+		MTRand_int32 rng(null_array, 4);
+		throw std::runtime_error("MTRand_int32 did not throw on null array");
+	} catch (const std::invalid_argument& e) {
+		// Expected
+	}
+
+	// Test case: size <= 0
+	try {
+		unsigned long valid_array[4] = {0x123, 0x234, 0x345, 0x456};
+		MTRand_int32 rng(valid_array, 0);
+		throw std::runtime_error("MTRand_int32 did not throw on size == 0");
+	} catch (const std::invalid_argument& e) {
+		// Expected
+	}
+
+	try {
+		unsigned long valid_array[4] = {0x123, 0x234, 0x345, 0x456};
+		MTRand_int32 rng(valid_array, -1);
+		throw std::runtime_error("MTRand_int32 did not throw on size == -1");
+	} catch (const std::invalid_argument& e) {
+		// Expected
+	}
+
+	// Test case: valid initialization
+	unsigned long valid_array[4] = {0x123, 0x234, 0x345, 0x456};
+	MTRand_int32 valid_rng(valid_array, 4); // Should not throw
+
+	cout << "  MTRand_int32 initialization error paths passed!" << endl;
 
 	cout << "  Testing RANDOM_INT..." << endl;
 
