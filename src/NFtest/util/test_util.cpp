@@ -1,13 +1,39 @@
 #include "test_util.hh"
 #include <iostream>
 #include <stdexcept>
+#include <vector>
 
 using namespace std;
 using namespace NFutil;
+using namespace NFcore;
+
+void NFtest_util::testSpeciesCreatorEdgeCases()
+{
+	cout << "  Testing SpeciesCreator Edge Cases..." << endl;
+
+	// Create completely empty vectors to simulate edge cases
+	vector<MoleculeType*> emptyMoleculeTypes;
+	vector<vector<int>> emptyStateInfo;
+	vector<vector<int>> emptyBindingSiteInfo;
+
+	// Should not crash when processing completely empty state and binding site info
+	try {
+		SpeciesCreator* sc = new SpeciesCreator(emptyMoleculeTypes, emptyStateInfo, emptyBindingSiteInfo);
+		delete sc;
+	} catch (const std::exception& e) {
+		throw std::runtime_error("SpeciesCreator crashed with empty vectors: " + std::string(e.what()));
+	} catch (...) {
+		throw std::runtime_error("SpeciesCreator crashed with empty vectors!");
+	}
+
+	cout << "  SpeciesCreator Edge Cases tests passed!" << endl;
+}
 
 void NFtest_util::run()
 {
 	cout << "Running NFutil tests..." << endl;
+
+	testSpeciesCreatorEdgeCases();
 
 	const int NUM_ITERATIONS = 100000;
 
