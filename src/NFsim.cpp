@@ -327,6 +327,10 @@ int main(int argc, char *argv[])
 					NFtest_util::run();
 					foundATest=true;
 				}
+				if(test=="system") {
+					NFtest_system::run();
+					foundATest=true;
+				}
 
 				if(!foundATest) {
 					cout<<"  That test could not be identified!!  Skipping!"<<endl;

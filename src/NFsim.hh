@@ -38,6 +38,7 @@
 #include  "NFtest/agentcell/agentcell.hh"
 #include  "NFtest/scheduler/scheduler.hh"
 #include  "NFtest/util/util_test.hh"
+#include "NFtest/system/test_system.hh"
 
 
 
