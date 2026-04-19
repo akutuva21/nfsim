@@ -180,8 +180,6 @@ void GlobalFunction::addSystemPointer(System *s) {
 }
 
 void GlobalFunction::enableFileDependency(string filePath) {
-	// load file
-	// TODO: Err out if this fails
 	try {
 		this->loadParamFile(filePath);
 	} catch (exception const & e) {
