@@ -520,8 +520,7 @@ void MoleculeType::populateWithDefaultMolecules(int moleculeCount)
 void MoleculeType::setUpLocalFunctionListForMolecules()
 {
 	Molecule *mol;
-	int size = mList->size();
-	for(int m=0; m<size; m++ )
+	for(int m=0; m<mList->size(); m++ )
 	{
 	  	mol = mList->at(m);
 	  	mol->setUpLocalFunctionList();
@@ -541,8 +540,7 @@ void MoleculeType::prepareForSimulation()
 
 	//Our iterators that we will use to loop through every molecule
 	Molecule *mol;
-	int size = mList->size();
-	for( int m=0; m<size; m++ )
+	for( int m=0; m<mList->size(); m++ )
   	{
   		//First prepare the molecule for simulation
   		mol = mList->at(m);
@@ -709,8 +707,7 @@ void MoleculeType::addAllToObservables()
   	{
   		//cout<<"comparing to obs: "<<(*molObsIter)->getName()<<endl;
 
-		int size = mList->size();
-		for( int m=0; m<size; m++ )
+		for( int m=0; m<mList->size(); m++ )
   		{
   			mol = mList->at(m);
   			matches = (*molObsIter)->isObservable(mol);
@@ -772,8 +769,7 @@ void MoleculeType::printMolObsCounts()
 
 void MoleculeType::printAllMolecules()
 {
-	int size = mList->size();
-	for( int m=0; m<size; m++ ) {
+	for( int m=0; m<mList->size(); m++ ) {
 		mList->at(m)->printDetails();
 	}
 
