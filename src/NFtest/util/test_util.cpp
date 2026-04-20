@@ -7,7 +7,7 @@ using namespace std;
 using namespace NFutil;
 using namespace NFcore;
 
-void NFtest_test_util::run()
+void NFtest_util::run()
 {
 	cout << "Running NFutil and Core tests..." << endl;
 

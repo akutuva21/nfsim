@@ -324,7 +324,7 @@ int main(int argc, char *argv[])
 					foundATest=true;
 				}
 				if(test=="util") {
-					NFtest_test_util::run();
+					NFtest_util::run();
 					foundATest=true;
 				}
 
