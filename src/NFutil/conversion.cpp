@@ -12,7 +12,7 @@ TimeSeries NFutil::loadTimeSeries(const std::string& filePath, const std::string
 	std::ifstream file(filePath.c_str());
 
 	if (!file.good()) {
-		throw std::runtime_error("Error preparing function " + callerName + "!!\nFile doesn't look like it exists");
+		throw std::runtime_error("File doesn't look like it exists: " + filePath);
 	}
 
 	try {
@@ -34,7 +34,7 @@ TimeSeries NFutil::loadTimeSeries(const std::string& filePath, const std::string
 				first = false;
 			} else {
 				if (t == prevTime) {
-					throw std::runtime_error("Error in function " + callerName + "!!\nTime values in data file must be strictly monotonic. Found duplicate time: " + NFutil::toString(t));
+					throw std::runtime_error("Time values in data file must be strictly monotonic. Found duplicate time: " + NFutil::toString(t));
 				}
 
 				if (!hasDirection) {
@@ -42,7 +42,7 @@ TimeSeries NFutil::loadTimeSeries(const std::string& filePath, const std::string
 					hasDirection = true;
 				} else {
 					if ((isIncreasing && t < prevTime) || (!isIncreasing && t > prevTime)) {
-						throw std::runtime_error("Error in function " + callerName + "!!\nTime values in data file must be strictly monotonic.");
+						throw std::runtime_error("Time values in data file must be strictly monotonic.");
 					}
 				}
 				prevTime = t;
@@ -50,13 +50,13 @@ TimeSeries NFutil::loadTimeSeries(const std::string& filePath, const std::string
 		}
 
 		if (ts.time.size() == 0) {
-			throw std::runtime_error("Error in function " + callerName + "!!\nData file is empty or invalid format.");
+			throw std::runtime_error("Data file is empty or invalid format.");
 		}
 	} catch (std::runtime_error const & e) {
 		// Re-throw our specifically constructed runtime_errors without wrapping them further
 		throw;
 	} catch (std::exception const & e) {
-		throw std::runtime_error("Error preparing function " + callerName + "!!\nFailed to either open or read the file, or invalid number format.\n" + std::string(e.what()));
+		throw std::runtime_error("Failed to either open or read the file, or invalid number format.\n" + std::string(e.what()));
 	}
 
 	return ts;
