@@ -1,4 +1,5 @@
 #include <iostream>
+#include <sstream>
 
 #include "templateMolecule.hh"
 #include "compartment.hh"
@@ -15,7 +16,7 @@ list <TemplateMolecule *>::iterator TemplateMolecule::tmIter;
 
 int TemplateMolecule::TotalTemplateMoleculeCount=0;
 
-// FIX: Iteration counter to prevent infinite loops in disjoint pattern matching
+// Iteration counter to prevent infinite loops in disjoint pattern matching
 int TemplateMolecule::s_disjointIterCount = 0;
 bool TemplateMolecule::s_inDisjointMatch = false;
 std::unordered_set<std::pair<TemplateMolecule*, Molecule*>, PairHasher> TemplateMolecule::s_failedMatchCache;
@@ -1401,7 +1402,7 @@ bool TemplateMolecule::compare(Molecule *m, ReactantContainer *rc, MappingSet *m
 			bool canMatch=false;
 			for(molIter=molList.begin(); molIter!=molList.end(); molIter++) {
 
-				// FIX: Check iteration limit
+				// Check iteration limit
 				s_disjointIterCount++;
 				if(s_disjointIterCount > MAX_DISJOINT_ITER) {
 					static int s_disjointWarnCount = 0;
@@ -1694,15 +1695,17 @@ string TemplateMolecule::getPatternString() {
 		TemplateMolecule *tm = tmList.at(t);
 		//tm->printDetails(cout);
 		MoleculeType * mt = tm->getMoleculeType();
-		string str = mt->getName() + "(";
+
+		ostringstream oss;
+		oss << mt->getName() << "(";
 
 		//Go through and assign empty or occupied binding sites
 		for(int c=0; c<tm->n_emptyComps; c++)
-			str += mt->getComponentName(tm->emptyComps[c]) + ",";
+			oss << mt->getComponentName(tm->emptyComps[c]) << ",";
 		for(int c=0; c<tm->n_occupiedComps; c++)
-			str += mt->getComponentName(tm->occupiedComps[c]) + "!+,";
+			oss << mt->getComponentName(tm->occupiedComps[c]) << "!+,";
 
-		patternString.push_back(str);
+		patternString.push_back(oss.str());
 	}
 //	for(unsigned int t=0; t<tmList.size(); t++) {
 //		string str = patternString.at(t);
