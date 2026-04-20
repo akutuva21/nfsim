@@ -167,6 +167,7 @@
 #include "NFsim.hh"
 #include "NFtest/util/test_util.hh"
 #include "NFtest/mapping/test_mapping.hh"
+#include "NFtest/molecule/test_molecule.hh"
 
 #include <iostream>
 #include <string>
@@ -330,6 +331,8 @@ int main(int argc, char *argv[])
 				}
 				if(test=="mapping") {
 					NFtest_mapping::run();
+				if(test=="molecule") {
+					NFtest_molecule::run();
 					foundATest=true;
 				}
 
