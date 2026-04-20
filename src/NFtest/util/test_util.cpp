@@ -1,15 +1,63 @@
 #include "test_util.hh"
+#include "../../NFcore/moleculeLists/moleculeList.hh"
+#include "../../NFcore/NFcore.hh"
 #include <iostream>
 #include <stdexcept>
 #include <fstream>
 #include <cstdio>
+#include <cmath>
 #include <climits>
 #include <string>
-#include "../../NFcore/NFcore.hh"
+#include <vector>
 
 using namespace std;
 using namespace NFutil;
 using namespace NFcore;
+
+void testTemplateMoleculeConstraint() {
+    cout << "  Testing TemplateMolecule constraints..." << endl;
+
+    System *s = new System("test");
+
+    vector <string> compName;
+    vector <string> defaultCompState;
+    vector < vector <string> > possibleCompStates;
+
+    compName.push_back("p");
+    defaultCompState.push_back("0");
+    vector <string> pStates;
+    pStates.push_back("0");
+    pStates.push_back("1");
+    possibleCompStates.push_back(pStates);
+
+    MoleculeType *molX = new MoleculeType("X", compName, defaultCompState, possibleCompStates, s);
+
+    TemplateMolecule *xTemp = new TemplateMolecule(molX);
+    xTemp->addComponentConstraint("p", "0");
+
+    // Adding the same constraint should be fine (idempotent)
+    xTemp->addComponentConstraint("p", "0");
+
+    bool threw_exception = false;
+    try {
+        xTemp->addComponentConstraint("p", "1");
+    } catch (const std::runtime_error& e) {
+        // Expected
+        cout << "  Caught expected runtime_error: " << e.what() << endl;
+        threw_exception = true;
+    } catch (...) {
+        throw std::logic_error("TemplateMolecule::addComponentConstraint threw unexpected exception type!");
+    }
+
+    if (!threw_exception) {
+        throw std::logic_error("TemplateMolecule::addComponentConstraint should have thrown an exception for mutually exclusive constraints!");
+    }
+
+    // NOTE: delete s deletes the MoleculeType, which deletes all its templates, including xTemp
+    // delete xTemp;
+    delete s;
+    cout << "  TemplateMolecule constraints tests passed!" << endl;
+}
 
 void test_trim() {
     cout << "  Testing trim..." << endl;
@@ -142,6 +190,26 @@ void NFtest_util::run()
 
 	cout << "  RANDOM_INT tests passed!" << endl;
 
+	cout << "  Testing RANDOM_GAUSSIAN..." << endl;
+	double sum = 0;
+	double sum_sq = 0;
+	for (int i = 0; i < NUM_ITERATIONS; ++i) {
+		double result = NFutil::RANDOM_GAUSSIAN();
+		sum += result;
+		sum_sq += result * result;
+	}
+	double mean = sum / NUM_ITERATIONS;
+	double variance = (sum_sq / NUM_ITERATIONS) - (mean * mean);
+	double stddev = std::sqrt(variance);
+
+	if (std::abs(mean) > 0.05) {
+		throw std::runtime_error("RANDOM_GAUSSIAN generated a mean far from 0: " + std::to_string(mean));
+	}
+	if (std::abs(stddev - 1.0) > 0.05) {
+		throw std::runtime_error("RANDOM_GAUSSIAN generated a standard deviation far from 1: " + std::to_string(stddev));
+	}
+	cout << "  RANDOM_GAUSSIAN tests passed!" << endl;
+
 	cout << "  Testing Complex::mergeWithList..." << endl;
 	System *s = new System("TestSys");
 	vector<string> compNames;
@@ -172,6 +240,22 @@ void NFtest_util::run()
 
 	delete s;
 
+	cout << "Running NFcore::MoleculeList tests..." << endl;
+	System *sList = new System("test_system");
+	vector<string> compName;
+	vector<string> defaultCompState;
+	MoleculeType *mtList = new MoleculeType("TestMol", compName, defaultCompState, sList);
+	MoleculeList *molList = new MoleculeList(mtList, 10, MoleculeList::NO_LIMIT);
+	Molecule *m = NULL;
+	int listId = 0;
+	cout << "  Testing remove out of bounds gracefully..." << endl;
+	molList->remove(listId, m);
+	cout << "  Testing remove out of bounds passed (didn't crash)." << endl;
+	delete molList;
+	delete sList;
+	cout << "MoleculeList tests completed successfully." << endl;
+
+	testTemplateMoleculeConstraint();
 	test_trim();
 	test_toString();
 
