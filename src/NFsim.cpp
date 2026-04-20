@@ -316,32 +316,35 @@ int main(int argc, char *argv[])
 					NFtest_tlbr::run(argMap);
 					foundATest=true;
 				}
-				}
-				if(test=="mathFuncParser") {
+				if(test=="scheduler") {
+					NFtest_scheduler::run();
 					foundATest=true;
 				}
-				if(test=="system") {
-					NFtest_system::run();
+				if(test=="mathFuncParser") {
+					FuncFactory::test();
 					foundATest=true;
 				}
 				if(test=="util") {
 					NFtest_util::run();
 					foundATest=true;
 				}
-<<<<<<< HEAD
-					FuncFactory::test();
+				if(test=="molecule") {
+					NFtest_molecule::run();
+					foundATest=true;
+				}
 				if(test=="system") {
 					NFtest_system::run();
 					foundATest=true;
 				}
 
 				if(!foundATest) {
+					cout<<"  That test could not be identified!!  Skipping!"<<endl;
+				}
+
+			}
 			else {
 				cout<<"You must specify a test to run."<<endl;
-					foundATest=true;
-				}
-				if(test=="system") {
-					NFtest_system::run();
+			}
 			parsed = true;
 		}
 
