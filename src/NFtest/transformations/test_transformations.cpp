@@ -1,5 +1,8 @@
 #include "test_transformations.hh"
 #include "../../NFreactions/transformations/moleculeCreator.hh"
+#include "../../NFreactions/transformations/transformation.hh"
+#include "../../NFcore/NFcore.hh"
+#include "../../NFreactions/mappings/mapping.hh"
 #include <iostream>
 #include <stdexcept>
 #include <vector>
@@ -12,12 +15,52 @@ void NFtest_transformations::run()
 {
 	cout << "Running transformations tests..." << endl;
 
+	cout << "  Testing StateChangeTransform..." << endl;
+
+	System *sys = new System("TestSystem");
+	string mtName = "TestMol";
+	vector<string> compNames;
+	compNames.push_back("site");
+	vector<string> defaultStates;
+	defaultStates.push_back("S0");
+	vector<vector<string> > compStateNames;
+	vector<string> sNames;
+	sNames.push_back("S0");
+	sNames.push_back("S1");
+	sNames.push_back("S2");
+	compStateNames.push_back(sNames);
+	MoleculeType *mtState = new MoleculeType(mtName, compNames, defaultStates, compStateNames, sys);
+	Molecule *mol = mtState->genDefaultMolecule();
+	if (mol->getComponentState(0) != 0) {
+		throw runtime_error("Molecule default state is not 0.");
+	}
+	Mapping *m = new Mapping(1, 0);
+	m->setMolecule(mol);
+	StateChangeTransform *sct = new StateChangeTransform(0, 2);
+	sct->apply(m, NULL);
+	if (mol->getComponentState(0) != 2) {
+		throw runtime_error("StateChangeTransform failed to change the state.");
+	}
+	string logstr = "initial";
+	StateChangeTransform *sct2 = new StateChangeTransform(0, 1);
+	sct2->apply(m, NULL, logstr);
+	if (mol->getComponentState(0) != 1) {
+		throw runtime_error("StateChangeTransform failed to change the state with logstr.");
+	}
+	if (logstr.find("StateChange") == string::npos) {
+		throw runtime_error("StateChangeTransform did not properly populate logstr.");
+	}
+	m->clear();
+	delete sct;
+	delete sct2;
+	delete m;
+	delete sys;
+	cout << "  StateChangeTransform tests passed!" << endl;
+
 	cout << "  Testing TransformationSet..." << endl;
 
-	// Create a dummy system
 	System *s = new System("TestSystem");
 
-	// Create MoleculeType X
 	vector<string> xComps;
 	xComps.push_back("a");
 	xComps.push_back("p");
@@ -34,7 +77,6 @@ void NFtest_transformations::run()
 	MoleculeType *molX = new MoleculeType("X", xComps, xStates, xAllowedStates, s);
 	s->addMoleculeType(molX);
 
-	// Create MoleculeType Y
 	vector<string> yComps;
 	yComps.push_back("a");
 	vector<string> yStates;
@@ -45,7 +87,6 @@ void NFtest_transformations::run()
 	MoleculeType *molY = new MoleculeType("Y", yComps, yStates, yAllowedStates, s);
 	s->addMoleculeType(molY);
 
-	// Create template molecules
 	TemplateMolecule *tx = new TemplateMolecule(molX);
 	TemplateMolecule *ty = new TemplateMolecule(molY);
 
@@ -53,7 +94,6 @@ void NFtest_transformations::run()
 	reactants.push_back(tx);
 	reactants.push_back(ty);
 
-	// Create a TransformationSet
 	TransformationSet *ts = new TransformationSet(reactants);
 
 	if (ts->getNreactants() != 2) {
@@ -64,7 +104,6 @@ void NFtest_transformations::run()
 		throw runtime_error("TransformationSet getNmappingSets failed");
 	}
 
-	// Test adding transformations
 	ts->addStateChangeTransform(tx, "p", "P");
 	if (ts->getNumOfTransformations(0) != 1) {
 	    throw runtime_error("TransformationSet getNumOfTransformations failed for state change");
@@ -82,22 +121,19 @@ void NFtest_transformations::run()
 	    throw runtime_error("TransformationSet hasSymBindingTransform failed: X and Y are not symmetric");
 	}
 
-	// Test adding molecule creation transform
 	TemplateMolecule *newT = new TemplateMolecule(molX);
-	vector<pair<int, int> > stateValues; // Empty state values
+	vector<pair<int, int> > stateValues;
 	MoleculeCreator *mc = new MoleculeCreator(newT, molX, stateValues, NULL);
 	ts->addAddMolecule(mc);
 	if (ts->getNumOfAddMoleculeTransforms() != 1) {
 	    throw runtime_error("TransformationSet getNumOfAddMoleculeTransforms failed");
 	}
 
-	// Finalize and check
 	ts->finalize();
 	if (!ts->isFinalized()) {
 		throw runtime_error("TransformationSet finalize failed");
 	}
 
-	// Complex Bookkeeping checks
 	ts->setComplexBookkeeping(true);
 	if (!ts->getComplexBookkeeping()) {
 	    throw runtime_error("TransformationSet getComplexBookkeeping failed");
@@ -105,7 +141,6 @@ void NFtest_transformations::run()
 
 	delete ts;
 
-    // Test symmetric binding
     TemplateMolecule *tx3 = new TemplateMolecule(molX);
 	TemplateMolecule *ty3 = new TemplateMolecule(molX);
 	vector<TemplateMolecule*> reactants3;
@@ -119,11 +154,10 @@ void NFtest_transformations::run()
 	ts3->finalize();
 	delete ts3;
 
-    // Test symmetric unbinding
     TemplateMolecule *tx2 = new TemplateMolecule(molX);
     TemplateMolecule *ty2 = new TemplateMolecule(molX);
     tx2->addBond("a", ty2, "a");
-    ty2->addBond("a", tx2, "a"); // Note: addBond already adds the reverse.
+	ty2->addBond("a", tx2, "a");
 	vector<TemplateMolecule*> reactants2;
 	reactants2.push_back(tx2);
 	TransformationSet *ts2 = new TransformationSet(reactants2);
@@ -135,6 +169,5 @@ void NFtest_transformations::run()
 	delete ts2;
 
 	cout << "  TransformationSet basic tests passed!" << endl;
-
 	cout << "Transformations tests completed successfully." << endl;
 }
