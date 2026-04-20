@@ -14,10 +14,13 @@ set(SUB_DIRS
     src/NFtest/tlbr
     src/NFtest/simple_system
     src/NFtest/scheduler
+    src/NFtest/transformations
     src/NFtest/agentcell/cell
     src/NFtest/agentcell
     src/NFtest/util
     src/NFtest/tinyxml
+    src/NFtest/system
+    src/NFtest/mapping
     src/NFtest/molecule
     src/NFscheduler
     src/NFreactions/transformations
