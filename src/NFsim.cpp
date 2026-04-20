@@ -166,6 +166,7 @@
 
 #include "NFsim.hh"
 #include "NFtest/util/test_util.hh"
+#include "NFtest/molecule/test_molecule.hh"
 
 #include <iostream>
 #include <string>
@@ -315,31 +316,32 @@ int main(int argc, char *argv[])
 					NFtest_tlbr::run(argMap);
 					foundATest=true;
 				}
-				if(test=="scheduler") {
-					NFtest_scheduler::run();
-					foundATest=true;
 				}
 				if(test=="mathFuncParser") {
-					FuncFactory::test();
-					foundATest=true;
-				}
-				if(test=="util") {
-					NFtest_util::run();
 					foundATest=true;
 				}
 				if(test=="system") {
 					NFtest_system::run();
 					foundATest=true;
 				}
-
-				if(!foundATest) {
-					cout<<"  That test could not be identified!!  Skipping!"<<endl;
+				if(test=="util") {
+					NFtest_util::run();
+					foundATest=true;
+				}
+<<<<<<< HEAD
+					FuncFactory::test();
+				if(test=="system") {
+					NFtest_system::run();
+					foundATest=true;
 				}
 
-			}
+				if(!foundATest) {
 			else {
 				cout<<"You must specify a test to run."<<endl;
-			}
+					foundATest=true;
+				}
+				if(test=="system") {
+					NFtest_system::run();
 			parsed = true;
 		}
 
