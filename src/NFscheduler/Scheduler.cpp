@@ -146,18 +146,18 @@ vector<job*> parseJobsFile (string buffer) {
 						if ((*subStrings)[0].compare("param") == 0 && (*subStrings)[1].length() >= 3) {
 							currentScan->parameter.push_back((*subStrings)[1].substr(1,(*subStrings)[1].length()-2));
 						} else if ((*subStrings)[0].compare("min") == 0 && (*subStrings)[1].length() >= 3) {
-								currentScan->min.push_back(safe_stod((*subStrings)[1].substr(1,(*subStrings)[1].length()-2)));
+							currentScan->min.push_back(safe_stod((*subStrings)[1].substr(1,(*subStrings)[1].length()-2)));
 						} else if ((*subStrings)[0].compare("max") == 0 && (*subStrings)[1].length() >= 3) {
-								currentScan->max.push_back(safe_stod((*subStrings)[1].substr(1,(*subStrings)[1].length()-2)));
+							currentScan->max.push_back(safe_stod((*subStrings)[1].substr(1,(*subStrings)[1].length()-2)));
 						} else if ((*subStrings)[0].compare("steps") == 0 && (*subStrings)[1].length() >= 3) {
-								int steps = safe_stoi((*subStrings)[1].substr(1,(*subStrings)[1].length()-2), 2);
+							int steps = safe_stoi((*subStrings)[1].substr(1,(*subStrings)[1].length()-2), 2);
 							if (steps <= 2) {
 							steps = 2;
 							}
 							currentScan->steps.push_back(steps);
 						} else if ((*subStrings)[0].compare("stepsize") == 0 && (*subStrings)[1].length() >= 3) {
 							int steps = 2;
-								double stepsize = safe_stod((*subStrings)[1].substr(1,(*subStrings)[1].length()-2));
+							double stepsize = safe_stod((*subStrings)[1].substr(1,(*subStrings)[1].length()-2));
 							if (stepsize > 0) {
 							steps = 1+int((currentScan->max[currentScan->max.size()-1] - currentScan->min[currentScan->min.size()-1])/stepsize);
 							if (steps < 2) {
@@ -170,16 +170,16 @@ vector<job*> parseJobsFile (string buffer) {
 						if ((*subStrings)[0].compare("file") == 0 && (*subStrings)[1].length() >= 3) {
 							currentModel->filename = (*subStrings)[1].substr(1,(*subStrings)[1].length()-2);
 						} else if ((*subStrings)[0].compare("procs") == 0 && (*subStrings)[1].length() >= 3) {
-								currentModel->processors = safe_stoi((*subStrings)[1].substr(1,(*subStrings)[1].length()-2), 1);
+							currentModel->processors = safe_stoi((*subStrings)[1].substr(1,(*subStrings)[1].length()-2), 1);
 						} else if ((*subStrings)[0].compare("replicates") == 0 && (*subStrings)[1].length() >= 3) {
-								currentModel->replicates = safe_stoi((*subStrings)[1].substr(1,(*subStrings)[1].length()-2), 1);
+							currentModel->replicates = safe_stoi((*subStrings)[1].substr(1,(*subStrings)[1].length()-2), 1);
 						} else {
 							currentModel->argument.push_back((*subStrings)[0]);
 							currentModel->argval.push_back((*subStrings)[1].substr(1,(*subStrings)[1].length()-2));
 						}
 					} else if (currentJobID != -1) {
 						if ((*subStrings)[0].compare("id") == 0 && (*subStrings)[1].length() >= 3) {
-								currentJobID = safe_stoi((*subStrings)[1].substr(1,(*subStrings)[1].length()-2), -1);
+							currentJobID = safe_stoi((*subStrings)[1].substr(1,(*subStrings)[1].length()-2), -1);
 						}
 					}
 				}
@@ -425,10 +425,10 @@ void str2job(char* str, job& jnow) {
 	jnow.filename = string(p);
 	ch = strtok(0, ","); if (!ch) return; p = ch;
 
-		jnow.processors = safe_stoi(p, 1);
+	jnow.processors = safe_stoi(p, 1);
 	ch = strtok(0, ","); if (!ch) return; p = ch;
 
-		int argc = safe_stoi(p, 0);
+	int argc = safe_stoi(p, 0);
 	for (int i = 0; i < argc; ++i) { 
 		ch = strtok(0, ","); if (!ch) return; p = ch;
 		jnow.argument.push_back(string(p));
@@ -438,13 +438,13 @@ void str2job(char* str, job& jnow) {
 	}
 
 	ch = strtok(0, ","); if (!ch) return; p = ch;
-		int n = safe_stoi(p, 0);
+	int n = safe_stoi(p, 0);
 	for (int i = 0; i < n; ++i) { 
 		ch = strtok(0, ","); if (!ch) return; p = ch;
 		jnow.parameters.push_back(string(p));
 
 		ch = strtok(0, ","); if (!ch) return; p = ch;
-			jnow.values.push_back(safe_stod(p, 0.0));
+		jnow.values.push_back(safe_stod(p, 0.0));
 	}
 }
 
@@ -621,7 +621,7 @@ void DynamicParallel (map<string, string> argMap,int rank,int size) {
 						*(p++) = 0;
 						job *j = slave_assignment[msg.src];
 						filenames[j] = p;
-							int data_size = safe_stoi(msg.data, 0);
+						int data_size = safe_stoi(msg.data, 0);
 						if (data_size > 0 && data_size < 1024*1024*1024) { // 🛡️ Sentinel check: sensible allocation limit (1GB) and positive
 							raw_buffers[msg.src] = (char*)malloc(data_size);
 							incoming_sizes[msg.src] = data_size;
@@ -847,15 +847,15 @@ void ConvertStringToBufferMap(map<string, map<int, string> >& FileMap,string Rep
 	vector<string>* Strings = stringToStrings(ReportBuffer,"`",false);
 	int CurrentIndex = 0;
 	while (CurrentIndex <= int(Strings->size()-5)) {
-			int NumFiles = safe_stoi((*Strings)[CurrentIndex], 0);
+		int NumFiles = safe_stoi((*Strings)[CurrentIndex], 0);
 		CurrentIndex++;
 		for (int i=0;i < NumFiles; i++) {
 			string CurrentFile = (*Strings)[CurrentIndex];
 			CurrentIndex++;
-				int Jobs = safe_stoi((*Strings)[CurrentIndex], 0);
+			int Jobs = safe_stoi((*Strings)[CurrentIndex], 0);
 			CurrentIndex++;
 			for (int j=0; j < Jobs; j++) {
-					int CurrentJob = safe_stoi((*Strings)[CurrentIndex], 0);
+				int CurrentJob = safe_stoi((*Strings)[CurrentIndex], 0);
 				FileMap[CurrentFile][CurrentJob] = (*Strings)[CurrentIndex+1];
 				CurrentIndex += 2;
 			}
