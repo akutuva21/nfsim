@@ -1,5 +1,4 @@
 #include <iostream>
-#include <sstream>
 
 #include "templateMolecule.hh"
 #include "compartment.hh"
@@ -16,7 +15,7 @@ list <TemplateMolecule *>::iterator TemplateMolecule::tmIter;
 
 int TemplateMolecule::TotalTemplateMoleculeCount=0;
 
-// Iteration counter to prevent infinite loops in disjoint pattern matching
+// FIX: Iteration counter to prevent infinite loops in disjoint pattern matching
 int TemplateMolecule::s_disjointIterCount = 0;
 bool TemplateMolecule::s_inDisjointMatch = false;
 std::unordered_set<std::pair<TemplateMolecule*, Molecule*>, PairHasher> TemplateMolecule::s_failedMatchCache;
@@ -213,15 +212,6 @@ void TemplateMolecule::addComponentConstraint(string cName, int stateValue) {
 		printErrorAndExit("Cannot add component constraint of a symmetric component with addComponentConstraint() function.");
 	}
 	int compIndex=moleculeType->getCompIndexFromName(cName);
-
-	for(int i=0; i<n_compStateConstraint; i++) {
-		if(compStateConstraint_Comp[i]==compIndex) {
-			if(compStateConstraint_Constraint[i]!=stateValue) {
-				throw std::runtime_error("Cannot add mutually exclusive constraints to the same component!");
-			}
-			return; // already has this exact constraint
-		}
-	}
 
 	int *newConstraint_Comp=new int[n_compStateConstraint+1];
 	int *newConstraint_Constraint=new int[n_compStateConstraint+1];
@@ -1411,7 +1401,7 @@ bool TemplateMolecule::compare(Molecule *m, ReactantContainer *rc, MappingSet *m
 			bool canMatch=false;
 			for(molIter=molList.begin(); molIter!=molList.end(); molIter++) {
 
-				// Check iteration limit
+				// FIX: Check iteration limit
 				s_disjointIterCount++;
 				if(s_disjointIterCount > MAX_DISJOINT_ITER) {
 					static int s_disjointWarnCount = 0;
@@ -1704,17 +1694,15 @@ string TemplateMolecule::getPatternString() {
 		TemplateMolecule *tm = tmList.at(t);
 		//tm->printDetails(cout);
 		MoleculeType * mt = tm->getMoleculeType();
-
-		ostringstream oss;
-		oss << mt->getName() << "(";
+		string str = mt->getName() + "(";
 
 		//Go through and assign empty or occupied binding sites
 		for(int c=0; c<tm->n_emptyComps; c++)
-			oss << mt->getComponentName(tm->emptyComps[c]) << ",";
+			str += mt->getComponentName(tm->emptyComps[c]) + ",";
 		for(int c=0; c<tm->n_occupiedComps; c++)
-			oss << mt->getComponentName(tm->occupiedComps[c]) << "!+,";
+			str += mt->getComponentName(tm->occupiedComps[c]) + "!+,";
 
-		patternString.push_back(oss.str());
+		patternString.push_back(str);
 	}
 //	for(unsigned int t=0; t<tmList.size(); t++) {
 //		string str = patternString.at(t);

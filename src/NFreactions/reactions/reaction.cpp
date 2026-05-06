@@ -392,7 +392,11 @@ bool BasicRxnClass::tryToAdd(Molecule *m, unsigned int reactantPos)
 	// }
 
 	//Here we get the standard update...
-	set<int> deleteMs = m->getRxnListMappingSet(rxnIndex);
+	while(m->getRxnListMappingId(rxnIndex)>=0) {
+		rl->removeMappingSet(m->getRxnListMappingId(rxnIndex));
+		m->deleteRxnListMappingId(rxnIndex,m->getRxnListMappingId(rxnIndex));
+		//m->setRxnListMappingId(rxnIndex,Molecule::NOT_IN_RXN);
+	}
 
 	//Try to map it!
 	ms = rl->pushNextAvailableMappingSet();
@@ -411,12 +415,15 @@ bool BasicRxnClass::tryToAdd(Molecule *m, unsigned int reactantPos)
 		//cout << "should be in normal reaction, confirm push"<<endl;
 		//ms->printDetails();
 		
+		//TODO: it is necessary to remove elements that are not used anymore from the rl as well as from the m
+		//for that
+		//m->setRxnListMappingId(rxnIndex,-1);
+
 		if (symmetricMappingSet.size() > 0){
             rl->removeMappingSet(ms->getId());
 			for(vector<MappingSet *>::iterator it=symmetricMappingSet.begin();it!=symmetricMappingSet.end();++it){
 					int mapIndex = checkForEquality(m,*it,rxnIndex,rl);
 					if(mapIndex >= 0){
-						deleteMs.erase(mapIndex);
 						rl->removeMappingSet((*it)->getId());
 					}
 					else{
@@ -425,21 +432,9 @@ bool BasicRxnClass::tryToAdd(Molecule *m, unsigned int reactantPos)
             }
 		}
 		else{
-			int mapIndex = checkForEquality(m,ms,rxnIndex,rl);
-			if(mapIndex >= 0){
-				deleteMs.erase(mapIndex);
-				rl->removeMappingSet(ms->getId());
-			}
-			else{
-				m->setRxnListMappingId(rxnIndex,ms->getId());
-			}
+			m->setRxnListMappingId(rxnIndex,ms->getId());
 		}
 		
-	}
-
-	for (set<int>::iterator it = deleteMs.begin(); it != deleteMs.end(); ++it) {
-		rl->removeMappingSet(*it);
-		m->deleteRxnListMappingId(rxnIndex, *it);
 	}
 
 	return true;

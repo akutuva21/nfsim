@@ -189,6 +189,7 @@ namespace mu
   //  iEnd = -1;
   //#else
     stringstream_type stream(a_szExpr);
+    stream.seekg(0);        // todo:  check if this really is necessary
     stream.imbue(Parser::s_locale);
     stream >> fVal;
     int iEnd = stream.tellg(); // Position after reading

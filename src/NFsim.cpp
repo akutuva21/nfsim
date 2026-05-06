@@ -166,9 +166,6 @@
 
 #include "NFsim.hh"
 #include "NFtest/util/test_util.hh"
-#include "NFtest/mapping/test_mapping.hh"
-#include "NFtest/transformations/test_transformations.hh"
-#include "NFtest/molecule/test_molecule.hh"
 
 #include <iostream>
 #include <string>
@@ -318,10 +315,6 @@ int main(int argc, char *argv[])
 					NFtest_tlbr::run(argMap);
 					foundATest=true;
 				}
-				if(test=="transformations") {
-					NFtest_transformations::run();
-					foundATest=true;
-				}
 				if(test=="scheduler") {
 					NFtest_scheduler::run();
 					foundATest=true;
@@ -330,24 +323,8 @@ int main(int argc, char *argv[])
 					FuncFactory::test();
 					foundATest=true;
 				}
-				if(test=="tinyxml") {
-					NFtest_tinyxml::run();
-					foundATest=true;
-				}
 				if(test=="util") {
 					NFtest_util::run();
-					foundATest=true;
-				}
-				if(test=="mapping") {
-					NFtest_mapping::run();
-					foundATest=true;
-				}
-				if(test=="molecule") {
-					NFtest_molecule::run();
-					foundATest=true;
-				}
-				if(test=="system") {
-					NFtest_system::run();
 					foundATest=true;
 				}
 
@@ -830,14 +807,16 @@ bool runFromArgs(System *s, map<string,string> argMap, bool verbose)
 
 void printLogo(int indent, string version)
 {
-	string s(indent > 0 ? indent : 0, ' ');
+	string s;
+	for(int i=0; i<indent; i++) s.append(" ");
 
 	int space = 9-version.length();
 	if(space<0) {
 		cout<<"\n\nCome on!!! you don't even know how to print out the NFsim logo!"<<endl;
 		cout<<"What kind of code developer are you!!\n\n"<<endl;
 	}
-	string s2(space > 0 ? space : 0, ' ');
+	string s2;
+	for(int i=0; i<space; i++) s2.append(" ");
 	cout<<s<<"%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%"<<endl;
 	cout<<s<<"%                                   %"<<endl;
 	cout<<s<<"%     @@    @  @@@@@      v"<<version<<s2<<"%"<<endl;
