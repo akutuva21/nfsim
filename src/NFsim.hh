@@ -37,7 +37,10 @@
 #include  "NFtest/tlbr/tlbr.hh"
 #include  "NFtest/agentcell/agentcell.hh"
 #include  "NFtest/scheduler/scheduler.hh"
-#include  "NFtest/util/util_test.hh"
+#include  "NFtest/transformations/test_transformations.hh"
+#include  "NFtest/util/test_util.hh"
+#include  "NFtest/tinyxml/test_tinyxml.hh"
+#include "NFtest/system/test_system.hh"
 
 
 
