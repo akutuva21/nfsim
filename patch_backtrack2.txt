@@ -1,0 +1,136 @@
+<<<<<<< SEARCH
+bool TemplateMolecule::matchConnectedToAndBonds(TemplateMolecule *tm1, TemplateMolecule *tm2, int cIndex, int bIndex, vector<bool>& mappedConnectedTo, vector<bool>& mappedBonds, vector<TemplateMolecule*>& mapping1, vector<TemplateMolecule*>& mapping2)
+{
+	// Base case: successfully mapped all connectedTo and all bonds
+	if (cIndex == tm1->n_connectedTo && bIndex == tm1->n_bonds) {
+		return true;
+	}
+
+	// First match connectedTo recursively
+	if (cIndex < tm1->n_connectedTo) {
+		for (int j = 0; j < tm2->n_connectedTo; j++) {
+			if (!mappedConnectedTo[j]) {
+				if (tm1->connectedTo[cIndex]->getMoleculeType()->getTypeID() == tm2->connectedTo[j]->getMoleculeType()->getTypeID()) {
+					mappedConnectedTo[j] = true;
+					if (checkSymmetryRecursive(tm1->connectedTo[cIndex], tm2->connectedTo[j], mapping1, mapping2)) {
+						if (matchConnectedToAndBonds(tm1, tm2, cIndex + 1, bIndex, mappedConnectedTo, mappedBonds, mapping1, mapping2)) {
+							return true;
+						}
+					}
+					// Backtrack if recursive search didn't pan out
+					mappedConnectedTo[j] = false;
+				}
+			}
+		}
+		return false;
+	}
+
+	// Then match bonds recursively
+	if (bIndex < tm1->n_bonds) {
+		for (int j = 0; j < tm2->n_bonds; j++) {
+			if (!mappedBonds[j]) {
+				if (tm1->bondComp[bIndex] == tm2->bondComp[j] && tm1->bondPartnerCompName[bIndex] == tm2->bondPartnerCompName[j]) {
+
+					bool validBondMatch = false;
+
+					//First make sure the bond partner exists
+					if (tm1->bondPartner[bIndex] == NULL && tm2->bondPartner[j] == NULL) {
+						validBondMatch = true;
+					}
+
+					//If one or the other is null, then we could not map
+					if (tm1->bondPartner[bIndex] != NULL && tm2->bondPartner[j] != NULL) {
+						if (tm1->bondPartner[bIndex]->getMoleculeType()->getTypeID() == tm2->bondPartner[j]->getMoleculeType()->getTypeID()) {
+							validBondMatch = checkSymmetryRecursive(tm1->bondPartner[bIndex], tm2->bondPartner[j], mapping1, mapping2);
+						}
+					}
+
+					if (validBondMatch) {
+						mappedBonds[j] = true;
+						if (matchConnectedToAndBonds(tm1, tm2, cIndex, bIndex + 1, mappedConnectedTo, mappedBonds, mapping1, mapping2)) {
+							return true;
+						}
+						// Backtrack
+						mappedBonds[j] = false;
+					}
+				}
+			}
+		}
+		return false;
+	}
+
+	return false;
+}
+=======
+bool TemplateMolecule::matchConnectedToAndBonds(TemplateMolecule *tm1, TemplateMolecule *tm2, int cIndex, int bIndex, vector<bool>& mappedConnectedTo, vector<bool>& mappedBonds, vector<TemplateMolecule*>& mapping1, vector<TemplateMolecule*>& mapping2)
+{
+	// Base case: successfully mapped all connectedTo and all bonds
+	if (cIndex == tm1->n_connectedTo && bIndex == tm1->n_bonds) {
+		return true;
+	}
+
+	// First match connectedTo recursively
+	if (cIndex < tm1->n_connectedTo) {
+		for (int j = 0; j < tm2->n_connectedTo; j++) {
+			if (!mappedConnectedTo[j]) {
+				if (tm1->connectedTo[cIndex]->getMoleculeType()->getTypeID() == tm2->connectedTo[j]->getMoleculeType()->getTypeID()) {
+					mappedConnectedTo[j] = true;
+					size_t origSize1 = mapping1.size();
+					size_t origSize2 = mapping2.size();
+					if (checkSymmetryRecursive(tm1->connectedTo[cIndex], tm2->connectedTo[j], mapping1, mapping2)) {
+						if (matchConnectedToAndBonds(tm1, tm2, cIndex + 1, bIndex, mappedConnectedTo, mappedBonds, mapping1, mapping2)) {
+							return true;
+						}
+					}
+					// Backtrack if recursive search didn't pan out
+					mappedConnectedTo[j] = false;
+					mapping1.resize(origSize1);
+					mapping2.resize(origSize2);
+				}
+			}
+		}
+		return false;
+	}
+
+	// Then match bonds recursively
+	if (bIndex < tm1->n_bonds) {
+		for (int j = 0; j < tm2->n_bonds; j++) {
+			if (!mappedBonds[j]) {
+				if (tm1->bondComp[bIndex] == tm2->bondComp[j] && tm1->bondPartnerCompName[bIndex] == tm2->bondPartnerCompName[j]) {
+
+					bool validBondMatch = false;
+
+					//First make sure the bond partner exists
+					if (tm1->bondPartner[bIndex] == NULL && tm2->bondPartner[j] == NULL) {
+						validBondMatch = true;
+					}
+
+					//If one or the other is null, then we could not map
+					size_t origSize1 = mapping1.size();
+					size_t origSize2 = mapping2.size();
+					if (tm1->bondPartner[bIndex] != NULL && tm2->bondPartner[j] != NULL) {
+						if (tm1->bondPartner[bIndex]->getMoleculeType()->getTypeID() == tm2->bondPartner[j]->getMoleculeType()->getTypeID()) {
+							validBondMatch = checkSymmetryRecursive(tm1->bondPartner[bIndex], tm2->bondPartner[j], mapping1, mapping2);
+						}
+					}
+
+					if (validBondMatch) {
+						mappedBonds[j] = true;
+						if (matchConnectedToAndBonds(tm1, tm2, cIndex, bIndex + 1, mappedConnectedTo, mappedBonds, mapping1, mapping2)) {
+							return true;
+						}
+						// Backtrack
+						mappedBonds[j] = false;
+					}
+					// Backtrack the recursive symmetry search
+					mapping1.resize(origSize1);
+					mapping2.resize(origSize2);
+				}
+			}
+		}
+		return false;
+	}
+
+	return false;
+}
+>>>>>>> REPLACE

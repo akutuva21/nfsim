@@ -130,6 +130,8 @@ namespace NFcore
 		//returns false if they are not symmetric, or true if they are
 		static bool checkSymmetry(TemplateMolecule *tm1, TemplateMolecule *tm2, string bSite1, string bSite2);
 		static bool checkSymmetryAroundBond(TemplateMolecule *tm1, TemplateMolecule *tm2, string bSite1, string bSite2);
+		static bool checkSymmetryRecursive(TemplateMolecule *tm1, TemplateMolecule *tm2, vector<TemplateMolecule*>& mapping1, vector<TemplateMolecule*>& mapping2);
+		static bool matchConnectedToAndBonds(TemplateMolecule *tm1, TemplateMolecule *tm2, int cIndex, int bIndex, vector<bool>& mappedConnectedTo, vector<bool>& mappedBonds, vector<TemplateMolecule*>& mapping1, vector<TemplateMolecule*>& mapping2);
 
 
 

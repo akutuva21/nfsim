@@ -1900,6 +1900,191 @@ void TemplateMolecule::printPattern(ostream &o) {
 
 
 
+bool TemplateMolecule::matchConnectedToAndBonds(TemplateMolecule *tm1, TemplateMolecule *tm2, int cIndex, int bIndex, vector<bool>& mappedConnectedTo, vector<bool>& mappedBonds, vector<TemplateMolecule*>& mapping1, vector<TemplateMolecule*>& mapping2)
+{
+	// Base case: successfully mapped all connectedTo and all bonds
+	if (cIndex == tm1->n_connectedTo && bIndex == tm1->n_bonds) {
+		return true;
+	}
+
+	// First match connectedTo recursively
+	if (cIndex < tm1->n_connectedTo) {
+		for (int j = 0; j < tm2->n_connectedTo; j++) {
+			if (!mappedConnectedTo[j]) {
+				if (tm1->connectedTo[cIndex]->getMoleculeType()->getTypeID() == tm2->connectedTo[j]->getMoleculeType()->getTypeID()) {
+					mappedConnectedTo[j] = true;
+					size_t origSize1 = mapping1.size();
+					size_t origSize2 = mapping2.size();
+					if (checkSymmetryRecursive(tm1->connectedTo[cIndex], tm2->connectedTo[j], mapping1, mapping2)) {
+						if (matchConnectedToAndBonds(tm1, tm2, cIndex + 1, bIndex, mappedConnectedTo, mappedBonds, mapping1, mapping2)) {
+							return true;
+						}
+					}
+					// Backtrack if recursive search didn't pan out
+					mappedConnectedTo[j] = false;
+					mapping1.resize(origSize1);
+					mapping2.resize(origSize2);
+				}
+			}
+		}
+		return false;
+	}
+
+	// Then match bonds recursively
+	if (bIndex < tm1->n_bonds) {
+		for (int j = 0; j < tm2->n_bonds; j++) {
+			if (!mappedBonds[j]) {
+				if (tm1->bondComp[bIndex] == tm2->bondComp[j] && tm1->bondPartnerCompName[bIndex] == tm2->bondPartnerCompName[j]) {
+
+					bool validBondMatch = false;
+
+					//First make sure the bond partner exists
+					if (tm1->bondPartner[bIndex] == NULL && tm2->bondPartner[j] == NULL) {
+						validBondMatch = true;
+					}
+
+					//If one or the other is null, then we could not map
+					size_t origSize1 = mapping1.size();
+					size_t origSize2 = mapping2.size();
+					if (tm1->bondPartner[bIndex] != NULL && tm2->bondPartner[j] != NULL) {
+						if (tm1->bondPartner[bIndex]->getMoleculeType()->getTypeID() == tm2->bondPartner[j]->getMoleculeType()->getTypeID()) {
+							validBondMatch = checkSymmetryRecursive(tm1->bondPartner[bIndex], tm2->bondPartner[j], mapping1, mapping2);
+						}
+					}
+
+					if (validBondMatch) {
+						mappedBonds[j] = true;
+						if (matchConnectedToAndBonds(tm1, tm2, cIndex, bIndex + 1, mappedConnectedTo, mappedBonds, mapping1, mapping2)) {
+							return true;
+						}
+						// Backtrack
+						mappedBonds[j] = false;
+					}
+					// Backtrack the recursive symmetry search
+					mapping1.resize(origSize1);
+					mapping2.resize(origSize2);
+				}
+			}
+		}
+		return false;
+	}
+
+	return false;
+}
+
+bool TemplateMolecule::checkSymmetryRecursive(TemplateMolecule *tm1, TemplateMolecule *tm2, vector<TemplateMolecule*>& mapping1, vector<TemplateMolecule*>& mapping2)
+{
+	// Have we seen this pair of nodes already on our current search path?
+	for (size_t i = 0; i < mapping1.size(); i++) {
+		if (mapping1[i] == tm1) {
+			return mapping2[i] == tm2;
+		}
+	}
+	for (size_t i = 0; i < mapping2.size(); i++) {
+		if (mapping2[i] == tm2) {
+			return false; // tm2 is mapped to something else!
+		}
+	}
+
+	// Make sure we are of the same type
+	if (tm1->getMoleculeType()->getTypeID() != tm2->getMoleculeType()->getTypeID()) {
+		return false;
+	}
+
+	// Now compare the numbers of basic states, they must all match
+	if (tm1->n_compStateConstraint != tm2->n_compStateConstraint) return false;
+	if (tm1->n_compStateExclusion != tm2->n_compStateExclusion) return false;
+	if (tm1->n_connectedTo != tm2->n_connectedTo) return false;
+	if (tm1->n_emptyComps != tm2->n_emptyComps) return false;
+	if (tm1->n_occupiedComps != tm2->n_occupiedComps) return false;
+	if (tm1->n_symComps != tm2->n_symComps) return false;
+	if (tm1->n_bonds != tm2->n_bonds) return false;
+
+	// now make sure that for each of those basic states, we can map every single one correctly
+	vector<bool> mapped(tm2->n_compStateConstraint, false);
+	for (int i = 0; i < tm1->n_compStateConstraint; i++) {
+		bool matched = false;
+		for (int j = 0; j < tm2->n_compStateConstraint; j++) {
+			if (!mapped[j]) {
+				if (tm1->compStateConstraint_Comp[i] == tm2->compStateConstraint_Comp[j]) {
+					if (tm1->compStateConstraint_Constraint[i] == tm2->compStateConstraint_Constraint[j]) {
+						mapped[j] = true;
+						matched = true;
+						break;
+					}
+				}
+			}
+		}
+		if (!matched) return false;
+	}
+
+	////////////////////////////////////////////////////////////////////////
+	mapped.assign(tm2->n_compStateExclusion, false);
+	for (int i = 0; i < tm1->n_compStateExclusion; i++) {
+		bool matched = false;
+		for (int j = 0; j < tm2->n_compStateExclusion; j++) {
+			if (!mapped[j]) {
+				if (tm1->compStateExclusion_Comp[i] == tm2->compStateExclusion_Comp[j]) {
+					if (tm1->compStateExclusion_Exclusion[i] == tm2->compStateExclusion_Exclusion[j]) {
+						mapped[j] = true;
+						matched = true;
+						break;
+					}
+				}
+			}
+		}
+		if (!matched) return false;
+	}
+
+	////////////////////////////////////////////////////////////////////////
+	mapped.assign(tm2->n_emptyComps, false);
+	for (int i = 0; i < tm1->n_emptyComps; i++) {
+		bool matched = false;
+		for (int j = 0; j < tm2->n_emptyComps; j++) {
+			if (!mapped[j]) {
+				if (tm1->emptyComps[i] == tm2->emptyComps[j]) {
+					mapped[j] = true;
+					matched = true;
+					break;
+				}
+			}
+		}
+		if (!matched) return false;
+	}
+
+	////////////////////////////////////////////////////////////////////////
+	mapped.assign(tm2->n_occupiedComps, false);
+	for (int i = 0; i < tm1->n_occupiedComps; i++) {
+		bool matched = false;
+		for (int j = 0; j < tm2->n_occupiedComps; j++) {
+			if (!mapped[j]) {
+				if (tm1->occupiedComps[i] == tm2->occupiedComps[j]) {
+					mapped[j] = true;
+					matched = true;
+					break;
+				}
+			}
+		}
+		if (!matched) return false;
+	}
+
+	// To check the recursively symmetric nature of the molecules
+	mapping1.push_back(tm1);
+	mapping2.push_back(tm2);
+
+	vector<bool> mappedConnectedTo(tm2->n_connectedTo, false);
+	vector<bool> mappedBonds(tm2->n_bonds, false);
+
+	if (!matchConnectedToAndBonds(tm1, tm2, 0, 0, mappedConnectedTo, mappedBonds, mapping1, mapping2)) {
+		mapping1.pop_back();
+		mapping2.pop_back();
+		return false;
+	}
+
+	// If we've made it here, then this node is isomorphic with respect to its branches
+	return true;
+}
+
 bool TemplateMolecule::checkSymmetry(TemplateMolecule *tm1, TemplateMolecule *tm2, string bSite1, string bSite2)
 {
 	//first, they have to be of the same type
@@ -1928,148 +2113,11 @@ bool TemplateMolecule::checkSymmetry(TemplateMolecule *tm1, TemplateMolecule *tm
 	if(tm1->n_bonds != tm2->n_bonds) return false;
 
 
-	// now make sure that for each of those basic states, we can map every single one correctly
-	bool *mapped = new bool[tm2->n_compStateConstraint];
-	for(int j=0; j<tm2->n_compStateConstraint; j++) mapped[j]=false;
-	for(int i=0; i<tm1->n_compStateConstraint; i++) {
-		for(int j=0; j<tm2->n_compStateConstraint; j++) {
-			if(tm1->compStateConstraint_Comp[i] == tm2->compStateConstraint_Comp[j])
-				if(tm1->compStateConstraint_Constraint[i] == tm2->compStateConstraint_Constraint[j])
-					if(mapped[j]==false) {
-						mapped[j]=true;
-						break;
-					}
-		}
-	}
-	for(int j=0; j<tm2->n_compStateConstraint; j++) {
-		if(mapped[j]==false) { delete [] mapped; return false; }
-	}
-	delete [] mapped;
+	// Delegate to the recursive checking method
+	vector<TemplateMolecule*> mapping1;
+	vector<TemplateMolecule*> mapping2;
 
-	////////////////////////////////////////////////////////////////////////
-	mapped = new bool[tm2->n_compStateExclusion];
-	for(int j=0; j<tm2->n_compStateExclusion; j++) mapped[j]=false;
-	for(int i=0; i<tm1->n_compStateExclusion; i++) {
-		for(int j=0; j<tm2->n_compStateExclusion; j++) {
-			if(tm1->compStateExclusion_Comp[i] == tm2->compStateExclusion_Comp[j])
-				if(tm1->compStateExclusion_Exclusion[i] == tm2->compStateExclusion_Exclusion[j])
-					if(mapped[j]==false) {
-						mapped[j]=true;
-						break;
-					}
-		}
-	}
-	for(int j=0; j<tm2->n_compStateExclusion; j++) {
-		if(mapped[j]==false) { delete [] mapped; return false; }
-	}
-	delete [] mapped;
-
-
-	////////////////////////////////////////////////////////////////////////
-	mapped = new bool[tm2->n_emptyComps];
-	for(int j=0; j<tm2->n_emptyComps; j++) mapped[j]=false;
-	for(int i=0; i<tm1->n_emptyComps; i++) {
-		for(int j=0; j<tm2->n_emptyComps; j++) {
-			if(tm1->emptyComps[i] == tm2->emptyComps[j])
-				if(mapped[j]==false) {
-					mapped[j]=true;
-					break;
-				}
-		}
-	}
-	for(int j=0; j<tm2->n_emptyComps; j++) {
-		if(mapped[j]==false) { delete [] mapped; return false; }
-	}
-	delete [] mapped;
-
-
-	////////////////////////////////////////////////////////////////////////
-	mapped = new bool[tm2->n_occupiedComps];
-	for(int j=0; j<tm2->n_occupiedComps; j++) mapped[j]=false;
-	for(int i=0; i<tm1->n_occupiedComps; i++) {
-		for(int j=0; j<tm2->n_occupiedComps; j++) {
-			if(tm1->occupiedComps[i] == tm2->occupiedComps[j])
-				if(mapped[j]==false) {
-					mapped[j]=true;
-					break;
-				}
-		}
-	}
-	for(int j=0; j<tm2->n_occupiedComps; j++) {
-		if(mapped[j]==false) { delete [] mapped; return false; }
-	}
-	delete [] mapped;
-
-
-	////////////////////////////////////////////////////////////////////////
-	mapped = new bool[tm2->n_connectedTo];
-	for(int j=0; j<tm2->n_connectedTo; j++) mapped[j]=false;
-	for(int i=0; i<tm1->n_connectedTo; i++) {
-		for(int j=0; j<tm2->n_connectedTo; j++) {
-			if(tm1->connectedTo[i]->getMoleculeType()->getTypeID() ==
-					tm2->connectedTo[j]->getMoleculeType()->getTypeID())
-				if(mapped[j]==false) {
-					mapped[j]=true;
-					break;
-				}
-		}
-	}
-	for(int j=0; j<tm2->n_connectedTo; j++) {
-		if(mapped[j]==false) { delete [] mapped; return false; }
-	}
-	delete [] mapped;
-
-
-	////////////////////////////////////////////////////////////////////////
-	mapped = new bool[tm2->n_bonds];
-	for(int j=0; j<tm2->n_bonds; j++) mapped[j]=false;
-	for(int i=0; i<tm1->n_bonds; i++) {
-		for(int j=0; j<tm2->n_bonds; j++) {
-			if(tm1->bondComp[i] == tm2->bondComp[j])
-
-				if(tm1->bondPartnerCompName[i].compare(tm2->bondPartnerCompName[j])==0) {
-
-					//First make sure the bond partner exists (it might not be there
-					//if we are calling from the finding symmetry about a bond because
-					//we would have had to remove a bond!)
-					if(tm1->bondPartner[i]==NULL && tm2->bondPartner[j]==NULL) {
-						//If they are both null, then that makes sense and we
-						//can map this site.
-						if(mapped[j]==false) {
-							mapped[j]=true;
-							break;
-						}
-					}
-
-					//If one or the other is null, then we could not map
-					if(tm1->bondPartner[i]!=NULL && tm2->bondPartner[j]!=NULL ) {
-						//then we can actually check the bond partner because we know it exists
-						if(tm1->bondPartner[i]->getMoleculeType()->getTypeID() ==
-								tm2->bondPartner[j]->getMoleculeType()->getTypeID())
-							if(mapped[j]==false) {
-								mapped[j]=true;
-								break;
-							}
-					}
-				}
-		}
-	}
-	for(int j=0; j<tm2->n_bonds; j++) {
-		if(mapped[j]==false) { delete [] mapped; return false; }
-	}
-	delete [] mapped;
-
-
-
-
-
-
-	//TODO: this is incomplete.  To do this generally for all possible cases, we can't be satisfied with
-	// the above checks. We must continue moving along recursively until we know that everything is correct
-	// this is not done yet, because it requires code on the scale of compare() between two templates.
-
-	// if we passed all the tests, then we are assumed symmetric, and we can say so.
-	return true;
+	return checkSymmetryRecursive(tm1, tm2, mapping1, mapping2);
 }
 
 
