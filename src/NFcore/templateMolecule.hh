@@ -130,6 +130,7 @@ namespace NFcore
 		//returns false if they are not symmetric, or true if they are
 		static bool checkSymmetry(TemplateMolecule *tm1, TemplateMolecule *tm2, string bSite1, string bSite2);
 		static bool checkSymmetryAroundBond(TemplateMolecule *tm1, TemplateMolecule *tm2, string bSite1, string bSite2);
+		static bool isIsomorphic(TemplateMolecule *tm1, TemplateMolecule *tm2, std::vector<std::pair<TemplateMolecule*, TemplateMolecule*> > visited);
 
 
 
