@@ -1196,13 +1196,15 @@ string NFinput::initStartSpecies(
 			for(unsigned int isi=0; isi<molec_size; isi++) {
 				molec_vec.push_back(-1);
 			}
-			for(unsigned int img=0; img<mgids.size(); img++) {
+			unsigned int num_mgids = mgids.size();
+			for(unsigned int img=0; img<num_mgids; img++) {
 				molec_vec[mgids[img]] = mids[img];
 			}
 			// AS2023 - now we use it to compress the initial state vector
 			int last_val = molec_vec[0];
 			int val_ctr = 1;
-			for(unsigned int ici=1; ici<molec_vec.size(); ici++) {
+			unsigned int num_molec = molec_vec.size();
+			for(unsigned int ici=1; ici<num_molec; ici++) {
 				if (molec_vec[ici]!=last_val) {
 					logstr += "        [" + to_string(last_val) + "," + to_string(val_ctr) + "],\n";
 					last_val = molec_vec[ici];
