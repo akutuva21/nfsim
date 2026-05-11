@@ -1220,12 +1220,13 @@ string NFinput::initStartSpecies(
 
 		// AS2023
 		logstr += "      \"ops\": [\n ";
-		for(int k=0;k<operations.size();k++) {
+		int numOperations = operations.size();
+		for(int k=0;k<numOperations;k++) {
 			logstr += "        " + operations[k] + ",\n";
 		}
 		// AS2023
 		// finalize the ops list
-		if (operations.size() > 0) {
+		if (numOperations > 0) {
 			logstr.pop_back();
 			logstr.pop_back();
 			logstr += "\n      ]\n";
