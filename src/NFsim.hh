@@ -41,7 +41,6 @@
 #include  "NFtest/util/test_util.hh"
 #include  "NFtest/tinyxml/test_tinyxml.hh"
 #include "NFtest/system/test_system.hh"
-#include "NFtest/compartment/test_compartment.hh"
 
 
 

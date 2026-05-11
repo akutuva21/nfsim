@@ -7,7 +7,7 @@ import fnmatch
 import sys
 import bionetgen
 
-nIterations=15
+nIterations=30
 nfsimPrePath='..'
 mfolder='./basicModels'
 targetedTests = {

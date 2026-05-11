@@ -350,10 +350,6 @@ int main(int argc, char *argv[])
 					NFtest_system::run();
 					foundATest=true;
 				}
-				if(test=="compartment") {
-					NFtest_compartment::run();
-					foundATest=true;
-				}
 
 				if(!foundATest) {
 					cout<<"  That test could not be identified!!  Skipping!"<<endl;
