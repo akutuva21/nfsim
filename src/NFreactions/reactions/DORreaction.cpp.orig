@@ -232,7 +232,7 @@ void DORRxnClass::remove(Molecule *m, unsigned int reactantPos)
 }
 
 int DORRxnClass::checkForCollision(Molecule *m, MappingSet* ms, int rxnIndex){
-	
+
 	set<int> tempSet = m->getRxnListMappingSet(rxnIndex);
 	for(set<int>::iterator it= tempSet.begin();it!= tempSet.end(); ++it){
 		MappingSet* ms2 = reactantTree->getMappingSet(*it);
@@ -246,7 +246,6 @@ int DORRxnClass::checkForCollision(Molecule *m, MappingSet* ms, int rxnIndex){
 }
 
 bool DORRxnClass::tryToAdd(Molecule *m, unsigned int reactantPos) {
-	MappingSet *ms;
 	if(DEBUG_MESSAGE)cout<<endl<<endl<<"adding molecule to DORRxnClass"<<endl;
 	if(DEBUG_MESSAGE)m->printDetails();
 	if(reactantPos==(unsigned)this->DORreactantIndex) {
@@ -270,11 +269,11 @@ bool DORRxnClass::tryToAdd(Molecule *m, unsigned int reactantPos) {
 		symmetricMappingSet.clear();
 		if(m->getRxnListMappingId(rxnIndex)>=0) {
 			/* JJT: this branch contains those reactions for which a reaction and a molecule had been mapped together before
-			*  in a previous cycle. However it is not sufficient to just check if they still mapped, it is necessary to see if 
+			*  in a previous cycle. However it is not sufficient to just check if they still mapped, it is necessary to see if
 			*  they still map the same way
 			*  or whether some of the mappings are still valid (or there are new mappings to this reation from molecule <m>)
 			*/
-			
+
 			if(DEBUG_MESSAGE)cout<<"was in the tree, so checking if we should remove"<<endl;
 			ms=reactantTree->pushNextAvailableMappingSet();
 
@@ -287,7 +286,7 @@ bool DORRxnClass::tryToAdd(Molecule *m, unsigned int reactantPos) {
 					reactantTree->removeMappingSet((*it)->getId());
 				}
 			} else {
-				//JJT: checking if the mapping set we found is new 
+				//JJT: checking if the mapping set we found is new
 				if (symmetricMappingSet.size() >0){
 					//JJT: delete ms since symmetricMappingSet contains all the mapping information we need
 					reactantTree->removeMappingSet(ms->getId());
@@ -336,7 +335,7 @@ bool DORRxnClass::tryToAdd(Molecule *m, unsigned int reactantPos) {
 						}
 						//deleteMs.clear()
 					}
-				
+
 			}
 
 			for(set<int>::iterator it=deleteMs.begin();it!=deleteMs.end(); ++it){
@@ -348,7 +347,7 @@ bool DORRxnClass::tryToAdd(Molecule *m, unsigned int reactantPos) {
 				//if(!comparisonResult.second)
 				//	break;
 
-			
+
 			//delete all mappings that were no longer found to match between a molecule and a species
 
 		} else {
@@ -371,7 +370,7 @@ bool DORRxnClass::tryToAdd(Molecule *m, unsigned int reactantPos) {
 						if(mapIndex >= 0){
 							//the agent already contains this mapping
 							if(DEBUG_MESSAGE)cout<<"not adding "<<mapIndex<<endl;
-							reactantTree->removeMappingSet((*it)->getId());		
+							reactantTree->removeMappingSet((*it)->getId());
 						}
 						else{
 							//we are keeping it, so evaluate the function and confirm the push
@@ -396,7 +395,7 @@ bool DORRxnClass::tryToAdd(Molecule *m, unsigned int reactantPos) {
 						cout<<"mapping..."<<endl;
 						ms->printDetails();
 					}
-					
+
 				}
 
 				//if(!comparisonResult.second)
@@ -533,7 +532,7 @@ double DORRxnClass::pickLocalFunctionParameter(MappingSet* ms, int index, vector
 					try{
 						this->argMappedMolecule[index] = ms->get(r)->getMolecule();
 						return this->cf->evaluateOn(this->argMappedMolecule,this->argScope, reactantCounts, this->n_reactants);
-						
+
 					}
 					catch(LocalFunctionException &lfe){
 						if(lfe.getIndex() == index){
@@ -542,7 +541,7 @@ double DORRxnClass::pickLocalFunctionParameter(MappingSet* ms, int index, vector
 						else{
 							return this->pickLocalFunctionParameter(ms, lfe.getIndex(), lfe.getType1_Mol(), reactantCounts);
 						}
-						
+
 					}
 				}
 			}
@@ -664,7 +663,7 @@ double DORRxnClass::exactRuleMonkey_a()
 			msPairBuffer[0] = reactantLists[0]->getMappingSet(i);
 			for (int j = 0; j < size1; ++j) {
 				msPairBuffer[1] = reactantLists[1]->getMappingSet(j);
-				
+
 				if (!transformationSet->checkMolecularity(msPairBuffer)) {
 					double weight = 1.0;
 					if (0 == DORreactantIndex) {
@@ -715,16 +714,16 @@ void DORRxnClass::pickRuleMonkeyMappingSets(double random_A_number) const
 	// For molecularity=2, we have to find a valid pair (no null events)
 	int size0 = getReactantCount(0);
 	int size1 = getReactantCount(1);
-	
+
 	validPairsBuffer.clear();
 	validWeightsBuffer.clear();
 	double totalWeight = 0.0;
-	
+
 	for (int i = 0; i < size0; ++i) {
 		msPairBuffer[0] = reactantLists[0]->getMappingSet(i);
 		for (int j = 0; j < size1; ++j) {
 			msPairBuffer[1] = reactantLists[1]->getMappingSet(j);
-			
+
 			if (transformationSet->checkMolecularity(msPairBuffer)) {
 				validPairsBuffer.push_back(make_pair(i, j));
 				double weight = 1.0;
@@ -738,7 +737,7 @@ void DORRxnClass::pickRuleMonkeyMappingSets(double random_A_number) const
 			}
 		}
 	}
-	
+
 	if (validPairsBuffer.empty() || totalWeight <= 0) {
 		// Safety fallback: this should be unreachable when exactRuleMonkey_a() > 0.
 		// If reached, preserve legacy behavior by falling back to the standard selector.
@@ -758,7 +757,7 @@ void DORRxnClass::pickRuleMonkeyMappingSets(double random_A_number) const
 		reactantTree->pickReactantFromValue(mappingSet[DORreactantIndex],random_A_number,rateFactorMultiplier);
 		return;
 	}
-	
+
 	// Select a valid pair weighted by the DOR tree factors
 	double randNum = system->getRNG().random(totalWeight);
 	double cumulative = 0;
@@ -770,10 +769,10 @@ void DORRxnClass::pickRuleMonkeyMappingSets(double random_A_number) const
 			break;
 		}
 	}
-	
+
 	int i = validPairsBuffer[selectedIndex].first;
 	int j = validPairsBuffer[selectedIndex].second;
-	
+
 	mappingSet[0] = reactantLists[0]->getMappingSet(i);
 	mappingSet[1] = reactantLists[1]->getMappingSet(j);
 }
@@ -1160,7 +1159,6 @@ void DOR2RxnClass::remove(Molecule *m, unsigned int reactantPos)
 
 
 bool DOR2RxnClass::tryToAdd(Molecule *m, unsigned int reactantPos) {
-	MappingSet *ms;
 
 	// adding molecule to DOR2RxnClass
 	//if(DEBUG_MESSAGE)m->printDetails();
@@ -1463,7 +1461,7 @@ double DOR2RxnClass::exactRuleMonkey_a()
 			msPairBuffer[0] = reactantLists[0]->getMappingSet(i);
 			for (int j = 0; j < size1; ++j) {
 				msPairBuffer[1] = reactantLists[1]->getMappingSet(j);
-				
+
 				if (!transformationSet->checkMolecularity(msPairBuffer)) {
 					double weight0 = (0 == DORreactantIndex1) ? reactantTree1->getRateFactor(i) :
 					                 ((0 == DORreactantIndex2) ? reactantTree2->getRateFactor(i) : 1.0);
@@ -1515,30 +1513,30 @@ void DOR2RxnClass::pickRuleMonkeyMappingSets(double random_A_number) const
 
 	int size0 = getReactantCount(0);
 	int size1 = getReactantCount(1);
-	
+
 	validPairsBuffer.clear();
 	validWeightsBuffer.clear();
 	double totalWeight = 0.0;
-	
+
 	for (int i = 0; i < size0; ++i) {
 		msPairBuffer[0] = reactantLists[0]->getMappingSet(i);
 		for (int j = 0; j < size1; ++j) {
 			msPairBuffer[1] = reactantLists[1]->getMappingSet(j);
-			
+
 			if (transformationSet->checkMolecularity(msPairBuffer)) {
 				validPairsBuffer.push_back(make_pair(i, j));
 				double weight0 = (0 == DORreactantIndex1) ? reactantTree1->getRateFactor(i) :
 				                 ((0 == DORreactantIndex2) ? reactantTree2->getRateFactor(i) : 1.0);
 				double weight1 = (1 == DORreactantIndex1) ? reactantTree1->getRateFactor(j) :
 				                 ((1 == DORreactantIndex2) ? reactantTree2->getRateFactor(j) : 1.0);
-				
+
 				double weight = weight0 * weight1;
 				validWeightsBuffer.push_back(weight);
 				totalWeight += weight;
 			}
 		}
 	}
-	
+
 	if (validPairsBuffer.empty() || totalWeight <= 0) {
 		// Safety fallback: this should be unreachable when exactRuleMonkey_a() > 0.
 		// If reached, preserve legacy behavior by falling back to the standard selector.
@@ -1559,7 +1557,7 @@ void DOR2RxnClass::pickRuleMonkeyMappingSets(double random_A_number) const
 		reactantTree2->pickReactantFromValue( mappingSet[DORreactantIndex2], randNumber2, 1.0);
 		return;
 	}
-	
+
 	double randNum = system->getRNG().random(totalWeight);
 	double cumulative = 0;
 	int selectedIndex = validPairsBuffer.size() - 1;
@@ -1570,10 +1568,10 @@ void DOR2RxnClass::pickRuleMonkeyMappingSets(double random_A_number) const
 			break;
 		}
 	}
-	
+
 	int i = validPairsBuffer[selectedIndex].first;
 	int j = validPairsBuffer[selectedIndex].second;
-	
+
 	mappingSet[0] = reactantLists[0]->getMappingSet(i);
 	mappingSet[1] = reactantLists[1]->getMappingSet(j);
 }
@@ -1650,8 +1648,3 @@ void DOR2RxnClass::printDetails() const
 	if (n_reactants==0)
 		cout << "      >No Reactants: so this rule either creates new species or does nothing."<<endl;
 }
-
-
-
-
-
