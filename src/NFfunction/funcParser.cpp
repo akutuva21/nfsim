@@ -1,6 +1,7 @@
 #include "NFfunction.hh"
 
 #include <math.h>
+#include <stdexcept>
 
 using namespace NFcore;
 #ifndef NFSIM_USE_EXPRTK
@@ -80,7 +81,7 @@ double FuncFactory::Eval(mu::Parser *p)
 		cout<<"to use a GlobalFunction before it has been prepared! Preparing a GlobalFunction\n";
 		cout<<"connects it to Observables, so it must be done before you can use it!\n";
 		cout<<"  we've all made this mistake before, but now I'm exiting..."<<endl;
-		exit(1);
+		throw std::runtime_error("Trying to evaluate a null Parser");
 	}
 	try {
 		return p->Eval();
@@ -90,7 +91,7 @@ double FuncFactory::Eval(mu::Parser *p)
 		cout<<"And this is what went wrong:"<<endl;
 		cout<< "  "<<e.GetMsg() << endl;
 		cout<<"Terminating your simulation. Better luck next time."<<endl;
-		exit(1);
+		throw std::runtime_error(e.GetMsg());
 	}
 	return 0;
 }
@@ -159,6 +160,37 @@ void FuncFactory::test()
 	else
 		cout<<"fail! p->Eval() = "<<funcResult<<"  but should be: "<<result<<endl;
 
+	delete p;
+	}
+
+	{
+	//Test 3: check null parser exception
+	cout<<" 3) test null parser exception: ";
+	bool threw = false;
+	try {
+		FuncFactory::Eval(NULL);
+	} catch (const std::runtime_error& e) {
+		threw = true;
+	}
+	if(threw)
+		cout<<"pass."<<endl;
+	else
+		cout<<"fail! FuncFactory::Eval(NULL) did not throw."<<endl;
+
+	//Test 4: check parse error exception
+	cout<<" 4) test parse error exception: ";
+	threw = false;
+	mu::Parser *p = new mu::Parser();
+	try {
+		p->SetExpr("a");
+		FuncFactory::Eval(p);
+	} catch (const std::runtime_error& e) {
+		threw = true;
+	}
+	if(threw)
+		cout<<"pass."<<endl;
+	else
+		cout<<"fail! Eval with undefined variable did not throw."<<endl;
 	delete p;
 	}
 
