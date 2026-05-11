@@ -42,7 +42,7 @@ mu::Parser * FuncFactory::create(string functionString, vector <string> & variab
 		cout<<"Error parsing function in FuncFactory!!  This is what happened:"<<endl;
 		cout<< "  "<<e.GetMsg() << endl;
 		cout<<"Quitting."<<endl;
-		exit(1);
+		throw std::runtime_error(e.GetMsg());
 	}
 
 	return p;
@@ -65,7 +65,7 @@ mu::Parser * FuncFactory::create()
 		cout<<"Error creating function in FuncFactory!!  This is what happened:"<<endl;
 		cout<< "  "<<e.GetMsg() << endl;
 		cout<<"Quitting."<<endl;
-		exit(1);
+		throw std::runtime_error(e.GetMsg());
 	}
 	return p;
 }
@@ -90,7 +90,7 @@ double FuncFactory::Eval(mu::Parser *p)
 		cout<<"And this is what went wrong:"<<endl;
 		cout<< "  "<<e.GetMsg() << endl;
 		cout<<"Terminating your simulation. Better luck next time."<<endl;
-		exit(1);
+		throw std::runtime_error(e.GetMsg());
 	}
 	return 0;
 }
@@ -160,6 +160,30 @@ void FuncFactory::test()
 		cout<<"fail! p->Eval() = "<<funcResult<<"  but should be: "<<result<<endl;
 
 	delete p;
+	}
+
+	{
+	//Test 3: check that an invalid expression correctly throws a runtime error
+	cout<<" 3) test that invalid expression throws a runtime error: ";
+	string invalidFunctionString = "sin(_e*cos(3.2/_PI)) + "; // Invalid syntax (missing operand)
+	vector <string> variableNames;
+	vector <double *> variablePtrs;
+
+	bool threw = false;
+	try {
+		mu::Parser *p = FuncFactory::create(invalidFunctionString, variableNames, variablePtrs);
+		FuncFactory::Eval(p);
+		delete p;
+	} catch (const std::runtime_error& e) {
+		threw = true;
+	}
+
+	if (threw) {
+		cout<<"pass."<<endl;
+	} else {
+		cout<<"fail! Did not throw std::runtime_error!"<<endl;
+		exit(1);
+	}
 	}
 
 	//Thats all the test I can think of!
