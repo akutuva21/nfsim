@@ -446,7 +446,8 @@ bool NFinput::initMoleculeTypes(
 
 						if((*it)==compName) {
 							bool shouldAdd = true;
-							for(unsigned int k=0; k<firstSymSiteToAppend.size(); k++) {
+							unsigned int numFirstSymSiteToAppend = firstSymSiteToAppend.size();
+							for(unsigned int k=0; k<numFirstSymSiteToAppend; k++) {
 								if(firstSymSiteToAppend.at(k)==pos) { shouldAdd=false; break; }
 							}
 							if(shouldAdd) firstSymSiteToAppend.push_back(pos);
@@ -629,7 +630,8 @@ bool NFinput::initMoleculeTypes(
 			//Go back and set the first symmetric component label to be 'compName1' so we know
 			//immediately that they are symmetric sites (have to add in the possible binding site
 			//names as well!
-			for(unsigned int k=0; k<firstSymSiteToAppend.size(); k++) {
+			unsigned int numFirstSymSiteToAppend = firstSymSiteToAppend.size();
+			for(unsigned int k=0; k<numFirstSymSiteToAppend; k++) {
 				string originalCompLabel = compLabels.at(firstSymSiteToAppend.at(k));
 				compLabels.at(firstSymSiteToAppend.at(k)) = compLabels.at(firstSymSiteToAppend.at(k))+"1";
 
