@@ -191,7 +191,7 @@ void printLogo(int indent, string version);
 /*!
   @author Michael Sneddon
 */
-void printHelp(string version);
+void printHelp(const string& version);
 
 //! Executes an RNF script from the command line arguments.
 /*!
@@ -851,7 +851,7 @@ void printLogo(int indent, string version)
 
 
 
-void printHelp(string version)
+void printHelp(const string& version)
 {
 	cout<<"To run NFsim at the command prompt, use flags to specify what you want"<<endl;
 	cout<<"to do.  Flags are given in this format in any order: \"-flagName\"."<<endl;
