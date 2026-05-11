@@ -234,7 +234,7 @@ void simulate(string command,System *s, bool verbose)
 	cout<<"\n"<<endl;
 }
 
-void equilibrate(string command,System *s)
+void equilibrate(const string& command,System *s)
 {
 	int id1=command.find("eq");
 	string times = command.substr(id1+3);
