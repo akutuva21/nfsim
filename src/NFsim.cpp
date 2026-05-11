@@ -167,8 +167,10 @@
 #include "NFsim.hh"
 #include "NFtest/util/test_util.hh"
 #include "NFtest/mapping/test_mapping.hh"
+#include "NFtest/moleculeType/test_moleculeType.hh"
 #include "NFtest/transformations/test_transformations.hh"
 #include "NFtest/molecule/test_molecule.hh"
+#include "NFtest/input/test_input.hh"
 
 #include <iostream>
 #include <string>
@@ -184,14 +186,14 @@ using namespace std;
 /*!
   @author Michael Sneddon
 */
-void printLogo(int indent, string version);
+void printLogo(int indent, const string& version);
 
 
 //! Outputs a friendly help message.
 /*!
   @author Michael Sneddon
 */
-void printHelp(string version);
+void printHelp(const string& version);
 
 //! Executes an RNF script from the command line arguments.
 /*!
@@ -330,8 +332,16 @@ int main(int argc, char *argv[])
 					FuncFactory::test();
 					foundATest=true;
 				}
+				if(test=="nauty24") {
+					NFtest_nauty24::run();
+					foundATest=true;
+				}
 				if(test=="tinyxml") {
 					NFtest_tinyxml::run();
+					foundATest=true;
+				}
+				if(test=="input") {
+					NFtest_input::run();
 					foundATest=true;
 				}
 				if(test=="util") {
@@ -344,6 +354,10 @@ int main(int argc, char *argv[])
 				}
 				if(test=="molecule") {
 					NFtest_molecule::run();
+					foundATest=true;
+				}
+				if(test=="moleculeType") {
+					NFtest_moleculeType::run();
 					foundATest=true;
 				}
 				if(test=="system") {
@@ -794,7 +808,8 @@ bool runFromArgs(System *s, map<string,string> argMap, bool verbose)
 				cout<<"Running simulation with explicit output times."<<endl;
 			}
 
-			for(unsigned int i=0; i<explicitOutputTimes.size(); i++) {
+			unsigned int numExplicitTimes = explicitOutputTimes.size();
+			for(unsigned int i=0; i<numExplicitTimes; i++) {
 				double absoluteOutputTime = startTime + explicitOutputTimes.at(i);
 				s->stepTo(absoluteOutputTime);
 				s->outputAllObservableCounts(absoluteOutputTime);
@@ -828,7 +843,7 @@ bool runFromArgs(System *s, map<string,string> argMap, bool verbose)
 
 
 
-void printLogo(int indent, string version)
+void printLogo(int indent, const string& version)
 {
 	string s(indent > 0 ? indent : 0, ' ');
 
@@ -851,7 +866,7 @@ void printLogo(int indent, string version)
 
 
 
-void printHelp(string version)
+void printHelp(const string& version)
 {
 	cout<<"To run NFsim at the command prompt, use flags to specify what you want"<<endl;
 	cout<<"to do.  Flags are given in this format in any order: \"-flagName\"."<<endl;
