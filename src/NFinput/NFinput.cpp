@@ -1863,9 +1863,12 @@ bool NFinput::initReactionRules(
 					} else {
 						site1 = pDeleteBond->Attribute("site1");
 						site2 = pDeleteBond->Attribute("site2");
-						//Skip this if we are messing with a bond in the product pattern....
-						// @TODO:  FIX THIS!  should reject adds in molecule species that are newly added!
-						//if(site1.find("RP")>=0 || site2.find("RP")>=0) continue;
+						// Reject operations on a bond in newly added molecule species (product pattern)....
+						if (site1.find("PP") != string::npos || site2.find("PP") != string::npos) {
+							cerr << "A specified unbinding operation in ReactionClass: '" << rxnName << "' involves\n"
+							     << "a newly added molecule species (Product Pattern). Quitting." << endl;
+							return false;
+						}
 					}
 
 
