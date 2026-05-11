@@ -1,5 +1,6 @@
 #include <iostream>
 #include <sstream>
+#include <vector>
 
 #include "templateMolecule.hh"
 #include "compartment.hh"
@@ -1929,8 +1930,7 @@ bool TemplateMolecule::checkSymmetry(TemplateMolecule *tm1, TemplateMolecule *tm
 
 
 	// now make sure that for each of those basic states, we can map every single one correctly
-	bool *mapped = new bool[tm2->n_compStateConstraint];
-	for(int j=0; j<tm2->n_compStateConstraint; j++) mapped[j]=false;
+	vector<bool> mapped(tm2->n_compStateConstraint, false);
 	for(int i=0; i<tm1->n_compStateConstraint; i++) {
 		for(int j=0; j<tm2->n_compStateConstraint; j++) {
 			if(tm1->compStateConstraint_Comp[i] == tm2->compStateConstraint_Comp[j])
@@ -1942,13 +1942,11 @@ bool TemplateMolecule::checkSymmetry(TemplateMolecule *tm1, TemplateMolecule *tm
 		}
 	}
 	for(int j=0; j<tm2->n_compStateConstraint; j++) {
-		if(mapped[j]==false) { delete [] mapped; return false; }
+		if(mapped[j]==false) return false;
 	}
-	delete [] mapped;
 
 	////////////////////////////////////////////////////////////////////////
-	mapped = new bool[tm2->n_compStateExclusion];
-	for(int j=0; j<tm2->n_compStateExclusion; j++) mapped[j]=false;
+	mapped.assign(tm2->n_compStateExclusion, false);
 	for(int i=0; i<tm1->n_compStateExclusion; i++) {
 		for(int j=0; j<tm2->n_compStateExclusion; j++) {
 			if(tm1->compStateExclusion_Comp[i] == tm2->compStateExclusion_Comp[j])
@@ -1960,14 +1958,12 @@ bool TemplateMolecule::checkSymmetry(TemplateMolecule *tm1, TemplateMolecule *tm
 		}
 	}
 	for(int j=0; j<tm2->n_compStateExclusion; j++) {
-		if(mapped[j]==false) { delete [] mapped; return false; }
+		if(mapped[j]==false) return false;
 	}
-	delete [] mapped;
 
 
 	////////////////////////////////////////////////////////////////////////
-	mapped = new bool[tm2->n_emptyComps];
-	for(int j=0; j<tm2->n_emptyComps; j++) mapped[j]=false;
+	mapped.assign(tm2->n_emptyComps, false);
 	for(int i=0; i<tm1->n_emptyComps; i++) {
 		for(int j=0; j<tm2->n_emptyComps; j++) {
 			if(tm1->emptyComps[i] == tm2->emptyComps[j])
@@ -1978,14 +1974,12 @@ bool TemplateMolecule::checkSymmetry(TemplateMolecule *tm1, TemplateMolecule *tm
 		}
 	}
 	for(int j=0; j<tm2->n_emptyComps; j++) {
-		if(mapped[j]==false) { delete [] mapped; return false; }
+		if(mapped[j]==false) return false;
 	}
-	delete [] mapped;
 
 
 	////////////////////////////////////////////////////////////////////////
-	mapped = new bool[tm2->n_occupiedComps];
-	for(int j=0; j<tm2->n_occupiedComps; j++) mapped[j]=false;
+	mapped.assign(tm2->n_occupiedComps, false);
 	for(int i=0; i<tm1->n_occupiedComps; i++) {
 		for(int j=0; j<tm2->n_occupiedComps; j++) {
 			if(tm1->occupiedComps[i] == tm2->occupiedComps[j])
@@ -1996,14 +1990,12 @@ bool TemplateMolecule::checkSymmetry(TemplateMolecule *tm1, TemplateMolecule *tm
 		}
 	}
 	for(int j=0; j<tm2->n_occupiedComps; j++) {
-		if(mapped[j]==false) { delete [] mapped; return false; }
+		if(mapped[j]==false) return false;
 	}
-	delete [] mapped;
 
 
 	////////////////////////////////////////////////////////////////////////
-	mapped = new bool[tm2->n_connectedTo];
-	for(int j=0; j<tm2->n_connectedTo; j++) mapped[j]=false;
+	mapped.assign(tm2->n_connectedTo, false);
 	for(int i=0; i<tm1->n_connectedTo; i++) {
 		for(int j=0; j<tm2->n_connectedTo; j++) {
 			if(tm1->connectedTo[i]->getMoleculeType()->getTypeID() ==
@@ -2015,14 +2007,12 @@ bool TemplateMolecule::checkSymmetry(TemplateMolecule *tm1, TemplateMolecule *tm
 		}
 	}
 	for(int j=0; j<tm2->n_connectedTo; j++) {
-		if(mapped[j]==false) { delete [] mapped; return false; }
+		if(mapped[j]==false) return false;
 	}
-	delete [] mapped;
 
 
 	////////////////////////////////////////////////////////////////////////
-	mapped = new bool[tm2->n_bonds];
-	for(int j=0; j<tm2->n_bonds; j++) mapped[j]=false;
+	mapped.assign(tm2->n_bonds, false);
 	for(int i=0; i<tm1->n_bonds; i++) {
 		for(int j=0; j<tm2->n_bonds; j++) {
 			if(tm1->bondComp[i] == tm2->bondComp[j])
@@ -2055,18 +2045,22 @@ bool TemplateMolecule::checkSymmetry(TemplateMolecule *tm1, TemplateMolecule *tm
 		}
 	}
 	for(int j=0; j<tm2->n_bonds; j++) {
-		if(mapped[j]==false) { delete [] mapped; return false; }
+		if(mapped[j]==false) return false;
 	}
-	delete [] mapped;
 
 
 
 
 
 
-	//TODO: this is incomplete.  To do this generally for all possible cases, we can't be satisfied with
-	// the above checks. We must continue moving along recursively until we know that everything is correct
-	// this is not done yet, because it requires code on the scale of compare() between two templates.
+	/*
+	 * LIMITATION: The current symmetry check evaluates local structural equivalency
+	 * based on immediate constraints (states, exclusions, components, and local bonds).
+	 * It does not perform a full recursive graph isomorphism check across the entire
+	 * interconnected template structure. Doing so would require algorithmic complexity
+	 * equivalent to the full template compare() function, which is currently deemed
+	 * too computationally expensive for the required use cases.
+	 */
 
 	// if we passed all the tests, then we are assumed symmetric, and we can say so.
 	return true;
