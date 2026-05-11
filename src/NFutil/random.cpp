@@ -20,6 +20,7 @@
 #include <time.h>
 #include <cstdlib>
 #include <math.h>
+#include <random>
 
 
 
@@ -44,7 +45,12 @@ namespace {
 double NFutil::RANDOM( double max )
 {
 	if (initflag) {
-		getIRand().seed( (int) time(NULL));
+		try {
+			std::random_device rd;
+			getIRand().seed(rd());
+		} catch (...) {
+			getIRand().seed( (int) time(NULL));
+		}
 		initflag=0;
     }
 
@@ -62,7 +68,12 @@ double NFutil::RANDOM( double max )
 double NFutil::RANDOM_CLOSED()
 {
 	if (initflag) {
-		getIRand().seed( (int) time(NULL));
+		try {
+			std::random_device rd;
+			getIRand().seed(rd());
+		} catch (...) {
+			getIRand().seed( (int) time(NULL));
+		}
 		initflag=0;
     }
 	return getDRandClosed()();
@@ -72,7 +83,12 @@ double NFutil::RANDOM_CLOSED()
 double NFutil::RANDOM_OPEN()
 {
 	if (initflag) {
-		getIRand().seed( (int) time(NULL));
+		try {
+			std::random_device rd;
+			getIRand().seed(rd());
+		} catch (...) {
+			getIRand().seed( (int) time(NULL));
+		}
 		initflag=0;
     }
 	return getDRandOpen()();
@@ -83,7 +99,12 @@ double NFutil::RANDOM_OPEN()
 double NFutil::RANDOM_GAUSSIAN()
 {
 	if (initflag) {
-		getIRand().seed( (int) time(NULL));
+		try {
+			std::random_device rd;
+			getIRand().seed(rd());
+		} catch (...) {
+			getIRand().seed( (int) time(NULL));
+		}
 		initflag=0;
     }
     if(haveNextGaussian)
@@ -110,7 +131,12 @@ double NFutil::RANDOM_GAUSSIAN()
 int NFutil::RANDOM_INT(unsigned long min, unsigned long max)
 {
 	if (initflag) {
-		getIRand().seed( (int) time(NULL));
+		try {
+			std::random_device rd;
+			getIRand().seed(rd());
+		} catch (...) {
+			getIRand().seed( (int) time(NULL));
+		}
 		initflag=0;
     }
 	return ( min+int((max-min)*getDRand()()) );
