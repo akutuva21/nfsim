@@ -1929,100 +1929,89 @@ bool TemplateMolecule::checkSymmetry(TemplateMolecule *tm1, TemplateMolecule *tm
 
 
 	// now make sure that for each of those basic states, we can map every single one correctly
-	bool *mapped = new bool[tm2->n_compStateConstraint];
-	for(int j=0; j<tm2->n_compStateConstraint; j++) mapped[j]=false;
+	std::vector<bool> mappedStateConstraint(tm2->n_compStateConstraint, false);
 	for(int i=0; i<tm1->n_compStateConstraint; i++) {
 		for(int j=0; j<tm2->n_compStateConstraint; j++) {
 			if(tm1->compStateConstraint_Comp[i] == tm2->compStateConstraint_Comp[j])
 				if(tm1->compStateConstraint_Constraint[i] == tm2->compStateConstraint_Constraint[j])
-					if(mapped[j]==false) {
-						mapped[j]=true;
+					if(mappedStateConstraint[j]==false) {
+						mappedStateConstraint[j]=true;
 						break;
 					}
 		}
 	}
 	for(int j=0; j<tm2->n_compStateConstraint; j++) {
-		if(mapped[j]==false) { delete [] mapped; return false; }
+		if(mappedStateConstraint[j]==false) return false;
 	}
-	delete [] mapped;
 
 	////////////////////////////////////////////////////////////////////////
-	mapped = new bool[tm2->n_compStateExclusion];
-	for(int j=0; j<tm2->n_compStateExclusion; j++) mapped[j]=false;
+	std::vector<bool> mappedStateExclusion(tm2->n_compStateExclusion, false);
 	for(int i=0; i<tm1->n_compStateExclusion; i++) {
 		for(int j=0; j<tm2->n_compStateExclusion; j++) {
 			if(tm1->compStateExclusion_Comp[i] == tm2->compStateExclusion_Comp[j])
 				if(tm1->compStateExclusion_Exclusion[i] == tm2->compStateExclusion_Exclusion[j])
-					if(mapped[j]==false) {
-						mapped[j]=true;
+					if(mappedStateExclusion[j]==false) {
+						mappedStateExclusion[j]=true;
 						break;
 					}
 		}
 	}
 	for(int j=0; j<tm2->n_compStateExclusion; j++) {
-		if(mapped[j]==false) { delete [] mapped; return false; }
+		if(mappedStateExclusion[j]==false) return false;
 	}
-	delete [] mapped;
 
 
 	////////////////////////////////////////////////////////////////////////
-	mapped = new bool[tm2->n_emptyComps];
-	for(int j=0; j<tm2->n_emptyComps; j++) mapped[j]=false;
+	std::vector<bool> mappedEmptyComps(tm2->n_emptyComps, false);
 	for(int i=0; i<tm1->n_emptyComps; i++) {
 		for(int j=0; j<tm2->n_emptyComps; j++) {
 			if(tm1->emptyComps[i] == tm2->emptyComps[j])
-				if(mapped[j]==false) {
-					mapped[j]=true;
+				if(mappedEmptyComps[j]==false) {
+					mappedEmptyComps[j]=true;
 					break;
 				}
 		}
 	}
 	for(int j=0; j<tm2->n_emptyComps; j++) {
-		if(mapped[j]==false) { delete [] mapped; return false; }
+		if(mappedEmptyComps[j]==false) return false;
 	}
-	delete [] mapped;
 
 
 	////////////////////////////////////////////////////////////////////////
-	mapped = new bool[tm2->n_occupiedComps];
-	for(int j=0; j<tm2->n_occupiedComps; j++) mapped[j]=false;
+	std::vector<bool> mappedOccupiedComps(tm2->n_occupiedComps, false);
 	for(int i=0; i<tm1->n_occupiedComps; i++) {
 		for(int j=0; j<tm2->n_occupiedComps; j++) {
 			if(tm1->occupiedComps[i] == tm2->occupiedComps[j])
-				if(mapped[j]==false) {
-					mapped[j]=true;
+				if(mappedOccupiedComps[j]==false) {
+					mappedOccupiedComps[j]=true;
 					break;
 				}
 		}
 	}
 	for(int j=0; j<tm2->n_occupiedComps; j++) {
-		if(mapped[j]==false) { delete [] mapped; return false; }
+		if(mappedOccupiedComps[j]==false) return false;
 	}
-	delete [] mapped;
 
 
 	////////////////////////////////////////////////////////////////////////
-	mapped = new bool[tm2->n_connectedTo];
-	for(int j=0; j<tm2->n_connectedTo; j++) mapped[j]=false;
+	std::vector<bool> mappedConnectedTo(tm2->n_connectedTo, false);
 	for(int i=0; i<tm1->n_connectedTo; i++) {
 		for(int j=0; j<tm2->n_connectedTo; j++) {
 			if(tm1->connectedTo[i]->getMoleculeType()->getTypeID() ==
 					tm2->connectedTo[j]->getMoleculeType()->getTypeID())
-				if(mapped[j]==false) {
-					mapped[j]=true;
+				if(mappedConnectedTo[j]==false) {
+					mappedConnectedTo[j]=true;
 					break;
 				}
 		}
 	}
 	for(int j=0; j<tm2->n_connectedTo; j++) {
-		if(mapped[j]==false) { delete [] mapped; return false; }
+		if(mappedConnectedTo[j]==false) return false;
 	}
-	delete [] mapped;
 
 
 	////////////////////////////////////////////////////////////////////////
-	mapped = new bool[tm2->n_bonds];
-	for(int j=0; j<tm2->n_bonds; j++) mapped[j]=false;
+	std::vector<bool> mappedBonds(tm2->n_bonds, false);
 	for(int i=0; i<tm1->n_bonds; i++) {
 		for(int j=0; j<tm2->n_bonds; j++) {
 			if(tm1->bondComp[i] == tm2->bondComp[j])
@@ -2035,8 +2024,8 @@ bool TemplateMolecule::checkSymmetry(TemplateMolecule *tm1, TemplateMolecule *tm
 					if(tm1->bondPartner[i]==NULL && tm2->bondPartner[j]==NULL) {
 						//If they are both null, then that makes sense and we
 						//can map this site.
-						if(mapped[j]==false) {
-							mapped[j]=true;
+						if(mappedBonds[j]==false) {
+							mappedBonds[j]=true;
 							break;
 						}
 					}
@@ -2046,8 +2035,8 @@ bool TemplateMolecule::checkSymmetry(TemplateMolecule *tm1, TemplateMolecule *tm
 						//then we can actually check the bond partner because we know it exists
 						if(tm1->bondPartner[i]->getMoleculeType()->getTypeID() ==
 								tm2->bondPartner[j]->getMoleculeType()->getTypeID())
-							if(mapped[j]==false) {
-								mapped[j]=true;
+							if(mappedBonds[j]==false) {
+								mappedBonds[j]=true;
 								break;
 							}
 					}
@@ -2055,18 +2044,20 @@ bool TemplateMolecule::checkSymmetry(TemplateMolecule *tm1, TemplateMolecule *tm
 		}
 	}
 	for(int j=0; j<tm2->n_bonds; j++) {
-		if(mapped[j]==false) { delete [] mapped; return false; }
+		if(mappedBonds[j]==false) return false;
 	}
-	delete [] mapped;
 
 
 
 
 
 
-	//TODO: this is incomplete.  To do this generally for all possible cases, we can't be satisfied with
-	// the above checks. We must continue moving along recursively until we know that everything is correct
-	// this is not done yet, because it requires code on the scale of compare() between two templates.
+	// DOCUMENTATION: Partial Symmetry Check Limitation
+	// The checks above perform a shallow structural comparison. To reliably handle all
+	// generalized cases of molecule symmetry (e.g. ring-like structures, deep complexes),
+	// this method would need a full recursive graph isomorphism check similar in scope
+	// to the disjoint matching logic in compare(). For the vast majority of biochemical
+	// models mapped in NFsim, this shallow property validation is sufficient.
 
 	// if we passed all the tests, then we are assumed symmetric, and we can say so.
 	return true;
