@@ -684,7 +684,7 @@ bool NFinput::initMoleculeTypes(
 
 
 
-// AS2023 - this call can now return a string which is the 
+// AS2023 - this call can now return a string which is the
 // log of the initial species to be written into the event
 // log file eventually
 string NFinput::initStartSpecies(
@@ -895,7 +895,7 @@ string NFinput::initStartSpecies(
 					TiXmlElement *pComp;
 					for ( pComp = pListOfComp->FirstChildElement("Component"); pComp != 0; pComp = pComp->NextSiblingElement("Component"))
 					{
-					
+
 						//Get the basic properties of the component
 						string compId,compName,compBondCount;
 						if(!pComp->Attribute("id") || !pComp->Attribute("name") || !pComp->Attribute("numberOfBonds")) {
@@ -1022,7 +1022,7 @@ string NFinput::initStartSpecies(
 					for(int m=0; m<specCountInteger; m++)
 					{
 						Molecule *mol = mt->genDefaultMolecule(speciesCompartment);
-						// AS2023 - storing what has been generated, we need both the ID of the 
+						// AS2023 - storing what has been generated, we need both the ID of the
 						// molecule type as well as the global ID that's assigned to the instance
 						mids.push_back(mol->getMoleculeType()->getTypeID());
 						mgids.push_back(mol->getUniqueID());
@@ -1042,18 +1042,18 @@ string NFinput::initStartSpecies(
 							//} else {
 								mol->setComponentState((*snIter), (int)stateValue.at(k));
 							//}
-							
+
 							// AS2023 - this is here to reduce the number of operations written
-							// note that the default molecule starts the component state at the 
+							// note that the default molecule starts the component state at the
 							// 0th state so any time we manually set that right after generating
 							// a default one, that's a reduntant operation
 							if ((int)stateValue.at(k)!=0) {
-								operations.push_back("[\"StateChange\"," + 
-								to_string(mol->getUniqueID()) + "," + 
-								to_string(mol->getMoleculeType()->getCompIndexFromName((*snIter))) + "," + 
+								operations.push_back("[\"StateChange\"," +
+								to_string(mol->getUniqueID()) + "," +
+								to_string(mol->getMoleculeType()->getCompIndexFromName((*snIter))) + "," +
 								to_string((int)stateValue.at(k)) + "]");
 							}
-							
+
 						}
 
 						molecules.at(molecules.size()-1).push_back(mol);
@@ -1127,13 +1127,13 @@ string NFinput::initStartSpecies(
 						for(int j=0;j<specCountInteger;j++) {
 							Molecule::bind( molecules.at(bSiteMolIndex1).at(j),bSiteName1.c_str(),
 											molecules.at(bSiteMolIndex2).at(j),bSiteName2.c_str());
-							// AS2023 - we keep track of what operations is required to generate the 
+							// AS2023 - we keep track of what operations is required to generate the
 							// correct initial state. These are equivalent operations to what happens
 							// during actual reactions/events
-							operations.push_back("[\"AddBond\"," + 
-								to_string(molecules.at(bSiteMolIndex1).at(j)->getUniqueID()) + "," + 
+							operations.push_back("[\"AddBond\"," +
+								to_string(molecules.at(bSiteMolIndex1).at(j)->getUniqueID()) + "," +
 								to_string(molecules.at(bSiteMolIndex1).at(j)->getMoleculeType()->getCompIndexFromName(bSiteName1.c_str())) + "," +
-								to_string(molecules.at(bSiteMolIndex2).at(j)->getUniqueID()) + "," + 
+								to_string(molecules.at(bSiteMolIndex2).at(j)->getUniqueID()) + "," +
 								to_string(molecules.at(bSiteMolIndex2).at(j)->getMoleculeType()->getCompIndexFromName(bSiteName2.c_str())) + "]");
 						}
 
@@ -1182,7 +1182,7 @@ string NFinput::initStartSpecies(
 			bSiteMolMapping.clear();
 			bSiteSiteMapping.clear();
 		}
-		
+
 		// AS2023 - start initial state block
 		string logstr = "    \"initialState\": {\n";
 		logstr += "      \"molecule_array\": [\n";
@@ -1202,8 +1202,7 @@ string NFinput::initStartSpecies(
 			// AS2023 - now we use it to compress the initial state vector
 			int last_val = molec_vec[0];
 			int val_ctr = 1;
-			unsigned int molec_vec_size = molec_vec.size();
-			for(unsigned int ici=1; ici<molec_vec_size; ici++) {
+			for(unsigned int ici=1; ici<molec_vec.size(); ici++) {
 				if (molec_vec[ici]!=last_val) {
 					logstr += "        [" + to_string(last_val) + "," + to_string(val_ctr) + "],\n";
 					last_val = molec_vec[ici];
@@ -1214,7 +1213,7 @@ string NFinput::initStartSpecies(
 			}
 			logstr += "        [" + to_string(last_val) + "," + to_string(val_ctr) + "]\n";
 			// logstr += "        [" + to_string(last_val) + "," + to_string(val_ctr) + "],\n";
-			// // AS 2023 
+			// // AS 2023
 			// logstr.erase(logstr.end()-2, logstr.end());
 		}
 		logstr += "      ],\n";
@@ -1236,7 +1235,7 @@ string NFinput::initStartSpecies(
 			logstr += "]\n";
 		}
 		logstr += "    },\n";
-		
+
 
 		// s->printAllMoleculeTypes();
 
@@ -1402,7 +1401,7 @@ bool NFinput::initReactionRules(
 					}
 				}
 
-		
+
 
 
 				///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1581,7 +1580,7 @@ bool NFinput::initReactionRules(
 						return false;
 					}
 				}
-				
+
 				//  Read in the Product Patterns for this rule
 				TiXmlElement *pListOfProductPatterns = pRxnRule->FirstChildElement("ListOfProductPatterns");
 				if(!pListOfProductPatterns) {
@@ -1612,7 +1611,7 @@ bool NFinput::initReactionRules(
 					}
 				}
 
-				
+
 				// Read in the reactant-product maps for this rule
 				// Arvind Rasi Subramaniam
 				TiXmlElement *pListOfMaps = pRxnRule->FirstChildElement("Map");
@@ -2725,7 +2724,7 @@ bool NFinput::initReactionRules(
 							//Finally, we can make the actual reaction
 							ts->finalize();
 							r = new MMRxnClass(rxnName,kcat,Km,ts,s);
-							
+
 						}
 					}
 					else if(rateLawType=="Sat") {
@@ -3960,19 +3959,19 @@ bool NFinput::readProductMolecule(
 		//step 2: loop over the molecules components and populate the vector of queues
         for(int k=0; k<moltype->getNumOfComponents(); k++) {
 
-        	string compName = moltype->getComponentName(k);
+		string compName = moltype->getComponentName(k);
 
-        	// if the component is symmetric...
-        	if(moltype->isEquivalentComponent(k)) {
+		// if the component is symmetric...
+		if(moltype->isEquivalentComponent(k)) {
 
-        		string genericCompName = moltype->getEquivalenceClassComponentNameFromComponentIndex(k);
-        		//cout<<"generic compname: "<< genericCompName <<endl;
+			string genericCompName = moltype->getEquivalenceClassComponentNameFromComponentIndex(k);
+			//cout<<"generic compname: "<< genericCompName <<endl;
 
-        		// then we determine the component equivalence class number and add it to the queue
-        		int eqClassNumber = moltype->getEquivalenceClassNumber(k);
-        		symmetricSitesNotUsed.at(eqClassNumber).push(compName);
-        		//cout<<"eq class number: "<< moltype->getEquivalenceClassNumber(k) <<endl;
-        	}
+			// then we determine the component equivalence class number and add it to the queue
+			int eqClassNumber = moltype->getEquivalenceClassNumber(k);
+			symmetricSitesNotUsed.at(eqClassNumber).push(compName);
+			//cout<<"eq class number: "<< moltype->getEquivalenceClassNumber(k) <<endl;
+		}
         }
 
 
@@ -4555,7 +4554,7 @@ int NFinput::readTemplatePattern(
 		}
 
 		//Grab the first template molecule from the list, and arbitrarily set this as the root
-		if(tMolecules.empty()){			
+		if(tMolecules.empty()){
 			if(foundTrash) {
 				if(verbose) cout<<"\t\t\t\tWarning: Pattern '"<<patternName<<"' contains only Trash or Null molecules and will be ignored."<<endl;
 				return 1;
