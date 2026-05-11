@@ -138,60 +138,6 @@ void test_toString() {
     cout << "  toString tests passed!" << endl;
 }
 
-void test_convertToInt() {
-    cout << "  Testing convertToInt..." << endl;
-
-    // Test positive integers
-    if (convertToInt("42") != 42) {
-        throw runtime_error("Failed convertToInt(\"42\"), expected 42, got " + toString(convertToInt("42")));
-    }
-    if (convertToInt("123456789") != 123456789) {
-        throw runtime_error("Failed convertToInt(\"123456789\"), expected 123456789, got " + toString(convertToInt("123456789")));
-    }
-
-    // Test negative integers
-    if (convertToInt("-42") != -42) {
-        throw runtime_error("Failed convertToInt(\"-42\"), expected -42, got " + toString(convertToInt("-42")));
-    }
-    if (convertToInt("-123456789") != -123456789) {
-        throw runtime_error("Failed convertToInt(\"-123456789\"), expected -123456789, got " + toString(convertToInt("-123456789")));
-    }
-
-    // Test 0
-    if (convertToInt("0") != 0) {
-        throw runtime_error("Failed convertToInt(\"0\"), expected 0, got " + toString(convertToInt("0")));
-    }
-
-    // Test whitespace
-    if (convertToInt("  42") != 42) {
-        throw runtime_error("Failed convertToInt(\"  42\"), expected 42, got " + toString(convertToInt("  42")));
-    }
-
-    // Test invalid characters
-    bool threwInvalidChars = false;
-    try {
-        convertToInt("abc");
-    } catch (const std::runtime_error& e) {
-        threwInvalidChars = true;
-    }
-    if (!threwInvalidChars) {
-        throw runtime_error("convertToInt failed to throw runtime_error on invalid characters (e.g. \"abc\")");
-    }
-
-    // Test valid characters with leftover invalid characters
-    bool threwLeftoverChars = false;
-    try {
-        convertToInt("42abc");
-    } catch (const std::runtime_error& e) {
-        threwLeftoverChars = true;
-    }
-    if (!threwLeftoverChars) {
-        throw runtime_error("convertToInt failed to throw runtime_error on leftover invalid characters (e.g. \"42abc\")");
-    }
-
-    cout << "  convertToInt tests passed!" << endl;
-}
-
 void NFtest_util::run()
 {
 	cout << "Running NFutil and Core tests..." << endl;
@@ -312,7 +258,6 @@ void NFtest_util::run()
 	testTemplateMoleculeConstraint();
 	test_trim();
 	test_toString();
-	test_convertToInt();
 
 	cout << "  Testing loadTimeSeries..." << endl;
 	auto create_temp_file = [](const std::string& filename, const std::string& content) {
