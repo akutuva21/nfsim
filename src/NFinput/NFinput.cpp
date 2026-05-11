@@ -442,7 +442,7 @@ bool NFinput::initMoleculeTypes(
 					//First check if the component Name already exists, if so, we gotta do more!
 					//This means that one of the sites are symmetric, so we must handle it correctly
 					int pos=0;
-					for(vector<string>::iterator it = compLabels.begin(); it != compLabels.end(); ++it,++pos ) {
+					for(vector<string>::iterator it = compLabels.begin(); it != compLabels.end(); it++,pos++ ) {
 
 						if((*it)==compName) {
 							bool shouldAdd = true;
@@ -629,9 +629,7 @@ bool NFinput::initMoleculeTypes(
 			//Go back and set the first symmetric component label to be 'compName1' so we know
 			//immediately that they are symmetric sites (have to add in the possible binding site
 			//names as well!
-			// Optimization: Cache size of firstSymSiteToAppend to avoid calling .size() within the loop
-			unsigned int firstSymSiteToAppendSize = firstSymSiteToAppend.size();
-			for(unsigned int k=0; k<firstSymSiteToAppendSize; k++) {
+			for(unsigned int k=0; k<firstSymSiteToAppend.size(); k++) {
 				string originalCompLabel = compLabels.at(firstSymSiteToAppend.at(k));
 				compLabels.at(firstSymSiteToAppend.at(k)) = compLabels.at(firstSymSiteToAppend.at(k))+"1";
 
@@ -1198,15 +1196,15 @@ string NFinput::initStartSpecies(
 			for(unsigned int isi=0; isi<molec_size; isi++) {
 				molec_vec.push_back(-1);
 			}
-			unsigned int mgidsSize = mgids.size();
-			for(unsigned int img=0; img<mgidsSize; img++) {
+			unsigned int mgids_size = mgids.size();
+			for(unsigned int img=0; img<mgids_size; img++) {
 				molec_vec[mgids[img]] = mids[img];
 			}
 			// AS2023 - now we use it to compress the initial state vector
 			int last_val = molec_vec[0];
 			int val_ctr = 1;
-			unsigned int molecVecSize = molec_vec.size();
-			for(unsigned int ici=1; ici<molecVecSize; ici++) {
+			unsigned int molec_vec_size = molec_vec.size();
+			for(unsigned int ici=1; ici<molec_vec_size; ici++) {
 				if (molec_vec[ici]!=last_val) {
 					logstr += "        [" + to_string(last_val) + "," + to_string(val_ctr) + "],\n";
 					last_val = molec_vec[ici];
@@ -1224,13 +1222,13 @@ string NFinput::initStartSpecies(
 
 		// AS2023
 		logstr += "      \"ops\": [\n ";
-		int operationsSize = operations.size();
-		for(int k=0;k<operationsSize;k++) {
+		int operations_size = operations.size();
+		for(int k=0;k<operations_size;k++) {
 			logstr += "        " + operations[k] + ",\n";
 		}
 		// AS2023
 		// finalize the ops list
-		if (operationsSize > 0) {
+		if (operations.size() > 0) {
 			logstr.pop_back();
 			logstr.pop_back();
 			logstr += "\n      ]\n";
@@ -1868,12 +1866,9 @@ bool NFinput::initReactionRules(
 					} else {
 						site1 = pDeleteBond->Attribute("site1");
 						site2 = pDeleteBond->Attribute("site2");
-						// Reject operations on newly added molecule species (Product Patterns)
-						if (site1.find("_PP") != string::npos || site2.find("_PP") != string::npos) {
-							cerr << "A specified DeleteBond operation in ReactionClass: '" << rxnName << "' involves " << endl;
-							cerr << "a newly added molecule species, which is invalid.  Quitting." << endl;
-							return false;
-						}
+						//Skip this if we are messing with a bond in the product pattern....
+						// @TODO:  FIX THIS!  should reject adds in molecule species that are newly added!
+						//if(site1.find("RP")>=0 || site2.find("RP")>=0) continue;
 					}
 
 
@@ -2197,6 +2192,7 @@ bool NFinput::initReactionRules(
 				//ts->finalize();
 				ReactionClass *r = 0;
 				bool totalRateFlag=false;
+				bool tagFlag=false;
 
 				double volumeConversion = 1.0;
 				if (ts->getNreactants() == 0) {
@@ -2247,6 +2243,21 @@ bool NFinput::initReactionRules(
 						exit(1);
 					}
 				}
+
+				// if( !pRateLaw->Attribute("tag") ) {
+				// 	cerr<<"\n!!Error! This XML file was generated using an older version of BioNetGen that does not support the 'TotalRate' convention!"<<endl;
+				// 	cerr<<"You should upgrade your BioNetGen distribution now, or download the latest NFsim package, and regenerate this XML file."<<endl;
+				// } else {
+				// 	try {
+				// 		int rf = NFutil::convertToInt(pRateLaw->Attribute("tag"));
+				// 		if(rf>0) tagFlag=true;
+				// 		if(verbose) cout<<"\t\t\t= "<<tagFlag<<endl;
+				// 	} catch (std::runtime_error &e1) {
+				// 		//cerr<<e1.what()<<endl;
+				// 		cerr<<"Error!! tag flag for ReactionRule "<<rxnName<<" was not set properly.  quitting."<<endl;
+				// 		exit(1);
+				// 	}
+				// }
 
 				if(!pRateLaw->Attribute("id") || !pRateLaw->Attribute("type")) {
 					cerr<<"!!Error:: ReactionRule "<<rxnName<<" rate law specification: cannot read 'id' or 'type' attribute!"<<endl;
@@ -2745,8 +2756,7 @@ bool NFinput::initReactionRules(
 				} else {
             // Check and apply matchOnce
             bool hasMatchOnce = false;
-            unsigned int matchOnceSize = matchOnceList.size();
-            for (unsigned int i = 0; i < matchOnceSize; i++) {
+            for (unsigned int i = 0; i < matchOnceList.size(); i++) {
                 if (matchOnceList[i]) hasMatchOnce = true;
             }
 
@@ -2755,9 +2765,8 @@ bool NFinput::initReactionRules(
                     cerr << "Warning: MatchOnce is not yet supported for DOR/functional reactions. "
                          << "Ignoring matchOnce on reaction: " << rxnName << endl;
                 } else {
-                    unsigned int nReactants = r->getNumOfReactants();
-                    for (unsigned int i = 0; i < nReactants; i++) {
-                        if (i < matchOnceSize) {
+                    for (unsigned int i = 0; i < r->getNumOfReactants(); i++) {
+                        if (i < matchOnceList.size()) {
                             r->setMatchOnce(i, matchOnceList[i]);
                         }
                     }
@@ -2787,8 +2796,10 @@ bool NFinput::initReactionRules(
 					// Add the reactant and product templates to the reaction class
 					r->setAllReactantAndProductTemplates(reactants, products);
 					r->setTotalRateFlag(totalRateFlag);
+					// if (tagFlag) {
 					r->tag();
 					s->turnOnTagRxnOutput();
+					// }
 					// Use reaction connectivity flag
 					// Set to true if given on the command line
 					r->setConnectivityFlag(s->getConnectivityFlag());
@@ -3512,11 +3523,13 @@ TemplateMolecule *NFinput::readPattern(
 
 
 		if(setCount>1) {
-			// Auto-enable complex bookkeeping for disjoint patterns
-			if(!s->isUsingComplex()) {
-				cout<<"Auto-enabling complex bookkeeping for disjoint pattern support."<<endl;
-				s->setUsingComplex(true);
-			}
+			// Possibly, we might want to enforce complex bookkeeping for such reactions....
+			//if(!s->isUsingComplex()) {
+			//	cout.flush();
+			//	cerr<<"Disjoint pattern found, but complex bookkeeping is turned off!"<<endl;
+			//	cerr<<"Rerun with the -cb flag"<<endl;
+			//	exit(1);
+			//}
 
 			cout<<"\nFound disjoint sets in a pattern. (As in A().B(), with no explicit connection through components)\n";
 			cout<<"Warning!  These type of patterns can be dangerous!!  They also make NFsim run slower!\n";
@@ -4496,11 +4509,13 @@ int NFinput::readTemplatePattern(
 //		}
 
 		if(setCount>1) {
-			// Auto-enable complex bookkeeping for disjoint patterns
-			if(!s->isUsingComplex()) {
-				cout<<"Auto-enabling complex bookkeeping for disjoint pattern support."<<endl;
-				s->setUsingComplex(true);
-			}
+			// Possibly, we might want to enforce complex bookkeeping for such reactions....
+			//if(!s->isUsingComplex()) {
+			//	cout.flush();
+			//	cerr<<"Disjoint pattern found, but complex bookkeeping is turned off!"<<endl;
+			//	cerr<<"Rerun with the -cb flag"<<endl;
+			//	exit(1);
+			//}
 
 			cout<<"\nFound disjoint sets in a pattern. (As in A().B(), with no explicit connection through components)\n";
 			cout<<"Warning!  These type of patterns can be dangerous!!  They also make NFsim run slower!\n";
