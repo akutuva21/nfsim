@@ -829,31 +829,28 @@ void PrintFileBuffer(map<string, map<int, string> > FileMap,vector<job*> JobQueu
 	ofstream Output;
 	for (map<string, map<int, string> >::iterator it = FileMap.begin(); it != FileMap.end(); ++it) {
 		string Filename = getPath(JobQueue[it->second.begin()->first]->filename)+it->first;
-		//if (Filename.length() <= 4 || Filename.substr(Filename.length()-4).compare(".gdat") != 0) {
-			//Appending the output buffer from each job 
-			Output.open(Filename.data());
-			for (map<int, string>::iterator itt = it->second.begin(); itt != it->second.end(); ++itt) {
-				//Printing job data
-				job* CurrentJob = JobQueue[itt->first];
-				Output << "**JOB SPECIFICATIONS**" << endl; 
-				Output << "JOBOVERVIEW(MODEL:" << CurrentJob->filename;
-				for (int i=0; i < int(CurrentJob->argument.size()); i++) {
-					Output << "," << CurrentJob->argument[i] << ":" << CurrentJob->argval[i];
-				}
-				Output << ")" << endl;
-				if (CurrentJob->parameters.size() > 0) {
-					Output << "PARAMETER;VALUE" << endl;
-					for (int i=0; i < int(CurrentJob->parameters.size()); ++i) {
-						Output << CurrentJob->parameters[i] << ";" << CurrentJob->values[i] << endl; 
-					}
-				}
-				Output << "**JOB OUTPUT**" << endl;
-				//Printing file data
-				Output << itt->second << endl << endl;
+		//Appending the output buffer from each job
+		Output.open(Filename.data());
+		for (map<int, string>::iterator itt = it->second.begin(); itt != it->second.end(); ++itt) {
+			//Printing job data
+			job* CurrentJob = JobQueue[itt->first];
+			Output << "**JOB SPECIFICATIONS**" << endl;
+			Output << "JOBOVERVIEW(MODEL:" << CurrentJob->filename;
+			for (int i=0; i < int(CurrentJob->argument.size()); i++) {
+				Output << "," << CurrentJob->argument[i] << ":" << CurrentJob->argval[i];
 			}
-			Output.close();
-			Output.clear();
-		//}
+			Output << ")" << endl;
+			if (CurrentJob->parameters.size() > 0) {
+				Output << "PARAMETER;VALUE" << endl;
+				for (int i=0; i < int(CurrentJob->parameters.size()); ++i) {
+					Output << CurrentJob->parameters[i] << ";" << CurrentJob->values[i] << endl;
+				}
+			}
+			Output << "**JOB OUTPUT**" << endl;
+			//Printing file data
+			Output << itt->second << endl << endl;
+		}
+		Output.close();
 	}
 }
 
