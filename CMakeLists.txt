@@ -21,6 +21,7 @@ set(SUB_DIRS
     src/NFtest/agentcell/cell
     src/NFtest/agentcell
     src/NFtest/util
+    src/NFtest/input
     src/NFtest/tinyxml
     src/NFtest/system
     src/NFtest/mapping
