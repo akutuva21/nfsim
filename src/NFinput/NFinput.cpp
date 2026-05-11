@@ -1864,8 +1864,25 @@ bool NFinput::initReactionRules(
 						site1 = pDeleteBond->Attribute("site1");
 						site2 = pDeleteBond->Attribute("site2");
 						//Skip this if we are messing with a bond in the product pattern....
-						// @TODO:  FIX THIS!  should reject adds in molecule species that are newly added!
-						//if(site1.find("RP")>=0 || site2.find("RP")>=0) continue;
+						// Parse the pattern strings robustly to reject operations on newly added molecules
+						auto isNewlyAdded = [](const string& site) {
+							size_t start = 0;
+							while (start < site.length()) {
+								size_t end = site.find('_', start);
+								if (end == string::npos) end = site.length();
+								string token = site.substr(start, end - start);
+								if (token.length() > 2 && token.substr(0, 2) == "RP") {
+									bool isRPToken = true;
+									for (size_t i = 2; i < token.length(); ++i) {
+										if (!isdigit(token[i])) { isRPToken = false; break; }
+									}
+									if (isRPToken) return false;
+								}
+								start = end + 1;
+							}
+							return true;
+						};
+						if (isNewlyAdded(site1) || isNewlyAdded(site2)) continue;
 					}
 
 
