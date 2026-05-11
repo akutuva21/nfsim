@@ -271,7 +271,7 @@ void equilibrate(string command,System *s)
 }
 
 
-void setParameter(string command, System *s) {
+void setParameter(const string& command, System *s) {
 
 	int id1=command.find("set");
 	string paramString = command.substr(id1+3);
