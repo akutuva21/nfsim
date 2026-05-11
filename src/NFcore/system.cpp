@@ -565,7 +565,7 @@ MoleculeType * System::getMoleculeTypeByName(string mName)
 		}
 	}
 	cerr<<"!!! warning !!! cannot find molecule type name '"<< mName << "' in System: '"<<this->name<<"'"<<endl;
-	exit(1);
+	throw std::runtime_error("Cannot find molecule type name in System");
 	return 0;
 }
 
