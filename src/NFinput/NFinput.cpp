@@ -446,7 +446,8 @@ bool NFinput::initMoleculeTypes(
 
 						if((*it)==compName) {
 							bool shouldAdd = true;
-							for(unsigned int k=0; k<firstSymSiteToAppend.size(); k++) {
+							unsigned int symSiteSize = firstSymSiteToAppend.size();
+							for(unsigned int k=0; k<symSiteSize; k++) {
 								if(firstSymSiteToAppend.at(k)==pos) { shouldAdd=false; break; }
 							}
 							if(shouldAdd) firstSymSiteToAppend.push_back(pos);
