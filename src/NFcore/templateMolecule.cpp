@@ -1928,136 +1928,74 @@ bool TemplateMolecule::checkSymmetry(TemplateMolecule *tm1, TemplateMolecule *tm
 	if(tm1->n_bonds != tm2->n_bonds) return false;
 
 
+	auto checkMapping = [](int n1, int n2, auto matchCondition) -> bool {
+		std::vector<bool> mapped(n2, false);
+		for(int i=0; i<n1; i++) {
+			for(int j=0; j<n2; j++) {
+				if(matchCondition(i, j)) {
+					if(!mapped[j]) {
+						mapped[j]=true;
+						break;
+					}
+				}
+			}
+		}
+		for(int j=0; j<n2; j++) {
+			if(!mapped[j]) return false;
+		}
+		return true;
+	};
+
 	// now make sure that for each of those basic states, we can map every single one correctly
-	bool *mapped = new bool[tm2->n_compStateConstraint];
-	for(int j=0; j<tm2->n_compStateConstraint; j++) mapped[j]=false;
-	for(int i=0; i<tm1->n_compStateConstraint; i++) {
-		for(int j=0; j<tm2->n_compStateConstraint; j++) {
-			if(tm1->compStateConstraint_Comp[i] == tm2->compStateConstraint_Comp[j])
-				if(tm1->compStateConstraint_Constraint[i] == tm2->compStateConstraint_Constraint[j])
-					if(mapped[j]==false) {
-						mapped[j]=true;
-						break;
-					}
-		}
-	}
-	for(int j=0; j<tm2->n_compStateConstraint; j++) {
-		if(mapped[j]==false) { delete [] mapped; return false; }
-	}
-	delete [] mapped;
+	if (!checkMapping(tm1->n_compStateConstraint, tm2->n_compStateConstraint, [&](int i, int j) {
+		return tm1->compStateConstraint_Comp[i] == tm2->compStateConstraint_Comp[j] &&
+		       tm1->compStateConstraint_Constraint[i] == tm2->compStateConstraint_Constraint[j];
+	})) return false;
 
 	////////////////////////////////////////////////////////////////////////
-	mapped = new bool[tm2->n_compStateExclusion];
-	for(int j=0; j<tm2->n_compStateExclusion; j++) mapped[j]=false;
-	for(int i=0; i<tm1->n_compStateExclusion; i++) {
-		for(int j=0; j<tm2->n_compStateExclusion; j++) {
-			if(tm1->compStateExclusion_Comp[i] == tm2->compStateExclusion_Comp[j])
-				if(tm1->compStateExclusion_Exclusion[i] == tm2->compStateExclusion_Exclusion[j])
-					if(mapped[j]==false) {
-						mapped[j]=true;
-						break;
-					}
-		}
-	}
-	for(int j=0; j<tm2->n_compStateExclusion; j++) {
-		if(mapped[j]==false) { delete [] mapped; return false; }
-	}
-	delete [] mapped;
+	if (!checkMapping(tm1->n_compStateExclusion, tm2->n_compStateExclusion, [&](int i, int j) {
+		return tm1->compStateExclusion_Comp[i] == tm2->compStateExclusion_Comp[j] &&
+		       tm1->compStateExclusion_Exclusion[i] == tm2->compStateExclusion_Exclusion[j];
+	})) return false;
 
 
 	////////////////////////////////////////////////////////////////////////
-	mapped = new bool[tm2->n_emptyComps];
-	for(int j=0; j<tm2->n_emptyComps; j++) mapped[j]=false;
-	for(int i=0; i<tm1->n_emptyComps; i++) {
-		for(int j=0; j<tm2->n_emptyComps; j++) {
-			if(tm1->emptyComps[i] == tm2->emptyComps[j])
-				if(mapped[j]==false) {
-					mapped[j]=true;
-					break;
-				}
-		}
-	}
-	for(int j=0; j<tm2->n_emptyComps; j++) {
-		if(mapped[j]==false) { delete [] mapped; return false; }
-	}
-	delete [] mapped;
+	if (!checkMapping(tm1->n_emptyComps, tm2->n_emptyComps, [&](int i, int j) {
+		return tm1->emptyComps[i] == tm2->emptyComps[j];
+	})) return false;
 
 
 	////////////////////////////////////////////////////////////////////////
-	mapped = new bool[tm2->n_occupiedComps];
-	for(int j=0; j<tm2->n_occupiedComps; j++) mapped[j]=false;
-	for(int i=0; i<tm1->n_occupiedComps; i++) {
-		for(int j=0; j<tm2->n_occupiedComps; j++) {
-			if(tm1->occupiedComps[i] == tm2->occupiedComps[j])
-				if(mapped[j]==false) {
-					mapped[j]=true;
-					break;
-				}
-		}
-	}
-	for(int j=0; j<tm2->n_occupiedComps; j++) {
-		if(mapped[j]==false) { delete [] mapped; return false; }
-	}
-	delete [] mapped;
+	if (!checkMapping(tm1->n_occupiedComps, tm2->n_occupiedComps, [&](int i, int j) {
+		return tm1->occupiedComps[i] == tm2->occupiedComps[j];
+	})) return false;
 
 
 	////////////////////////////////////////////////////////////////////////
-	mapped = new bool[tm2->n_connectedTo];
-	for(int j=0; j<tm2->n_connectedTo; j++) mapped[j]=false;
-	for(int i=0; i<tm1->n_connectedTo; i++) {
-		for(int j=0; j<tm2->n_connectedTo; j++) {
-			if(tm1->connectedTo[i]->getMoleculeType()->getTypeID() ==
-					tm2->connectedTo[j]->getMoleculeType()->getTypeID())
-				if(mapped[j]==false) {
-					mapped[j]=true;
-					break;
-				}
-		}
-	}
-	for(int j=0; j<tm2->n_connectedTo; j++) {
-		if(mapped[j]==false) { delete [] mapped; return false; }
-	}
-	delete [] mapped;
+	if (!checkMapping(tm1->n_connectedTo, tm2->n_connectedTo, [&](int i, int j) {
+		return tm1->connectedTo[i]->getMoleculeType()->getTypeID() == tm2->connectedTo[j]->getMoleculeType()->getTypeID();
+	})) return false;
 
 
 	////////////////////////////////////////////////////////////////////////
-	mapped = new bool[tm2->n_bonds];
-	for(int j=0; j<tm2->n_bonds; j++) mapped[j]=false;
-	for(int i=0; i<tm1->n_bonds; i++) {
-		for(int j=0; j<tm2->n_bonds; j++) {
-			if(tm1->bondComp[i] == tm2->bondComp[j])
+	if (!checkMapping(tm1->n_bonds, tm2->n_bonds, [&](int i, int j) {
+		if (tm1->bondComp[i] == tm2->bondComp[j] &&
+		    tm1->bondPartnerCompName[i].compare(tm2->bondPartnerCompName[j]) == 0) {
 
-				if(tm1->bondPartnerCompName[i].compare(tm2->bondPartnerCompName[j])==0) {
+			//First make sure the bond partner exists (it might not be there
+			//if we are calling from the finding symmetry about a bond because
+			//we would have had to remove a bond!)
+			if (tm1->bondPartner[i] == NULL && tm2->bondPartner[j] == NULL) {
+				return true;
+			}
 
-					//First make sure the bond partner exists (it might not be there
-					//if we are calling from the finding symmetry about a bond because
-					//we would have had to remove a bond!)
-					if(tm1->bondPartner[i]==NULL && tm2->bondPartner[j]==NULL) {
-						//If they are both null, then that makes sense and we
-						//can map this site.
-						if(mapped[j]==false) {
-							mapped[j]=true;
-							break;
-						}
-					}
-
-					//If one or the other is null, then we could not map
-					if(tm1->bondPartner[i]!=NULL && tm2->bondPartner[j]!=NULL ) {
-						//then we can actually check the bond partner because we know it exists
-						if(tm1->bondPartner[i]->getMoleculeType()->getTypeID() ==
-								tm2->bondPartner[j]->getMoleculeType()->getTypeID())
-							if(mapped[j]==false) {
-								mapped[j]=true;
-								break;
-							}
-					}
-				}
+			//If one or the other is null, then we could not map
+			if (tm1->bondPartner[i] != NULL && tm2->bondPartner[j] != NULL) {
+				return tm1->bondPartner[i]->getMoleculeType()->getTypeID() == tm2->bondPartner[j]->getMoleculeType()->getTypeID();
+			}
 		}
-	}
-	for(int j=0; j<tm2->n_bonds; j++) {
-		if(mapped[j]==false) { delete [] mapped; return false; }
-	}
-	delete [] mapped;
+		return false;
+	})) return false;
 
 
 
