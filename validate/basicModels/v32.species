@@ -1,5 +1,4 @@
 # nfsim generated species list for system: 'v32'
 # warning! this feature is not yet fully tested!
-M(a!1,b!1)  1
-M(a,b)  99
+M(a,b)  100
 M2()  100
