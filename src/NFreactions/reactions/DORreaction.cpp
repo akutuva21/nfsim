@@ -275,7 +275,7 @@ bool DORRxnClass::tryToAdd(Molecule *m, unsigned int reactantPos) {
 			*/
 			
 			if(DEBUG_MESSAGE)cout<<"was in the tree, so checking if we should remove"<<endl;
-			ms=reactantTree->pushNextAvailableMappingSet();
+			MappingSet *ms=reactantTree->pushNextAvailableMappingSet();
 
 			comparisonResult = reactantTemplates[reactantPos]->compare(m,reactantTree,ms,false,&symmetricMappingSet);
 
@@ -352,7 +352,7 @@ bool DORRxnClass::tryToAdd(Molecule *m, unsigned int reactantPos) {
 
 		} else {
 			if(DEBUG_MESSAGE)cout<<"wasn't in the tree, so trying to push and compare"<<endl;
-			ms=reactantTree->pushNextAvailableMappingSet();
+			MappingSet *ms=reactantTree->pushNextAvailableMappingSet();
 			if(DEBUG_MESSAGE)cout<<"calling comparsion method"<<endl;
 			if(DEBUG_MESSAGE)m->printDetails();
 
@@ -439,7 +439,7 @@ bool DORRxnClass::tryToAdd(Molecule *m, unsigned int reactantPos) {
 
 		} else {
 			//Try to map it!
-			ms = rl->pushNextAvailableMappingSet();
+			MappingSet *ms = rl->pushNextAvailableMappingSet();
 			comparisonResult = reactantTemplates[reactantPos]->compare(m,rl,ms);
 			//if(!reactantTemplates[reactantPos]->compare(m,rl,ms)) {
 			if(!comparisonResult){
@@ -464,7 +464,7 @@ bool DORRxnClass::tryToAdd(Molecule *m, unsigned int reactantPos) {
 //			}
 //		} else {
 //			//try to map it.
-//			ms = rl->pushNextAvailableMappingSet();
+//			MappingSet *ms = rl->pushNextAvailableMappingSet();
 //			if(!reactantTemplates[reactantPos]->compare(m,rl,ms)) {
 //				rl->popLastMappingSet();
 //				//we just pushed, then popped, so molecule has not changed...
@@ -500,7 +500,7 @@ int DORRxnClass::getCorrectedReactantCount(unsigned int reactantIndex) const
 		ReactantList *rl = reactantLists[reactantIndex];
 		int size = rl->size();
 		for (int i = 0; i < size; ++i) {
-			MappingSet *ms = rl->getMappingSetByIndex(i);
+			MappingSet *ms= rl->getMappingSetByIndex(i);
 			if (ms && ms->getNumOfMappings() > 0) {
 				Mapping *mapping = ms->get(0);
 				if (mapping && mapping->getMolecule()) {
@@ -1183,7 +1183,7 @@ bool DOR2RxnClass::tryToAdd(Molecule *m, unsigned int reactantPos) {
 			} else {}
 		} else {
 			// wasn't in the tree, so trying to push and compare
-			ms=reactantTree1->pushNextAvailableMappingSet();
+			MappingSet *ms=reactantTree1->pushNextAvailableMappingSet();
 			comparisonResult = reactantTemplates[reactantPos]->compare(m,reactantTree1,ms);
 			if(!comparisonResult) {
 			//if(!reactantTemplates[reactantPos]->compare(m,reactantTree1,ms)) {
@@ -1219,7 +1219,7 @@ bool DOR2RxnClass::tryToAdd(Molecule *m, unsigned int reactantPos) {
 			} else {}
 		} else {
 			// wasn't in the tree, so trying to push and compare
-			ms=reactantTree2->pushNextAvailableMappingSet();
+			MappingSet *ms=reactantTree2->pushNextAvailableMappingSet();
 			comparisonResult = reactantTemplates[reactantPos]->compare(m,reactantTree2,ms);
 			if(!comparisonResult){
 			//if(!reactantTemplates[reactantPos]->compare(m,reactantTree2,ms)) {
@@ -1257,7 +1257,7 @@ bool DOR2RxnClass::tryToAdd(Molecule *m, unsigned int reactantPos) {
 
 		} else {
 			//Try to map it!
-			ms = rl->pushNextAvailableMappingSet();
+			MappingSet *ms = rl->pushNextAvailableMappingSet();
 			comparisonResult = reactantTemplates[reactantPos]->compare(m,rl,ms);
 			if(!comparisonResult) {
 				//we must remove, if we did not match.  This will also remove
@@ -1300,7 +1300,7 @@ int DOR2RxnClass::getCorrectedReactantCount(unsigned int reactantIndex) const
 		ReactantList *rl = reactantLists[reactantIndex];
 		int size = rl->size();
 		for (int i = 0; i < size; ++i) {
-			MappingSet *ms = rl->getMappingSetByIndex(i);
+			MappingSet *ms= rl->getMappingSetByIndex(i);
 			if (ms && ms->getNumOfMappings() > 0) {
 				Mapping *mapping = ms->get(0);
 				if (mapping && mapping->getMolecule()) {

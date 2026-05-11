@@ -44,7 +44,7 @@ namespace NFcore
 			ReactantList **reactantLists;
 
 			ReactantList *rl;
-			MappingSet *ms;
+
 
 				// RuleMonkey buffers to avoid heap allocations
 				MappingSet **msPairBuffer;
@@ -143,7 +143,7 @@ namespace NFcore
 			ReactantList **reactantLists;
 			ReactantTree *reactantTree;
 
-			MappingSet *ms;
+
 
 
 			CompositeFunction *cf;
@@ -225,7 +225,7 @@ namespace NFcore
 			ReactantTree *reactantTree2;
 
 			// TODO: figure out if we need one of two of these
-			MappingSet *ms;
+
 
 			CompositeFunction *cf1;
 			CompositeFunction *cf2;
