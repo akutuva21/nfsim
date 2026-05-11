@@ -59,6 +59,30 @@ void NFtest_system::run()
 		throw std::runtime_error("System::getMoleculeType(0) did not return the correct MoleculeType pointer after adding second MoleculeType.");
 	}
 
+	cout << "  Testing System::getMoleculeTypeByName..." << endl;
+	// Test happy path
+	MoleculeType* retrievedMtA = sys->getMoleculeTypeByName("MolA");
+	if (retrievedMtA != mtA) {
+		throw std::runtime_error("System::getMoleculeTypeByName did not return the correct MoleculeType for 'MolA'.");
+	}
+
+	MoleculeType* retrievedMtB = sys->getMoleculeTypeByName("MolB");
+	if (retrievedMtB != mtB) {
+		throw std::runtime_error("System::getMoleculeTypeByName did not return the correct MoleculeType for 'MolB'.");
+	}
+
+	// Test error path
+	bool threw = false;
+	try {
+		sys->getMoleculeTypeByName("UnknownMol");
+	} catch (const std::runtime_error& e) {
+		threw = true;
+	}
+
+	if (!threw) {
+		throw std::runtime_error("System::getMoleculeTypeByName did not throw std::runtime_error when requested with an unknown molecule type.");
+	}
+
 	// Cleanup
 	// Note: System destructor deletes MoleculeTypes added to it
 	delete sys;
