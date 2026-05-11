@@ -131,10 +131,59 @@ void testNFstream() {
     cout << "  - testNFstream passed!" << endl;
 }
 
+void testNFstreamConstructors() {
+    cout << "  - testing NFstream constructors..." << endl;
+
+    // 1. Default constructor
+    NFstream s1;
+    // By default check_mpi() sets useFile_ = true (if not NF_MPI), so it should be openable
+    s1.open("test_nfstream_default.txt");
+    if (!s1.is_open()) {
+        cout << "    FAILED: Default constructor stream failed to open file." << endl;
+        exit(1);
+    }
+    s1.close();
+    remove("test_nfstream_default.txt");
+
+    // 2. filename, mode constructor
+    const char* filename2 = "test_nfstream_filename.txt";
+    NFstream s2(filename2, ios_base::out);
+    if (!s2.is_open()) {
+        cout << "    FAILED: NFstream(const char*, mode) failed to open file." << endl;
+        exit(1);
+    }
+    s2.close();
+    remove(filename2);
+
+    // 3. bool constructor
+    NFstream s3(false);
+    s3 << "test string mode";
+    if (s3.str() != "test string mode") {
+        cout << "    FAILED: NFstream(bool) failed to set up string stream properly." << endl;
+        exit(1);
+    }
+
+    // 4. string constructor
+    string test_name = "test_str_name";
+    NFstream s4(test_name);
+    if (s4.getStrName() != test_name) {
+        cout << "    FAILED: NFstream(string) failed to set strname_ properly." << endl;
+        exit(1);
+    }
+    s4 << "test";
+    if (s4.str() != "test") {
+        cout << "    FAILED: NFstream(string) failed to act as a string stream." << endl;
+        exit(1);
+    }
+
+    cout << "  - testNFstreamConstructors passed!" << endl;
+}
+
 void run() {
     cout << "Running NFtest_scheduler..." << endl;
     testConvertModelScanToJobs();
     testNFstream();
+    testNFstreamConstructors();
     cout << "NFtest_scheduler complete!" << endl;
 }
 
