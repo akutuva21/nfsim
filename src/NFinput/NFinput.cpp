@@ -2753,7 +2753,8 @@ bool NFinput::initReactionRules(
 				} else {
             // Check and apply matchOnce
             bool hasMatchOnce = false;
-            for (unsigned int i = 0; i < matchOnceList.size(); i++) {
+            unsigned int matchOnceListSize = matchOnceList.size();
+            for (unsigned int i = 0; i < matchOnceListSize; i++) {
                 if (matchOnceList[i]) hasMatchOnce = true;
             }
 
@@ -2763,7 +2764,7 @@ bool NFinput::initReactionRules(
                          << "Ignoring matchOnce on reaction: " << rxnName << endl;
                 } else {
                     for (unsigned int i = 0; i < r->getNumOfReactants(); i++) {
-                        if (i < matchOnceList.size()) {
+                        if (i < matchOnceListSize) {
                             r->setMatchOnce(i, matchOnceList[i]);
                         }
                     }
