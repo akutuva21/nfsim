@@ -149,7 +149,7 @@ bool NFinput::readRNFfile(map<string,string> &argMap, vector<string> &commands, 
 
 
 
-void echo(string command,System *s)
+void echo(const string& command,System *s)
 {
 	int id1=command.find("echo");
 	string message = command.substr(id1+4);
