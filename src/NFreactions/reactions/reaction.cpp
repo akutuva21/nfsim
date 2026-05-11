@@ -399,7 +399,7 @@ bool BasicRxnClass::tryToAdd(Molecule *m, unsigned int reactantPos)
 	set<int> deleteMs = m->getRxnListMappingSet(rxnIndex);
 
 	//Try to map it!
-	ms = rl->pushNextAvailableMappingSet();
+	MappingSet *ms = rl->pushNextAvailableMappingSet();
 	symmetricMappingSet.clear();
 	comparisonResult = reactantTemplates[reactantPos]->compare(m,rl,ms,false,&symmetricMappingSet);
 	if(!comparisonResult) {
