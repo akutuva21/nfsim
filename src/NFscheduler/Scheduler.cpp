@@ -286,7 +286,7 @@ vector<string>* stringToStrings(const string& fullString, const char* delim, boo
 	return newVect;
 }
 
-void findandreplace(string &source, string find, string replace) {
+void findandreplace(string &source, const string& find, const string& replace) {
 	size_t j;
 	for (;(j = source.find( find )) != source.npos;) {
 	source.replace( j, find.length(), replace );
