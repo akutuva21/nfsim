@@ -43,6 +43,7 @@ set(SUB_DIRS
     src/NFcore
     src/NFcore/reactionSelector
     src/NFcore/moleculeLists
+    src/NFtest/compositeFunction
 )
 
 # Conditionally add muParser or ExprTk to include path
