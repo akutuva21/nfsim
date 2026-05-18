@@ -752,6 +752,10 @@ string ConvergeAllData(int Rank,int Size,string Buffer) {
 				int MessageSize;
 				MPI_Recv(&MessageSize,1, MPI_INT, OtherNode, TAG_DATA, MPI_COMM_WORLD, &status);
 				if (MessageSize > 0) {
+					// Sanity check to prevent unbounded memory allocation and integer overflow
+					if (MessageSize > 500 * 1024 * 1024 || MessageSize > 2147483647 - CurrentMessageSize) {
+						throw std::runtime_error("MPI MessageSize exceeds safe allocation limits or causes overflow.");
+					}
 					char* OldMessage = CurrentMessage;
 					CurrentMessage = new char[CurrentMessageSize+MessageSize];
 					MPI_Recv(CurrentMessage,MessageSize, MPI_CHAR, OtherNode, TAG_DATA, MPI_COMM_WORLD, &status);
