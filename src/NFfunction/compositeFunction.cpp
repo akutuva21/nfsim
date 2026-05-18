@@ -229,7 +229,7 @@ void CompositeFunction::finalizeInitialization(System *s)
 	this->refLfScopes = new int[n_refLfs];
 	this->refLfValues = new double[n_refLfs];
 
-	for(unsigned int i=0; i<lfIndexValues.size(); i++) {
+	for(unsigned int i=0; i<n_refLfs; i++) {
 		this->refLfInds[i]=lfIndexValues.at(i);
 		this->refLfRefNames[i]=lfReferenceName.at(i);
 		this->refLfScopes[i] = lfScope.at(i);
