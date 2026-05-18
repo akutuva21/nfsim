@@ -361,6 +361,10 @@ int main(int argc, char *argv[])
 					NFtest_moleculeType::run();
 					foundATest=true;
 				}
+				if(test=="observable") {
+					NFtest_observable::run();
+					foundATest=true;
+				}
 				if(test=="system") {
 					NFtest_system::run();
 					foundATest=true;
