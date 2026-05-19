@@ -752,8 +752,14 @@ string ConvergeAllData(int Rank,int Size,string Buffer) {
 				int MessageSize;
 				MPI_Recv(&MessageSize,1, MPI_INT, OtherNode, TAG_DATA, MPI_COMM_WORLD, &status);
 				if (MessageSize > 0) {
+					// 🛡️ Sentinel check: validate sensible bound, and prevent integer overflow
+					if (MessageSize >= 500 * 1024 * 1024 || CurrentMessageSize > 2147483647 - MessageSize) {
+						cerr << "Error: MPI message size exceeds sensible bound or causes integer overflow." << endl;
+						MPI_Abort(MPI_COMM_WORLD, 1);
+					}
 					char* OldMessage = CurrentMessage;
-					CurrentMessage = new char[CurrentMessageSize+MessageSize];
+					// Allocate with space for a null terminator
+					CurrentMessage = new char[CurrentMessageSize+MessageSize+1];
 					MPI_Recv(CurrentMessage,MessageSize, MPI_CHAR, OtherNode, TAG_DATA, MPI_COMM_WORLD, &status);
 					if (OldMessage != NULL) {
 						for (int i=MessageSize; i < (MessageSize+CurrentMessageSize); i++) {
@@ -762,6 +768,7 @@ string ConvergeAllData(int Rank,int Size,string Buffer) {
 						delete [] OldMessage;
 					}
 					CurrentMessageSize += MessageSize;
+					CurrentMessage[CurrentMessageSize] = '\0';
 				}
 				#endif
 			}
@@ -786,8 +793,10 @@ string ConvergeAllData(int Rank,int Size,string Buffer) {
 	}
 
 	if (Rank == 0) {
-		Buffer.assign(CurrentMessage);
-		delete [] CurrentMessage;
+		if (CurrentMessage != NULL) {
+			Buffer.assign(CurrentMessage);
+			delete [] CurrentMessage;
+		}
 	}
 	return Buffer;
 }
