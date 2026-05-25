@@ -44,7 +44,6 @@
 #include  "NFtest/nauty24/test_nauty24.hh"
 #include "NFtest/system/test_system.hh"
 #include "NFtest/observable/test_observable.hh"
-#include "NFtest/compartment/test_compartment.hh"
 
 
 
