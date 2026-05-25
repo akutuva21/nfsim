@@ -172,6 +172,7 @@
 #include "NFtest/molecule/test_molecule.hh"
 #include "NFtest/input/test_input.hh"
 #include "NFtest/mappingSet/mappingSet_test.hh"
+#include "NFtest/compositeFunction/test_compositeFunction.hh"
 
 #include <iostream>
 #include <string>
@@ -369,8 +370,17 @@ int main(int argc, char *argv[])
 					NFtest_system::run();
 					foundATest=true;
 				}
+				if(test=="compartment") {
+					NFtest_compartment::run();
+					foundATest=true;
+				}
 				if(test=="mappingSet") {
 					NFtest_mappingSet::run();
+					foundATest=true;
+				}
+
+				if(test=="compositeFunction") {
+					NFtest_compositeFunction::run();
 					foundATest=true;
 				}
 
