@@ -470,8 +470,9 @@ System *initSystemFromFlags(map<string,string> argMap, bool verbose)
 			// Default global molecule limit (gml) is increased for modern RAM capacities.
 			// Use maximum 32-bit signed int by default (#53 request).
 			int globalMoleculeLimit = 2147483647;
-			if (argMap.find("gml")!=argMap.end()) {
-				string gmlRaw = argMap.find("gml")->second;
+			auto it_gml = argMap.find("gml");
+			if (it_gml!=argMap.end()) {
+				string gmlRaw = it_gml->second;
 				string gmlLower = gmlRaw;
 				size_t gmlLen = gmlLower.size();
 				for (unsigned int i = 0; i < gmlLen; ++i) {
