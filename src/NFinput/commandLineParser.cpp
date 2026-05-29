@@ -181,7 +181,7 @@ bool NFinput::parseSequence(string numString, vector <double> &outputTimes)
 
 
 
-bool NFinput::createSystemDumper(string paramStr, System *s, bool verbose)
+bool NFinput::createSystemDumper(const string& paramStr, System *s, bool verbose)
 {
 	if(verbose) cout<<"Parsing system dump flag: "<<paramStr<<"\n";
 
