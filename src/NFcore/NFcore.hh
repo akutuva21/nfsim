@@ -113,11 +113,12 @@ namespace NFcore
 	class LocalFunctionException: public exception
 	{
 	public:
-		void setType1_Mol(vector <MoleculeType *>* type1_Mol){
+		void setType1_Mol(MoleculeType ** type1_Mol, int n_type1_Mol){
+			this->n_type1_Mol = n_type1_Mol;
 			this->type1_Mol = type1_Mol;
 		}
 
-		vector<MoleculeType*>* getType1_Mol() const{
+		MoleculeType** getType1_Mol() const{
 			return type1_Mol;
 		}
 
@@ -129,13 +130,18 @@ namespace NFcore
 			return index;
 		}
 
+		int get_n_type1_Mol() const{
+			return n_type1_Mol;
+		}
+
 		virtual const char* what() const throw()
   		{
     		return "Species scope parameter exception";
   		}
 
   	private:
-		vector<MoleculeType*>* type1_Mol;
+		MoleculeType** type1_Mol;
+		int n_type1_Mol;
 		int index;
 
 
@@ -255,6 +261,13 @@ namespace NFcore
 
 			int getMolObsCount(int moleculeTypeIndex, int observableIndex) const;
 			Observable * getObservableByName(const string& obsName);
+			/* Index-based access to the ordered output observable list. Allows
+			 * in-process / library callers to enumerate observables and read
+			 * their counts without going through the file/stream output path.
+			 * Both methods are pure read access into the existing obsToOutput
+			 * vector and do not change simulation behavior. */
+			int getNumOfObsForOutput() const { return static_cast<int>(obsToOutput.size()); }
+			Observable * getObsForOutput(int index) const { return obsToOutput.at(index); }
 			double getAverageGroupValue(string groupName, int valIndex);
 			
 			/* Compartment management for cBNGL */
@@ -611,6 +624,8 @@ namespace NFcore
 			double a_tot;        /*< the sum of all a's (propensities) of all reactions */
 			double current_time; /*< keeps track of the simulation time */
 			ReactionClass * nextReaction;  /*< keeps track of the next reaction to fire */
+			bool pendingStepEventValid = false; /*< cached waiting-time draw for stepTo() */
+			double pendingStepEventTime = 0.0; /*< absolute event time for cached stepTo() draw */
 			// max CPU time for simulation
 			double max_cpu_time;
 
@@ -620,6 +635,10 @@ namespace NFcore
 			double recompute_A_tot();
 			double getNextRxn();
 			double getMaxCpuTime() const { return max_cpu_time; };
+			void invalidateStepToCache() {
+				pendingStepEventValid = false;
+				pendingStepEventTime = 0.0;
+			}
 
 
 			///////////////////////////////////////////////////////////////////////////

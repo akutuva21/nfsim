@@ -193,7 +193,7 @@ namespace NFcore {
 			void fileUpdate();
 			void fileUpdate(double counterOverride);
 			double getCounterValue();
-			void loadParamFile(string filePath);
+			void loadParamFile(const string& filePath);
 			void enableFileDependency(string FilePath, string method="linear");
 			void enableInlineDependency(const vector<double> &xs, const vector<double> &ys, string method="linear");
 			void setInterpolationMethod(string method);
@@ -370,12 +370,13 @@ namespace NFcore {
 
 			//@todo : change these to arrays from vectors!!!
 
-			vector <MoleculeType *> typeI_mol;
-			vector <int> typeI_localFunctionIndex;
+			int n_typeImolecules;
+			MoleculeType ** typeI_mol;
+			int * typeI_localFunctionIndex;
 			int n_typeIImolecules;
 			MoleculeType ** typeII_mol;
 			//vector <MoleculeType *> typeII_mol;
-			vector <int> typeII_localFunctionIndex;
+			int * typeII_localFunctionIndex;
 
 
 	};
@@ -416,7 +417,7 @@ namespace NFcore {
 				// AS-2021
 				void fileUpdate();
 				double getCounterValue();
-				void loadParamFile(string filePath);
+				void loadParamFile(const string& filePath);
 				void enableFileDependency(string FilePath, string method="linear");
 				void enableInlineDependency(const vector<double> &xs, const vector<double> &ys, string method="linear");
 				void setInterpolationMethod(string method);
