@@ -34,6 +34,7 @@ set(SUB_DIRS
     src/NFtest/nauty24
     src/NFtest/system
     src/NFtest/observable
+    src/NFtest/reactionClass
     src/NFtest/mapping
     src/NFtest/molecule
     src/NFtest/moleculeType
