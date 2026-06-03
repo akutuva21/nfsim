@@ -33,6 +33,7 @@ set(SUB_DIRS
     src/NFtest/reactionClass
     src/NFtest/observable
     src/NFtest/molecule
+    src/NFtest/reactantTree
     src/NFscheduler 
     src/NFreactions/transformations 
     src/NFreactions/reactions 

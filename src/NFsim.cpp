@@ -175,6 +175,7 @@
 #include "NFtest/compartment/test_compartment.hh"
 #include "NFtest/input/test_input.hh"
 #include "NFtest/mappingSet/mappingSet_test.hh"
+#include "NFtest/reactantTree/test_reactantTree.hh"
 
 #include <iostream>
 #include <string>
@@ -396,6 +397,10 @@ int runNFsimMain(int argc, char *argv[])
 				}
 				if(test=="mappingSet") {
 					NFtest_mappingSet::run();
+					foundATest=true;
+				}
+				if(test=="reactantTree") {
+					NFtest_reactantTree::run();
 					foundATest=true;
 				}
 
