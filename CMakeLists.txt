@@ -41,6 +41,7 @@ set(SUB_DIRS
     src/NFtest/moleculeType
     src/NFtest/complex
     src/NFtest/templateMolecule
+    src/NFtest/reactantTree
     src/NFtest/mappingSet
     src/NFscheduler
     src/NFreactions/transformations
