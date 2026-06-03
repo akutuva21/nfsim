@@ -169,6 +169,105 @@ void NFtest_transformations::run()
 	ts2->finalize();
 	delete ts2;
 
+
+	// Test TransformationSet::checkMolecularity for unimolecular unbinding
+	{
+		TemplateMolecule *tmA = new TemplateMolecule(molX);
+		TemplateMolecule *tmB = new TemplateMolecule(molX);
+		tmA->addBond("a", tmB, "a");
+		tmB->addBond("a", tmA, "a");
+
+		vector<TemplateMolecule*> reactantsMol;
+		reactantsMol.push_back(tmA);
+		TransformationSet *tsMol = new TransformationSet(reactantsMol);
+		tsMol->addUnbindingTransform(tmA, "a", tmB, "a");
+		tsMol->setComplexBookkeeping(true);
+		tsMol->setNumProductPatterns(2);
+		tsMol->finalize();
+
+		// Create molecules to map
+		Molecule *molA1 = molX->genDefaultMolecule();
+		Molecule *molB1 = molX->genDefaultMolecule();
+		Molecule::bind(molA1, 0, molB1, 0); // "a" is index 0
+
+
+		MappingSet *msMol = tsMol->generateBlankMappingSet(0, 0);
+		msMol->get(0)->setMolecule(molA1); // Unbinding transform mapping
+
+		MappingSet* mappingSets[1];
+		mappingSets[0] = msMol;
+
+		// Case 1: breaking the bond separates them into 2 complexes
+		if (!tsMol->checkMolecularity(mappingSets)) {
+			throw runtime_error("checkMolecularity failed for unimolecular valid unbinding");
+		}
+
+
+		delete msMol;
+		delete tsMol;
+
+		molX->removeMoleculeFromRunningSystem(molA1);
+		molX->removeMoleculeFromRunningSystem(molB1);
+	}
+
+	{
+		// Create molecule type with 2 binding sites
+		vector<string> ringComps;
+		ringComps.push_back("s1");
+		ringComps.push_back("s2");
+		vector<string> ringStates;
+		ringStates.push_back("No State");
+		ringStates.push_back("No State");
+		vector<vector<string> > ringAllowedStates(2);
+		MoleculeType *molRing = new MoleculeType("RingMol", ringComps, ringStates, ringAllowedStates, s);
+		s->addMoleculeType(molRing);
+
+		TemplateMolecule *tmA = new TemplateMolecule(molRing);
+		TemplateMolecule *tmB = new TemplateMolecule(molRing);
+		tmA->addBond("s1", tmB, "s1");
+		tmB->addBond("s1", tmA, "s1");
+
+		vector<TemplateMolecule*> reactantsMol;
+		reactantsMol.push_back(tmA);
+		TransformationSet *tsMol = new TransformationSet(reactantsMol);
+		tsMol->addUnbindingTransform(tmA, "s1", tmB, "s1");
+		tsMol->setComplexBookkeeping(true);
+		tsMol->setNumProductPatterns(2);
+		tsMol->finalize();
+
+		// Create 3 molecules
+		Molecule *mA = molRing->genDefaultMolecule();
+		Molecule *mB = molRing->genDefaultMolecule();
+		Molecule *mC = molRing->genDefaultMolecule();
+
+		// Ring: A-s1 -> B-s1, B-s2 -> C-s2, C-s1 -> A-s2
+		Molecule::bind(mA, 0, mB, 0); // mA(s1) - mB(s1)
+
+
+		Molecule::bind(mB, 1, mC, 1); // mB(s2) - mC(s2)
+
+
+		Molecule::bind(mC, 0, mA, 1); // mC(s1) - mA(s2)
+
+
+		MappingSet *msMol = tsMol->generateBlankMappingSet(0, 0);
+		msMol->get(0)->setMolecule(mA); // Unbinding transform mapping
+
+		MappingSet* mappingSets[1];
+		mappingSets[0] = msMol;
+
+		if (tsMol->checkMolecularity(mappingSets)) {
+			throw runtime_error("checkMolecularity failed for unimolecular invalid unbinding (ring)");
+		}
+
+		delete msMol;
+		delete tsMol;
+
+		molRing->removeMoleculeFromRunningSystem(mA);
+		molRing->removeMoleculeFromRunningSystem(mB);
+		molRing->removeMoleculeFromRunningSystem(mC);
+	}
+
 	cout << "  TransformationSet basic tests passed!" << endl;
 
 	cout << "  Testing SpeciesCreator..." << endl;
