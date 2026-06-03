@@ -1,8 +1,15 @@
 #include "test_reactantTree.hh"
+#include "../../NFreactions/transformations/transformation.hh"
+#include "../../NFreactions/transformations/transformationSet.hh"
+#include "../../NFcore/NFcore.hh"
 #include <iostream>
 #include <cstdlib>
+#include <vector>
+
+#ifndef _WIN32
 #include <unistd.h>
 #include <sys/wait.h>
+#endif
 
 using namespace std;
 using namespace NFcore;
@@ -12,11 +19,14 @@ namespace NFtest_reactantTree {
 void test_remove_from_empty_tree() {
     cout << "  - testing ReactantTree::removeMappingSet empty tree exit(1)... " << flush;
 
+#ifndef _WIN32
     pid_t pid = fork();
     if (pid == 0) {
         // Child process
         // Redirect cerr to /dev/null to suppress the expected error message
-        freopen("/dev/null", "w", stderr);
+        if (freopen("/dev/null", "w", stderr) == NULL) {
+            // handle error if needed, but not strictly required for test
+        }
 
         System* s = new System("test_sys");
         vector<string> compNames;
@@ -51,6 +61,9 @@ void test_remove_from_empty_tree() {
         cerr << "fork() failed!" << endl;
         exit(1);
     }
+#else
+    cout << "skipped (unsupported on Windows)." << endl;
+#endif
 }
 
 void run() {
