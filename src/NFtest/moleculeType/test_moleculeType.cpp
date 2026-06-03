@@ -115,6 +115,36 @@ void NFtest_moleculeType::run()
 
 	cout << "  MoleculeType::printDetails tests passed!" << endl;
 
+	cout << "  Testing MoleculeType::isIntegerComponent..." << endl;
+
+	if (!mt2->isIntegerComponent("siteInt")) {
+		throw runtime_error("isIntegerComponent did not return true for 'siteInt'");
+	}
+	if (mt2->isIntegerComponent("siteA")) {
+		throw runtime_error("isIntegerComponent did not return false for 'siteA'");
+	}
+
+	bool threwInvalidSite = false;
+	try {
+		mt2->isIntegerComponent("invalidSite");
+	} catch (const std::runtime_error& e) {
+		threwInvalidSite = true;
+	}
+	if (!threwInvalidSite) {
+		throw runtime_error("isIntegerComponent did not throw runtime_error for invalid site name 'invalidSite'");
+	}
+
+	bool threwInvalidIndex = false;
+	try {
+		mt2->isIntegerComponent(999);
+	} catch (const std::runtime_error& e) {
+		threwInvalidIndex = true;
+	}
+	if (!threwInvalidIndex) {
+		throw runtime_error("isIntegerComponent did not throw runtime_error for invalid site index 999");
+	}
+
+	cout << "  MoleculeType::isIntegerComponent tests passed!" << endl;
 
 	cout << "NFcore::MoleculeType tests completed successfully." << endl;
 

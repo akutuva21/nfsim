@@ -245,7 +245,7 @@ bool MoleculeType::isIntegerComponent(const string& cName) const {
 	cerr<<"!!! error !!! cannot find site name "<< cName << " in MoleculeType: "<<name;
 	cerr<<"in function isIntegerComponent(string cName).  "<<endl;
 	this->printDetails();
-	exit(1);
+	throw std::runtime_error("Cannot find site name " + cName + " in MoleculeType: " + name);
 }
 bool MoleculeType::isIntegerComponent(int cIndex) const {
 	if(cIndex>=0 && cIndex<numOfComponents) {
@@ -254,7 +254,7 @@ bool MoleculeType::isIntegerComponent(int cIndex) const {
 		cerr<<"!!! error !!! "<< cIndex << " is not a valid component index in MoleculeType: "<<name;
 		cerr<<"in function isIntegerComponent(int cIndex).  "<<endl;
 		this->printDetails();
-		exit(1);
+		throw std::runtime_error("Invalid component index in MoleculeType: " + name);
 	}
 }
 
