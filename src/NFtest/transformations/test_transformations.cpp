@@ -221,5 +221,36 @@ void NFtest_transformations::run()
 
 	cout << "  SpeciesCreator tests passed!" << endl;
 
+	cout << "  Testing AddSpeciesTransform..." << endl;
+
+    // Use the actual SpeciesCreator since we know it works and we already have it set up
+    // Create another identical SpeciesCreator
+    SpeciesCreator *sc2 = new SpeciesCreator(productMoleculeTypes, stateInformation, bindingSiteInformation);
+
+    AddSpeciesTransform *ast = new AddSpeciesTransform(sc2);
+
+    int initialCountX = molX->getMoleculeCount();
+    int initialCountY = molY->getMoleculeCount();
+
+    // Test normal apply
+    ast->apply(NULL, NULL);
+    if (molX->getMoleculeCount() != initialCountX + 1) throw runtime_error("Expected count of X molecules to increase by 1 after AddSpeciesTransform::apply");
+    if (molY->getMoleculeCount() != initialCountY + 1) throw runtime_error("Expected count of Y molecules to increase by 1 after AddSpeciesTransform::apply");
+
+    // Test apply with log string
+    string logstr_ast = "initial";
+    ast->apply(NULL, NULL, logstr_ast);
+    if (molX->getMoleculeCount() != initialCountX + 2) throw runtime_error("Expected count of X molecules to increase by 2 after AddSpeciesTransform::apply with logstr");
+    if (molY->getMoleculeCount() != initialCountY + 2) throw runtime_error("Expected count of Y molecules to increase by 2 after AddSpeciesTransform::apply with logstr");
+
+    // SpeciesCreator::create(logstr) generates the log, it writes "AddSpecies" because it's generating species. Let's verify what it writes.
+    // In fact we already tested SpeciesCreator::create(logstr) log earlier and asserted that it writes "AddSpecies". So we can assert it here as well.
+    if (logstr_ast.find("AddSpecies") == string::npos) {
+        throw runtime_error("Log string should contain AddSpecies after AddSpeciesTransform::apply");
+    }
+
+    delete ast;
+    cout << "  AddSpeciesTransform tests passed!" << endl;
+
 	cout << "Transformations tests completed successfully." << endl;
 }
