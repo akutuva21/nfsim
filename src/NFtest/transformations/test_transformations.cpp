@@ -8,6 +8,7 @@
 #include <stdexcept>
 #include <vector>
 #include <string>
+#include <sstream>
 
 using namespace std;
 using namespace NFcore;
@@ -220,6 +221,23 @@ void NFtest_transformations::run()
     // Do not delete s here to avoid segmentation fault; it appears molecules hold references and System destructor cascades deletes.
 
 	cout << "  SpeciesCreator tests passed!" << endl;
+
+
+	cout << "  Testing RemoveMoleculeTransform..." << endl;
+	{
+		RemoveMoleculeTransform rmt(0);
+		std::stringstream buffer;
+		std::streambuf * old = std::cout.rdbuf(buffer.rdbuf());
+		rmt.apply(NULL, NULL);
+		string logstr = "";
+		rmt.apply(NULL, NULL, logstr);
+		std::cout.rdbuf(old);
+		string text = buffer.str();
+		if (text.find("Warning: calling apply from a RemoveMoleculeTransform") == string::npos) {
+			throw runtime_error("RemoveMoleculeTransform::apply did not print expected warning");
+		}
+	}
+	cout << "  RemoveMoleculeTransform tests passed!" << endl;
 
 	cout << "Transformations tests completed successfully." << endl;
 }
