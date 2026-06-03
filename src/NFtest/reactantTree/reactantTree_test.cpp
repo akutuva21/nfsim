@@ -3,8 +3,11 @@
 #include "../../NFreactions/transformations/transformationSet.hh"
 #include <iostream>
 #include <vector>
+
+#ifndef _WIN32
 #include <unistd.h>
 #include <sys/wait.h>
+#endif
 
 using namespace std;
 using namespace NFcore;
@@ -18,6 +21,7 @@ void NFtest_reactantTree::run()
     // Test for exit(1) on removeMappingSet from empty ReactantTree
     cout << "  Testing removeMappingSet on empty tree (expecting exit(1))..." << endl;
 
+#ifndef _WIN32
     // We will fork a process to test that it calls exit(1)
     pid_t pid = fork();
     if (pid == 0) {
@@ -61,6 +65,9 @@ void NFtest_reactantTree::run()
         cerr << "Fork failed!" << endl;
         failCount++;
     }
+#else
+    cout << "    Skipping exit(1) test on Windows as fork() is not available." << endl;
+#endif
 
     if (failCount == 0) {
         cout << "All ReactantTree tests passed successfully!" << endl;
