@@ -372,7 +372,7 @@ void createFullSymMaps(
 //saves all possible names for all possible components
 void assembleFullSymmetryList(
 		vector <vector <vector <component> > > &symmetries, //for output
-		vector <string> &moleculeIds,    //also for output
+		std::unordered_map<string, int> &moleculeIds, //also for output
 		map<string,component> &symComps, //the input of symmetric components
 		bool isRxnCenter  //set to true if you are looking at reaction centers
 		)
@@ -392,13 +392,13 @@ void assembleFullSymmetryList(
 			string thisMoleculeId = id.substr(0,length);
 			int moleculeIndex = -1;
 
-			for(unsigned int i=0; i<moleculeIds.size(); i++) {
-				if(moleculeIds.at(i).compare(thisMoleculeId)==0)
-					moleculeIndex = i; break;
+			auto it_mol = moleculeIds.find(thisMoleculeId);
+			if (it_mol != moleculeIds.end()) {
+				moleculeIndex = it_mol->second;
 			}
 			if(moleculeIndex==-1) {
 				moleculeIndex = moleculeIds.size();
-				moleculeIds.push_back(thisMoleculeId);
+				moleculeIds[thisMoleculeId] = moleculeIndex;
 
 				//Create the vector to store all of our potential permutations
 				vector <vector <component> > v;
@@ -430,7 +430,7 @@ void assembleFullSymmetryList(
 //saves all possible names for all possible components
 void assembleFullSymmetryListOnRxnCenter(
 		vector <vector <vector <component> > > &symmetries, //for output
-		vector <string> &moleculeIds,    //also for output
+		std::unordered_map<string, int> &moleculeIds, //also for output
 		map<string,component> &symComps //the input of symmetric components
 		)
 {
@@ -449,14 +449,13 @@ void assembleFullSymmetryListOnRxnCenter(
 			string thisMoleculeId = id.substr(0,length);
 			int moleculeIndex = -1;
 
-			for(unsigned int i=0; i<moleculeIds.size(); i++) {
-				if(moleculeIds.at(i).compare(thisMoleculeId)==0) {
-					moleculeIndex = i; break;
-				}
+			auto it_mol = moleculeIds.find(thisMoleculeId);
+			if (it_mol != moleculeIds.end()) {
+				moleculeIndex = it_mol->second;
 			}
 			if(moleculeIndex==-1) {
 				moleculeIndex = moleculeIds.size();
-				moleculeIds.push_back(thisMoleculeId);
+				moleculeIds[thisMoleculeId] = moleculeIndex;
 
 				//Create the vector to store all of our potential permutations
 				vector <vector <component> > v;
@@ -528,7 +527,7 @@ bool isMoleculePermuationValid(
 //
 void assembleOffRxnCenterSymClasses(
 		vector <vector <vector <string> > > &offRxnCenterSymClasses, //the output
-		vector <string> &moleculeIds, //input list of molecule names
+		std::unordered_map<string, int> &moleculeIds, //input list of molecule names
 		map<string,component> &symComps)  //input list of symmetric components off the rxn center
 {
 	offRxnCenterSymClasses.clear();
@@ -550,12 +549,9 @@ void assembleOffRxnCenterSymClasses(
 		string thisMoleculeId = id.substr(0,length);
 
 		int mIndex = -1;
-		for(unsigned int i=0; i<moleculeIds.size(); i++) {
-			if(thisMoleculeId.compare(moleculeIds.at(i))==0) {
-				//cout<<" found at index: "<<i<<endl;
-				mIndex=i;
-				break;
-			}
+		auto it_mol = moleculeIds.find(thisMoleculeId);
+		if (it_mol != moleculeIds.end()) {
+			mIndex = it_mol->second;
 		}
 		if(mIndex==-1) { cout<<"ERROR in parseSymRxns.cpp - in assebmly of off rxn center sym classes"<<endl; exit(1); }
 
@@ -625,8 +621,7 @@ void assembleOffRxnCenterSymClasses(
 	///// Output for debugging
 	//	cout<<endl<<endl;
 	//	for(unsigned int k=0; k<offRxnCenterSymClasses.size(); k++) {
-	//		cout<<"Molecule: "<<moleculeIds.at(k)<<endl;
-	//		for(unsigned int j=0; j<offRxnCenterSymClasses.at(k).size(); j++) {
+		//		for(unsigned int j=0; j<offRxnCenterSymClasses.at(k).size(); j++) {
 	//			cout<<"   ** Sym Class "<<j<<endl;
 	//			for(unsigned int i=0; i<offRxnCenterSymClasses.at(k).at(j).size(); i++) {
 	//				cout<<"      -Component: "<<offRxnCenterSymClasses.at(k).at(j).at(i)<<endl;
@@ -662,15 +657,14 @@ bool NFinput::generateRxnPermutations(vector<map<string,component> > &permutatio
 	if(verbose) cout<<"\t\t\tGenerating symmetric permutations..."<<endl;
 
 	vector <vector <vector <component> > > symmetries;
-	vector <string> moleculeIds;
+	std::unordered_map<string, int> moleculeIds;
 
 	//Assemble the list of possible components for each symmetric class on a reaction center
 	assembleFullSymmetryListOnRxnCenter(symmetries,moleculeIds,symRxnCenter);
 
 	//Some more output for debugging
 	//for(unsigned int i=0; i<symmetries.size(); i++) {
-	//	cout<<">>>> "<<moleculeIds.at(i)<<endl;
-	//	vector <component> symRxnCenterComp = symmetries.at(i).at(0);
+		//	vector <component> symRxnCenterComp = symmetries.at(i).at(0);
 	//	cout<<"  ** Rxn Center Components: "<<endl;
 	//	for(unsigned int k=0; k<symRxnCenterComp.size(); k++) {
 	//		cout<<"      -(" <<symRxnCenterComp.at(k).uniqueId<<"-"<<symRxnCenterComp.at(k).name<<")  "<<symRxnCenterComp.at(k).symPermutationName<<endl;

@@ -4,6 +4,7 @@
 #include <iostream>
 #include <map>
 #include <vector>
+#include <unordered_map>
 #include <stdio.h>
 // JUSTIN -- added to resolve problem finding INT_MAX
 #include <limits.h>
