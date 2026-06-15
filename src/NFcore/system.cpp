@@ -815,22 +815,22 @@ void System::prepareForSimulation()
 	if (this->getReactionTrackingStatus()) {
 		// start the JSON and write some info about the simulation
 		this->getReactionFileStream() <<
-		  "{" << endl <<
-		  "  \"simulation\": {" << endl <<
-		  "    \"info\": {" << endl <<
-		  "      \"name\": \"" << this->getName() << "\"," << endl <<
-		  "      \"global_molecule_limit\": " << to_string(this->getGlobalMoleculeLimit()) << "," << endl <<
-		//   "      \"obs_count\": \"" << to_string(this->getMolObsCount()) << "\"," << endl <<
-		  "      \"number_of_molecule_types\": " << to_string(this->getNumOfMoleculeTypes()) << "," << endl <<
-		  "      \"number_of_molecules\": " << to_string(this->getNumOfMolecules()) << endl <<
-		  "    }," << endl <<
-		  "    \"molecule_types\": [" << endl;
+		  "{\n" <<
+		  "  \"simulation\": {\n" <<
+		  "    \"info\": {\n" <<
+		  "      \"name\": \"" << this->getName() << "\",\n" <<
+		  "      \"global_molecule_limit\": " << to_string(this->getGlobalMoleculeLimit()) << ",\n" <<
+		//   "      \"obs_count\": \"" << to_string(this->getMolObsCount()) << "\",\n" <<
+		  "      \"number_of_molecule_types\": " << to_string(this->getNumOfMoleculeTypes()) << ",\n" <<
+		  "      \"number_of_molecules\": " << to_string(this->getNumOfMolecules()) << "\n" <<
+		  "    },\n" <<
+		  "    \"molecule_types\": [\n";
 		
 		// prepare all molecule types
 		for(unsigned int mt=0; mt<allMoleculeTypes.size(); mt++) {
 		    this->getReactionFileStream() <<
-				"      {" << endl <<
-				"        \"name\": \"" + allMoleculeTypes.at(mt)->getName() + "\"," << endl <<
+				"      {\n" <<
+				"        \"name\": \"" + allMoleculeTypes.at(mt)->getName() + "\",\n" <<
 				"        \"typeID\": " + to_string(allMoleculeTypes.at(mt)->getTypeID()) + ",\n" <<
 				"        \"components\": [";
 			//deal with components
@@ -877,13 +877,13 @@ void System::prepareForSimulation()
 		}
 		// close molecule types
 		this->getReactionFileStream() <<
-		  	"    ]," << endl;
+			"    ],\n";
 		
 		this->getReactionFileStream() << this->getSpeciesLog();
 		
 		// close initial state and open firings for later
 		this->getReactionFileStream() <<
-		  "    \"firings\": [" << endl;
+		  "    \"firings\": [\n";
 	}
 }
 
@@ -1140,9 +1140,9 @@ double System::sim(double duration, long int sampleTimes, bool verbose)
 	// level and finally the top level
 	if (this->getReactionTrackingStatus()) {
 		this->getReactionFileStream() <<
-		"\n    ]" << endl <<
-        "  }" << endl <<
-		"}" << endl;
+		"\n    ]\n" <<
+        "  }\n" <<
+		"}\n";
 	}
 	cout.unsetf(ios::scientific);
 	return current_time;
