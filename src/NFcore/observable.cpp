@@ -49,7 +49,7 @@ void Observable::add()
 void Observable::add( int n_matches )
 {
 	//debug
-	//cout << "Observable::add( " << n_matches << " )" << endl;
+	//cout << "Observable::add( " << n_matches << " )" << "\n";
 
 	// First, we add to our observable count
 	count += n_matches;
@@ -78,7 +78,7 @@ void Observable::subtract()
 {
 	if(count==0){
 		cerr << "Error in observable count!! Removing from an empty observable!"
-		     << "Observable named: " << obsName << endl;
+		     << "Observable named: " << obsName << "\n";
 		exit(1);
 	}
 
@@ -97,12 +97,12 @@ void Observable::subtract()
 void Observable::subtract( int n_matches )
 {
 	//debug
-	//cout << "Observable::subtract( " << n_matches << " )" << endl;
+	//cout << "Observable::subtract( " << n_matches << " )" << "\n";
 
 	if (count - n_matches < 0)
 	{
 		cerr << "Error in observable count!! Removing " << n_matches << " matches will result in a negative match count!"
-		     << "Observable named: " << obsName << endl;
+		     << "Observable named: " << obsName << "\n";
 		exit(1);
 	}
 
@@ -153,8 +153,8 @@ void Observable::addReferenceToMyself(string referenceName, mu::Parser *p)
 }
 void Observable::addDependentRxn(ReactionClass *r)
 {
-	//cout<<"Observable: "<<this->obsName<<" adding dependent rxn: "<<r->getName()<<endl;
-	//cout<<"n dependent rxns: "<<n_dependentRxns<<endl;
+	//cout<<"Observable: "<<this->obsName<<" adding dependent rxn: "<<r->getName()<< "\n";
+	//cout<<"n dependent rxns: "<<n_dependentRxns<< "\n";
 	ReactionClass ** newDepRxns = new ReactionClass * [n_dependentRxns+1];
 	for(int i=0; i<n_dependentRxns; i++) {
 		newDepRxns[i] = dependentRxns[i];
@@ -200,7 +200,7 @@ MoleculesObservable::MoleculesObservable(string name, vector <TemplateMolecule *
 
 	this->type=Observable::MOLECULES;
 
-//	cout<<" creating observable "<< name <<endl;
+//	cout<<" creating observable "<< name << "\n";
 //	if(this->getName()=="CbpTot")
 //	{
 //		vector <TemplateMolecule *> tms;
@@ -214,7 +214,7 @@ MoleculesObservable::MoleculesObservable(string name, vector <TemplateMolecule *
 
 	//tmList.at(0)->printDetails(cout);
 	//tmList.at(0)->printPattern(cout);
-	//cout<<"-------------\n"<<endl;
+	//cout<<"-------------\n"<< "\n";
 
 }
 
@@ -320,28 +320,28 @@ Observable * MoleculesObservable::clone() {
 int MoleculesObservable::isObservable(Molecule *m) const
 {
 	// DEBUG code
-	//cout << "MoleculesObservable::isObservable( " << m->getUniqueID() << " )" << endl;
+	//cout << "MoleculesObservable::isObservable( " << m->getUniqueID() << " )" << "\n";
 	//m->printDetails();
-	//cout << "observable name: " << obsName << endl;
-	//cout << "number of templates: " << n_templates << endl;
+	//cout << "observable name: " << obsName << "\n";
+	//cout << "number of templates: " << n_templates << "\n";
 
 	int matches = 0;
 	for(int t=0; t<n_templates; t++) {
-		//cout << "moleculeType: " << (templateMolecules[t]->getMoleculeTypeName()) << endl;
-		//cout << "connected to: " << (templateMolecules[t]->getN_connectedTo()) << endl;
+		//cout << "moleculeType: " << (templateMolecules[t]->getMoleculeTypeName()) << "\n";
+		//cout << "connected to: " << (templateMolecules[t]->getN_connectedTo()) << "\n";
 		//templateMolecules[t]->printDetails();
 		// try to get match counts, rather than just a boolean
-		//cout<<endl<<endl<<endl;
-		//cout<<"starting!"<<endl;
+		//cout<< "\n"<< "\n"<< "\n";
+		//cout<<"starting!"<< "\n";
 
 		if ( templateMolecules[t]->compare(m) ) {
-			//cout<<"  adding one"<<endl;
+			//cout<<"  adding one"<< "\n";
 			matches += m->getPopulation();
 			//return 1;
 		}
-		//else { cout<<"  nothing."<<endl; }
+		//else { cout<<"  nothing."<< "\n"; }
 	}
-	//cout << "total_matches: " << matches << endl;
+	//cout << "total_matches: " << matches << "\n";
 	return matches;
 }
 
@@ -462,7 +462,7 @@ SpeciesObservable::~SpeciesObservable()
 //observables are generally only cloned in this way for local functions
 Observable * SpeciesObservable::clone() {
 	vector <TemplateMolecule *> tmList;
-	cout<<"in clone species observable, this is not yet updated to handle stoch observables.  fix me."<<endl;
+	cout<<"in clone species observable, this is not yet updated to handle stoch observables.  fix me."<< "\n";
 	exit(1);
 	for(int t=0; t<n_templates; t++)
 		tmList.push_back(templateMolecules[t]);
@@ -471,8 +471,8 @@ Observable * SpeciesObservable::clone() {
 
 int SpeciesObservable::isObservable(Molecule *m) const
 {
-	cerr<<"Comparing a Species observable '"<<obsName<<"' to a molecule!"<<endl;
-	cerr<<"You can only compare Species observable to a complexes!  Quitting."<<endl;
+	cerr<<"Comparing a Species observable '"<<obsName<<"' to a molecule!"<< "\n";
+	cerr<<"You can only compare Species observable to a complexes!  Quitting."<< "\n";
 	exit(1);
 
 }
