@@ -105,7 +105,6 @@ System * NFinput::initializeFromXML(
 		TiXmlElement *pListOfParameters = pModel->FirstChildElement("ListOfParameters");
 		if(!pListOfParameters) { cout<<"\tNo 'ListOfParameters' tag found.  Quitting."; delete s; return NULL; }
 		TiXmlElement *pListOfFunctions = pModel->FirstChildElement("ListOfFunctions");
-		//(we do not enforce that functions must exist... yet)  if(!pListOfFunctions) { cout<<"\tNo 'ListOfParameters' tag found.  Quitting."; delete s; return NULL; }
 		TiXmlElement *pListOfMoleculeTypes = pListOfParameters->NextSiblingElement("ListOfMoleculeTypes");
 		if(!pListOfMoleculeTypes) { cout<<"\tNo 'ListOfMoleculeTypes' tag found.  Quitting."; delete s; return NULL; }
 		// we need to parse if we have compartments
@@ -463,7 +462,6 @@ bool NFinput::initMoleculeTypes(
 									unsigned int lastIndex = identicalComponents.at(is).size();
 									std::stringstream lastIndexStream; lastIndexStream << lastIndex+1;
 									num = lastIndexStream.str();
-									//cout<<"identified num = "<<num<<endl;
 									newCompName = compName+num;
 									identicalComponents.at(is).push_back(newCompName);
 									matchedSiteName = true;
@@ -478,7 +476,6 @@ bool NFinput::initMoleculeTypes(
 								identicalComponents.push_back(v);
 							}
 							compName = newCompName;
-							//cout<<"giving name: "<<compName<<endl;
 							break;
 						}
 					}
@@ -549,7 +546,6 @@ bool NFinput::initMoleculeTypes(
 								string aState = pAlStates->Attribute("id");
 								if(allowedStates.find(typeName+"_"+compName+"_"+aState)!=allowedStates.end()) continue;
 								allowedStates[typeName+"_"+compName+"_"+aState] = allowedStateCount;
-								//cout<<"\nadding allowed state: "<<typeName+"_"+compName+"_"+aState<<" to be "<<allowedStateCount;
 								allowedStateCount++;
 								possibleStateNames.push_back(aState);
 								if(verbose) cout<<"~"<<aState;
@@ -637,17 +633,13 @@ bool NFinput::initMoleculeTypes(
 				compLabels.at(firstSymSiteToAppend.at(k)) = compLabels.at(firstSymSiteToAppend.at(k))+"1";
 
 				string oldKeyStart = typeName+"_"+originalCompLabel+"_";
-				//cout<<":::"<<typeName+"_"+originalCompLabel+"1_"<<endl;
 				map<string,int>::iterator it;
 				for ( it=allowedStates.begin() ; it != allowedStates.end(); it++ ) {
 					string mappedKey = (*it).first;
 					if(mappedKey.size()<=oldKeyStart.size()) continue;
-					//cout<<mappedKey.substr(0,50)<<"  "<<mappedKey.substr(0,oldKeyStart.size())<<endl;
 
 					if(mappedKey.substr(0,oldKeyStart.size())==oldKeyStart) {
-						//cout<<"Found!! :"<<mappedKey.substr(0,oldKeyStart.size())<<endl;
 						allowedStates[typeName+"_"+originalCompLabel+"1_"+mappedKey.substr(oldKeyStart.size())] = (*it).second;
-						//cout<<mappedKey.substr(oldKeyStart.size())<<endl;
 					}
 				}
 			}
@@ -902,11 +894,9 @@ static bool processSingleSpecies(
 						isIntegerComp = mt->isIntegerComponent( compIndex );
 					*/
 
-						//cout<<" parsing comp: "<<compName<<endl;
 
 						//First, if the site is symmetric, we have to relabel it correctly...
 						if(mt->isEquivalentComponent(compName)) {
-							//cout<<"is eq"<<endl;
 							int *eqCompClass; int n_eqComp;
 							mt->getEquivalencyClass(eqCompClass,n_eqComp,compName);
 
@@ -914,7 +904,6 @@ static bool processSingleSpecies(
 							bool couldPlaceSymComp=false;
 							for(int eq=0; eq<n_eqComp;eq++) {
 								string eqCompNameToCompare=mt->getComponentName(eqCompClass[eq]);
-								//cout<<"comparing to: "<<eqCompNameToCompare<<endl;
 								bool foundMatch=false;
 								for (const auto& name : usedComponentNames) {
 									if (name == eqCompNameToCompare) {
@@ -923,13 +912,11 @@ static bool processSingleSpecies(
 									}
 								}
 								if(!foundMatch) {
-									//cout<<" not used, using."<<endl;
 									usedComponentNames.push_back(eqCompNameToCompare);
 									compName=eqCompNameToCompare;
 									couldPlaceSymComp=true;
 									break;
 								} else {
-									//cout<<" used, moving on."<<endl;
 								}
 							}
 							if(!couldPlaceSymComp) {
@@ -1077,7 +1064,6 @@ static bool processSingleSpecies(
 						bSite1 = pBond->Attribute("site1");
 						bSite2 = pBond->Attribute("site2");
 					}
-					//cout<<"reading bond "<<bondId<<" which connects "<<bSite1<<" to " <<bSite2<<endl;
 
 
 					//Get the information on this bond that tells us which molecules to connect
@@ -1161,7 +1147,6 @@ static string buildInitialStateLog(
 {
 string logstr = "    \"initialState\": {\n";
 		logstr += "      \"molecule_array\": [\n";
-		// cout << "number of molecules: " << mgids.size() << endl;
 		if (mgids.size()>0){
 			// AS2023 - to add compression we make the full molecule type
 			// vector first
@@ -1796,7 +1781,6 @@ bool NFinput::initReactionRulePermutation(
 								//}
 							}
 							finalStateInt = allowedStates.find(c->t->getMoleculeTypeName()+"_"+lookupname+"_"+finalState)->second;
-							//cout<<"found:"<<finalStateInt<<endl;
 						} catch (exception& e) {
 							cerr<<"Error in adding a state change operation in ReactionClass: '"+rxnName+"'."<<endl;
 							cerr<<"It seems that the final state is not valid."<<endl;
@@ -1862,8 +1846,6 @@ bool NFinput::initReactionRulePermutation(
 				for ( pAddBond = pListOfOperations->FirstChildElement("AddBond");
 						pAddBond != 0;  pAddBond = pAddBond->NextSiblingElement("AddBond") )
 				{
-					//cout<<"adding binding transform!"<<endl;
-					//Make sure all the information about the binding operation is here
 					string site1, site2;
 					if( !pAddBond->Attribute("site1") || !pAddBond->Attribute("site2") )
 					{
@@ -1930,8 +1912,6 @@ bool NFinput::initReactionRulePermutation(
 					//Make sure we only block binding on the same complex if they were on separate reactants
 					//if this is an internal binding, then we have to allow it, even if we have the flag
 					//that blocks same complex binding...
-					//cout<<"\n"<<site1<<endl;
-					//cout<<site2<<endl;
 
 					// Comment about binding to new product molecules
 					// 1) Binding two new molecules:
@@ -1942,8 +1922,6 @@ bool NFinput::initReactionRulePermutation(
 
 					string reactantNum1 = site1.substr( 0, site1.find_first_of("_",underScore1+1) );
 					string reactantNum2 = site2.substr( 0, site2.find_first_of("_",underScore2+1) );
-					//cout << "reactant1: " << reactantNum1 << endl;
-					//cout << "reactant2: " << reactantNum2 << endl;
 
 					// Handling inter- and intra-complex binding is now part of a general procedure
 					//  for handling reaction molecularity  --Justin, 4Mar2011
@@ -2049,7 +2027,6 @@ bool NFinput::initReactionRulePermutation(
 
 
 								//Pointing to just a single molecule, so retrieve that molecule
-								//cout<<"pointing to just a single molecule, so retrieve it."<<endl;
 								component c = comps.find(id)->second;
 
 								if(delMolKeyword.compare("0")==0) {
@@ -2075,7 +2052,6 @@ bool NFinput::initReactionRulePermutation(
 									}
 								} else {
 									//Pointing to a single molecule, DeleteMolecules keyword is on, so delete it regardless
-									//cout<<"Using the DeleteMolecules keyword, so delete only the molecules"
 									//	" that are being pointed to..."<<endl;
 									if ( c.t->getMoleculeType()->isPopulationType() )
 									{
@@ -2102,7 +2078,6 @@ bool NFinput::initReactionRulePermutation(
 								component c = comps.find(id)->second;
 								if(delMolKeyword.compare("0")==0) {
 									//Pointing to the whole complex, no DeleteMolecules keyword, so delete it all!
-									//cout<<"Pointing to the whole complex, without DeleteMolecules keyword, so delete it and all connected..."<<endl;
 									component c = comps.find(id)->second;
 									if ( c.t->getMoleculeType()->isPopulationType() )
 									{   // we're dealing with a population here, create a decrement population transform
@@ -2138,8 +2113,6 @@ bool NFinput::initReactionRulePermutation(
 								cerr<<"Invalid read!  Looking for "<<id<<" but could not find it!"<<endl;
 								exit(1);
 							}
-							//cout<<"Templates.size() "<<templates.size()<<endl;
-							//c.t->printDetails();
 
 						} catch (exception& e) {
 							cerr<<"Error in adding an delete molecule operation in ReactionClass: '"+rxnName+"'."<<endl;
@@ -2401,7 +2374,6 @@ bool NFinput::initReactionRulePermutation(
 								string argValue = pArg->Attribute("value");
 								funcArgs.push_back(argId);
 
-								//cout<<"found argument:"<<argId<<" of type "<<argType<<" which points to "<<argValue<<endl;
 								isGlobal=false;
 
 								// Let's find out what object this argument points to..
@@ -2438,10 +2410,6 @@ bool NFinput::initReactionRulePermutation(
 							}
 						}
 
-						//cout<<"found args (in vector):"<<endl;
-						//for(int i=0; i<funcArgs.size(); i++) {
-						//	cout<<funcArgs.at(i)<<endl;
-						//}
 
 						if(isGlobal)
 						{
@@ -2574,8 +2542,6 @@ bool NFinput::initReactionRulePermutation(
 							exit(1);
 						}
 
-						//cout << "n_funcArgs1: " << funcArgs1.size() << endl;
-						//cout << "n_funcArgs2: " << funcArgs2.size() << endl;
 
 						string functionName1 = pRateLaw->Attribute("name1");
 						LocalFunction *lf1 = s->getLocalFunctionByName(functionName1);
@@ -2791,9 +2757,7 @@ bool NFinput::initReactionRules(
 									symRxnCenter,
 									verbose)) return false;
 
-			///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 			// Begin with some basic parsing of the rules and reactant patterns
-			//cout<<symComps.size()<<"  ----  "<<symRxnCenter.size()<<endl;
 
 			//For each possible permuation of the reaction rule, let us create a separate reaction
 			//to keep track of the result...
@@ -2879,7 +2843,6 @@ bool NFinput::readObservableForTemplateMolecules(TiXmlElement *pObs,
 			}
 		}
 
-		//cout<<"   --- reading pattern "<<patternName<<" for symmetry"<<endl;
 		TiXmlElement *pListOfMols = pPattern->FirstChildElement("ListOfMolecules");
 		if(pListOfMols) {
 
@@ -3195,13 +3158,6 @@ TemplateMolecule *NFinput::readPattern(
 
 					// For debugging: does this component actually exist?
 
-//					cout<<"Here is the sym Map: "<<endl;
-//					map <string,component>::iterator mapIter;
-//					for(mapIter=symMap.begin();mapIter!=symMap.end(); mapIter++) {
-//						cout<<mapIter->first<<"   "<<mapIter->second.name<<"  "<<mapIter->second.uniqueId<<endl;
-//					}
-//					component *symC;
-//					cout<<compId<<endl;
 
 
 					//////////////////////////////////////////////////////
@@ -3210,8 +3166,6 @@ TemplateMolecule *NFinput::readPattern(
 					// Handle equivalent components off reaction center differently
 					// it is off reaction center if 1) it is an eq component and 2) it is not in the symMap
 					if(symMap.find(compId)==symMap.end() && moltype->isEquivalentComponent(compName)) {
-						//cout<<"we should treat this as a symmetric constraint"<<endl;
-						//cout<<"equivalent type! :"<<compName<<endl;
 						int stateConstraint = -1;
 						if(pComp->Attribute("state")) {
 							string compStateValue = pComp->Attribute("state");
@@ -3270,7 +3224,6 @@ TemplateMolecule *NFinput::readPattern(
 					//////////////////////////////////////////////////////
 					//////////////////////////////////////////////////////
 					} else {
-						//cout<<"can be mapped as a symmetric component, or is not a symmetric component"<<endl;
 						//Read in a state, if it is in fact has an associated state
 						if(pComp->Attribute("state")) {
 							string compStateValue = pComp->Attribute("state");
@@ -3326,7 +3279,6 @@ TemplateMolecule *NFinput::readPattern(
 								}
 							}
 
-							//cout<<"bond value: "<< compId <<"    -  " <<numOfBondsInt<<"\n";
 
 							//Look up this site in case we have some symmetry going on...
 							component *symC;
@@ -3379,7 +3331,6 @@ TemplateMolecule *NFinput::readPattern(
 
 
 
-			//tempmol->printDetails();
 
 
 			//Update our data storage with the new template and empty out the things we don't need
@@ -3410,23 +3361,10 @@ TemplateMolecule *NFinput::readPattern(
 					bSite2 = pBond->Attribute("site2");
 				}
 
-				//if(verbose)cout<<"reading bond "<<bondId<<" which connects "<<bSite1<<" to " <<bSite2<<endl;
 
 				//Get the information on this bond that tells us which molecules to connect
 				try {
 
-//					cout<<"here"<<endl;
-//					cout<<"bSite1: "<<bSite1<<endl;
-//					cout<<"bSite2: "<<bSite2<<endl;
-//
-//					cout<<"bSiteSiteMapping"<<endl;
-//					for ( std::map< string, string>::const_iterator iter = bSiteSiteMapping.begin();
-//					iter != bSiteSiteMapping.end(); ++iter )
-//						cout << iter->first << '\t' << iter->second << '\n';
-//					cout<<"bSiteMolMapping"<<endl;
-//					for ( std::map< string, string>::const_iterator iter = bSiteSiteMapping.begin();
-//					iter != bSiteSiteMapping.end(); ++iter )
-//						cout << iter->first << '\t' << iter->second << '\n';
 
 
 
@@ -3498,10 +3436,6 @@ TemplateMolecule *NFinput::readPattern(
 		}
 
 
-		//Print out all the templates we made...
-		//for(int k=0; k<tMolecules.size(); k++) {
-		//	tMolecules.at(k)->printDetails(cout);
-		//}
 
 
 		//Now we have to find disjointed sets - that is whenever we have a Template
@@ -3509,15 +3443,10 @@ TemplateMolecule *NFinput::readPattern(
 		//connect them via the connectedTo specification
 
 
-		//cout<<"checking for disjoint sets..."<<endl;
 		vector <vector <TemplateMolecule *> > sets;
 		vector <int> uniqueSetId;
 		int setCount = TemplateMolecule::getNumDisjointSets(tMolecules,sets,uniqueSetId);
 
-//		cout<<"Unique Set Ids for the templates: "<<endl;
-//		for(unsigned int i=0; i<uniqueSetId.size(); i++) {
-//			cout<<uniqueSetId.at(i)<<endl;
-//		}
 
 
 		if(setCount>1) {
@@ -3537,7 +3466,6 @@ TemplateMolecule *NFinput::readPattern(
 			//connect them in order, 0 to 1, then 1 to 2, then 2 to 3...
 			for(int cSet=0; cSet<(setCount-1); cSet++) {
 
-				//cout<<"Matching up set: "<<cSet<<" to "<<cSet+1<<endl;
 				for(unsigned int i=0; i<tMolecules.size(); i++) {
 					if(uniqueSetId.at(i)==cSet) { tm1=i; break; }
 				}
@@ -3551,17 +3479,7 @@ TemplateMolecule *NFinput::readPattern(
 			}
 
 
-			//for(unsigned int i=0; i<tMolecules.size(); i++) {
-			//	tMolecules.at(i).addConnectedTo(tMolecules.at())
-			//	tMolecules.at(i)->printDetails();
-			//}
 
-			//cout<<"traversing...  let's see if we got everyone:"<<endl;
-			//vector <TemplateMolecule *> tmList;
-			//TemplateMolecule::traverse(tMolecules.at(1),tmList);
-			//for(unsigned int i=0; i<tmList.size(); i++) {
-			//	tmList.at(i)->printDetails();
-			//}
 
 
 		}
@@ -3614,7 +3532,6 @@ bool NFinput::readProductPattern(
 		vector < vector <int> > &bindingSiteInformation,
 		bool verbose)
 {
-	//cout<<"reading the product pattern!"<<endl;
 	try {
 
 		//Variables to remember the index of things
@@ -3786,7 +3703,6 @@ bool NFinput::readProductPattern(
 					bSite2 = pBond->Attribute("site2");
 				}
 
-				//if(verbose)cout<<"reading bond "<<bondId<<" which connects "<<bSite1<<" to " <<bSite2<<endl;
 
 				//Get the information on this bond that tells us which molecules to connect
 				try {
@@ -3861,7 +3777,6 @@ bool NFinput::readProductMolecule(
 		vector <Compartment *> & productCompartments,
 		bool verbose )
 {
-	//cout<<"reading the product molecule!"<<endl;
 	try
 	{
 		// this will hold the template molecule
@@ -3964,12 +3879,10 @@ bool NFinput::readProductMolecule(
         	if(moltype->isEquivalentComponent(k)) {
 
         		string genericCompName = moltype->getEquivalenceClassComponentNameFromComponentIndex(k);
-        		//cout<<"generic compname: "<< genericCompName <<endl;
 
         		// then we determine the component equivalence class number and add it to the queue
         		int eqClassNumber = moltype->getEquivalenceClassNumber(k);
         		symmetricSitesNotUsed.at(eqClassNumber).push(compName);
-        		//cout<<"eq class number: "<< moltype->getEquivalenceClassNumber(k) <<endl;
         	}
         }
 
@@ -4004,9 +3917,7 @@ bool NFinput::readProductMolecule(
 				// we need to make sure this isn't a symmetric component
 				if(moltype->isEquivalentComponent(compName))
 				{
-					//cout<<"Is EQ component!"<<endl;
 					int eqClass = moltype->getEquivalencyClassNumber(compName);
-					//cout<<"class: "<<moltype->getEquivalencyClassNumber(compName)<<endl;
 					if (symmetricSitesNotUsed.at(eqClass).size()>0) {
 						compName = (symmetricSitesNotUsed.at(eqClass)).front();
 						(symmetricSitesNotUsed.at(eqClass)).pop();
@@ -4200,8 +4111,6 @@ int NFinput::readTemplatePattern(
 					// Handle equivalent components off reaction center differently
 					// it is off reaction center if 1) it is an eq component and 2) it is not in the symMap
 					if(symMap.find(compId)==symMap.end() && moltype->isEquivalentComponent(compName)) {
-						//cout<<"we should treat this as a symmetric constraint"<<endl;
-						//cout<<"equivalent type! :"<<compName<<endl;
 						int stateConstraint = -1;
 						if(pComp->Attribute("state")) {
 							string compStateValue = pComp->Attribute("state");
@@ -4259,7 +4168,6 @@ int NFinput::readTemplatePattern(
 					//////////////////////////////////////////////////////
 					//////////////////////////////////////////////////////
 					} else {
-						//cout<<"can be mapped as a symmetric component, or is not a symmetric component"<<endl;
 						//Read in a state, if it is in fact has an associated state
 						if(pComp->Attribute("state")) {
 							string compStateValue = pComp->Attribute("state");
@@ -4314,7 +4222,6 @@ int NFinput::readTemplatePattern(
 								}
 							}
 
-							//cout<<"bond value: "<< compId <<"    -  " <<numOfBondsInt<<"\n";
 
 							//Look up this site in case we have some symmetry going on...
 							component *symC;
@@ -4365,7 +4272,6 @@ int NFinput::readTemplatePattern(
 			}
 
 
-			//tempmol->printDetails();
 
 
 			//Update our data storage with the new template and empty out the things we don't need
@@ -4396,23 +4302,10 @@ int NFinput::readTemplatePattern(
 					bSite2 = pBond->Attribute("site2");
 				}
 
-				//if(verbose)cout<<"reading bond "<<bondId<<" which connects "<<bSite1<<" to " <<bSite2<<endl;
 
 				//Get the information on this bond that tells us which molecules to connect
 				try {
 
-//					cout<<"here"<<endl;
-//					cout<<"bSite1: "<<bSite1<<endl;
-//					cout<<"bSite2: "<<bSite2<<endl;
-//
-//					cout<<"bSiteSiteMapping"<<endl;
-//					for ( std::map< string, string>::const_iterator iter = bSiteSiteMapping.begin();
-//					iter != bSiteSiteMapping.end(); ++iter )
-//						cout << iter->first << '\t' << iter->second << '\n';
-//					cout<<"bSiteMolMapping"<<endl;
-//					for ( std::map< string, string>::const_iterator iter = bSiteSiteMapping.begin();
-//					iter != bSiteSiteMapping.end(); ++iter )
-//						cout << iter->first << '\t' << iter->second << '\n';
 
 
 
@@ -4483,10 +4376,6 @@ int NFinput::readTemplatePattern(
 			return 0;
 		}
 
-		//Print out all the templates we made...
-		//for(int k=0; k<tMolecules.size(); k++) {
-		//	tMolecules.at(k)->printDetails(cout);
-		//}
 
 
 		//Now we have to find disjointed sets - that is whenever we have a Template
@@ -4494,15 +4383,10 @@ int NFinput::readTemplatePattern(
 		//connect them via the connectedTo specification
 
 
-		//cout<<"checking for disjoint sets..."<<endl;
 		vector <vector <TemplateMolecule *> > sets;
 		vector <int> uniqueSetId;
 		int setCount = TemplateMolecule::getNumDisjointSets(tMolecules,sets,uniqueSetId);
 
-//		cout<<"Unique Set Ids for the templates: "<<endl;
-//		for(unsigned int i=0; i<uniqueSetId.size(); i++) {
-//			cout<<uniqueSetId.at(i)<<endl;
-//		}
 
 		if(setCount>1) {
 			// Auto-enable complex bookkeeping for disjoint patterns
@@ -4521,7 +4405,6 @@ int NFinput::readTemplatePattern(
 			//connect them in order, 0 to 1, then 1 to 2, then 2 to 3...
 			for(int cSet=0; cSet<(setCount-1); cSet++) {
 
-				//cout<<"Matching up set: "<<cSet<<" to "<<cSet+1<<endl;
 				for(unsigned int i=0; i<tMolecules.size(); i++) {
 					if(uniqueSetId.at(i)==cSet) { tm1=i; break; }
 				}
@@ -4535,17 +4418,7 @@ int NFinput::readTemplatePattern(
 			}
 
 
-			//for(unsigned int i=0; i<tMolecules.size(); i++) {
-			//	tMolecules.at(i).addConnectedTo(tMolecules.at())
-			//	tMolecules.at(i)->printDetails();
-			//}
 
-			//cout<<"traversing...  let's see if we got everyone:"<<endl;
-			//vector <TemplateMolecule *> tmList;
-			//TemplateMolecule::traverse(tMolecules.at(1),tmList);
-			//for(unsigned int i=0; i<tmList.size(); i++) {
-			//	tmList.at(i)->printDetails();
-			//}
 
 
 		}
