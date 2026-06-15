@@ -1786,14 +1786,9 @@ bool NFinput::initReactionRulePermutation(
 							string lookupname = c->symPermutationName;
 							if(allowedStates.find(c->t->getMoleculeTypeName()+"_"+lookupname+"_"+finalState)==allowedStates.end()) {
 
-								//if(c->t->getMoleculeType()->isEquivalentComponent(c->name)) {
-								//	lookupname = c->name;
-								//}
-								//if(allowedStates.find(c->t->getMoleculeTypeName()+"_"+lookupname+"_"+finalState)==allowedStates.end()) {
-									cout<<"Error! in NFinput, when looking up state: "<<c->t->getMoleculeTypeName()+"_"+c->symPermutationName+"_"+finalState<<endl;
-									cout<<"Could not find this in the list of allowed states!  exiting!"<<endl;
-									exit(1);
-								//}
+								cout<<"Error! in NFinput, when looking up state: "<<c->t->getMoleculeTypeName()+"_"+c->symPermutationName+"_"+finalState<<endl;
+								cout<<"Could not find this in the list of allowed states!  exiting!"<<endl;
+								exit(1);
 							}
 							finalStateInt = allowedStates.find(c->t->getMoleculeTypeName()+"_"+lookupname+"_"+finalState)->second;
 							//cout<<"found:"<<finalStateInt<<endl;
