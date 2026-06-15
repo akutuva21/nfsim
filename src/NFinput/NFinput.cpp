@@ -2438,10 +2438,6 @@ bool NFinput::initReactionRulePermutation(
 							}
 						}
 
-						//cout<<"found args (in vector):"<<endl;
-						//for(int i=0; i<funcArgs.size(); i++) {
-						//	cout<<funcArgs.at(i)<<endl;
-						//}
 
 						if(isGlobal)
 						{
