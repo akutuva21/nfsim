@@ -3410,23 +3410,8 @@ TemplateMolecule *NFinput::readPattern(
 					bSite2 = pBond->Attribute("site2");
 				}
 
-				//if(verbose)cout<<"reading bond "<<bondId<<" which connects "<<bSite1<<" to " <<bSite2<<endl;
-
 				//Get the information on this bond that tells us which molecules to connect
 				try {
-
-//					cout<<"here"<<endl;
-//					cout<<"bSite1: "<<bSite1<<endl;
-//					cout<<"bSite2: "<<bSite2<<endl;
-//
-//					cout<<"bSiteSiteMapping"<<endl;
-//					for ( std::map< string, string>::const_iterator iter = bSiteSiteMapping.begin();
-//					iter != bSiteSiteMapping.end(); ++iter )
-//						cout << iter->first << '\t' << iter->second << '\n';
-//					cout<<"bSiteMolMapping"<<endl;
-//					for ( std::map< string, string>::const_iterator iter = bSiteSiteMapping.begin();
-//					iter != bSiteSiteMapping.end(); ++iter )
-//						cout << iter->first << '\t' << iter->second << '\n';
 
 
 
@@ -4396,23 +4381,8 @@ int NFinput::readTemplatePattern(
 					bSite2 = pBond->Attribute("site2");
 				}
 
-				//if(verbose)cout<<"reading bond "<<bondId<<" which connects "<<bSite1<<" to " <<bSite2<<endl;
-
 				//Get the information on this bond that tells us which molecules to connect
 				try {
-
-//					cout<<"here"<<endl;
-//					cout<<"bSite1: "<<bSite1<<endl;
-//					cout<<"bSite2: "<<bSite2<<endl;
-//
-//					cout<<"bSiteSiteMapping"<<endl;
-//					for ( std::map< string, string>::const_iterator iter = bSiteSiteMapping.begin();
-//					iter != bSiteSiteMapping.end(); ++iter )
-//						cout << iter->first << '\t' << iter->second << '\n';
-//					cout<<"bSiteMolMapping"<<endl;
-//					for ( std::map< string, string>::const_iterator iter = bSiteSiteMapping.begin();
-//					iter != bSiteSiteMapping.end(); ++iter )
-//						cout << iter->first << '\t' << iter->second << '\n';
 
 
 
