@@ -351,6 +351,10 @@ int runNFsimMain(int argc, char *argv[])
 					NFtest_input::run();
 					foundATest=true;
 				}
+				if(test=="commandLineParser") {
+					NFtest_commandLineParser::run();
+					foundATest=true;
+				}
 				if(test=="util") {
 					NFtest_util::run();
 					foundATest=true;
