@@ -64,8 +64,8 @@ namespace NFcore
 		int getN_connectedTo() const { return n_connectedTo; };
 
 		/* functions that allow you to set constraints */
-		void addEmptyComponent(string cName);
-		void addBoundComponent(string cName);
+		void addEmptyComponent(const string& cName);
+		void addBoundComponent(const string& cName);
 		void addComponentConstraint(string cName, string stateName);
 		void addComponentConstraint(string cName, int stateValue);
 		void addComponentExclusion(string cName, string stateName);

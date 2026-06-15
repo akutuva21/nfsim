@@ -171,7 +171,7 @@ void TemplateMolecule::addMapGenerator(MapGenerator *mg) {
 
 
 
-void TemplateMolecule::addEmptyComponent(string cName) {
+void TemplateMolecule::addEmptyComponent(const string& cName) {
 	if(moleculeType->isEquivalentComponent(cName)) {
 		printErrorAndExit("Cannot add empty binding site of a symmetric component with addEmptyComponent() function.");
 	}
@@ -185,7 +185,7 @@ void TemplateMolecule::addEmptyComponent(string cName) {
 	n_emptyComps++;
 	compIsAlwaysMapped[compIndex]=true;
 }
-void TemplateMolecule::addBoundComponent(string cName) {
+void TemplateMolecule::addBoundComponent(const string& cName) {
 	if(moleculeType->isEquivalentComponent(cName)) {
 		printErrorAndExit("Cannot add bound binding site of a symmetric component with addBoundComponent() function.");
 	}
