@@ -805,7 +805,18 @@ void PrintFileBuffer(map<string, map<int, string> > FileMap,vector<job*> JobQueu
 	//Now going through each distinct filename and printing output in a variety of formats
 	ofstream Output;
 	for (map<string, map<int, string> >::iterator it = FileMap.begin(); it != FileMap.end(); ++it) {
-		string Filename = getPath(JobQueue[it->second.begin()->first]->filename)+it->first;
+		string out_file = it->first;
+
+		// 🛡️ Sentinel check: validate output filename to prevent path traversal
+		if (out_file.find("..") != string::npos ||
+		    (out_file.length() > 0 && out_file[0] == '/') ||
+		    (out_file.length() > 0 && out_file[0] == '\\') ||
+		    out_file.find(":") != string::npos) {
+			std::cerr << "CRITICAL SECURITY WARNING: Path traversal detected in output filename '" << out_file << "'. Skipping file write." << std::endl;
+			continue;
+		}
+
+		string Filename = getPath(JobQueue[it->second.begin()->first]->filename)+out_file;
 		//if (Filename.length() <= 4 || Filename.substr(Filename.length()-4).compare(".gdat") != 0) {
 			//Appending the output buffer from each job 
 			Output.open(Filename.data());
