@@ -3189,24 +3189,6 @@ TemplateMolecule *NFinput::readPattern(
 					component c(tempmol,compName);
 					comps.insert(pair <string, component> (compId,c));
 
-
-					//////////////////////////////////////////////////////
-					//////////////////////////////////////////////////////
-
-					// For debugging: does this component actually exist?
-
-//					cout<<"Here is the sym Map: "<<endl;
-//					map <string,component>::iterator mapIter;
-//					for(mapIter=symMap.begin();mapIter!=symMap.end(); mapIter++) {
-//						cout<<mapIter->first<<"   "<<mapIter->second.name<<"  "<<mapIter->second.uniqueId<<endl;
-//					}
-//					component *symC;
-//					cout<<compId<<endl;
-
-
-					//////////////////////////////////////////////////////
-					//////////////////////////////////////////////////////
-					//////////////////////////////////////////////////////
 					// Handle equivalent components off reaction center differently
 					// it is off reaction center if 1) it is an eq component and 2) it is not in the symMap
 					if(symMap.find(compId)==symMap.end() && moltype->isEquivalentComponent(compName)) {
