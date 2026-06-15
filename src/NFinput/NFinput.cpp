@@ -1077,8 +1077,6 @@ static bool processSingleSpecies(
 						bSite1 = pBond->Attribute("site1");
 						bSite2 = pBond->Attribute("site2");
 					}
-					//cout<<"reading bond "<<bondId<<" which connects "<<bSite1<<" to " <<bSite2<<endl;
-
 
 					//Get the information on this bond that tells us which molecules to connect
 					try {
@@ -3410,25 +3408,8 @@ TemplateMolecule *NFinput::readPattern(
 					bSite2 = pBond->Attribute("site2");
 				}
 
-				//if(verbose)cout<<"reading bond "<<bondId<<" which connects "<<bSite1<<" to " <<bSite2<<endl;
-
 				//Get the information on this bond that tells us which molecules to connect
 				try {
-
-//					cout<<"here"<<endl;
-//					cout<<"bSite1: "<<bSite1<<endl;
-//					cout<<"bSite2: "<<bSite2<<endl;
-//
-//					cout<<"bSiteSiteMapping"<<endl;
-//					for ( std::map< string, string>::const_iterator iter = bSiteSiteMapping.begin();
-//					iter != bSiteSiteMapping.end(); ++iter )
-//						cout << iter->first << '\t' << iter->second << '\n';
-//					cout<<"bSiteMolMapping"<<endl;
-//					for ( std::map< string, string>::const_iterator iter = bSiteSiteMapping.begin();
-//					iter != bSiteSiteMapping.end(); ++iter )
-//						cout << iter->first << '\t' << iter->second << '\n';
-
-
 
 					//First look up the info from the component maps
 					auto it_site1 = bSiteSiteMapping.find(bSite1);
@@ -3785,8 +3766,6 @@ bool NFinput::readProductPattern(
 					bSite1 = pBond->Attribute("site1");
 					bSite2 = pBond->Attribute("site2");
 				}
-
-				//if(verbose)cout<<"reading bond "<<bondId<<" which connects "<<bSite1<<" to " <<bSite2<<endl;
 
 				//Get the information on this bond that tells us which molecules to connect
 				try {
@@ -4396,25 +4375,8 @@ int NFinput::readTemplatePattern(
 					bSite2 = pBond->Attribute("site2");
 				}
 
-				//if(verbose)cout<<"reading bond "<<bondId<<" which connects "<<bSite1<<" to " <<bSite2<<endl;
-
 				//Get the information on this bond that tells us which molecules to connect
 				try {
-
-//					cout<<"here"<<endl;
-//					cout<<"bSite1: "<<bSite1<<endl;
-//					cout<<"bSite2: "<<bSite2<<endl;
-//
-//					cout<<"bSiteSiteMapping"<<endl;
-//					for ( std::map< string, string>::const_iterator iter = bSiteSiteMapping.begin();
-//					iter != bSiteSiteMapping.end(); ++iter )
-//						cout << iter->first << '\t' << iter->second << '\n';
-//					cout<<"bSiteMolMapping"<<endl;
-//					for ( std::map< string, string>::const_iterator iter = bSiteSiteMapping.begin();
-//					iter != bSiteSiteMapping.end(); ++iter )
-//						cout << iter->first << '\t' << iter->second << '\n';
-
-
 
 					//First look up the info from the component maps
 					auto it_site1 = bSiteSiteMapping.find(bSite1);
