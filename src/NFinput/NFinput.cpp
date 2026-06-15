@@ -2438,11 +2438,6 @@ bool NFinput::initReactionRulePermutation(
 							}
 						}
 
-						//cout<<"found args (in vector):"<<endl;
-						//for(int i=0; i<funcArgs.size(); i++) {
-						//	cout<<funcArgs.at(i)<<endl;
-						//}
-
 						if(isGlobal)
 						{
 							string functionName = pRateLaw->Attribute("name");
@@ -3498,12 +3493,6 @@ TemplateMolecule *NFinput::readPattern(
 		}
 
 
-		//Print out all the templates we made...
-		//for(int k=0; k<tMolecules.size(); k++) {
-		//	tMolecules.at(k)->printDetails(cout);
-		//}
-
-
 		//Now we have to find disjointed sets - that is whenever we have a Template
 		//Molecule that is connected, but not explicitly through bonds, we have to
 		//connect them via the connectedTo specification
@@ -3549,19 +3538,6 @@ TemplateMolecule *NFinput::readPattern(
 				tMolecules.at(tm1)->addConnectedTo(tMolecules.at(tm2),ctIndex2);
 				tMolecules.at(tm2)->addConnectedTo(tMolecules.at(tm1),ctIndex1);
 			}
-
-
-			//for(unsigned int i=0; i<tMolecules.size(); i++) {
-			//	tMolecules.at(i).addConnectedTo(tMolecules.at())
-			//	tMolecules.at(i)->printDetails();
-			//}
-
-			//cout<<"traversing...  let's see if we got everyone:"<<endl;
-			//vector <TemplateMolecule *> tmList;
-			//TemplateMolecule::traverse(tMolecules.at(1),tmList);
-			//for(unsigned int i=0; i<tmList.size(); i++) {
-			//	tmList.at(i)->printDetails();
-			//}
 
 
 		}
@@ -4483,12 +4459,6 @@ int NFinput::readTemplatePattern(
 			return 0;
 		}
 
-		//Print out all the templates we made...
-		//for(int k=0; k<tMolecules.size(); k++) {
-		//	tMolecules.at(k)->printDetails(cout);
-		//}
-
-
 		//Now we have to find disjointed sets - that is whenever we have a Template
 		//Molecule that is connected, but not explicitly through bonds, we have to
 		//connect them via the connectedTo specification
@@ -4498,11 +4468,6 @@ int NFinput::readTemplatePattern(
 		vector <vector <TemplateMolecule *> > sets;
 		vector <int> uniqueSetId;
 		int setCount = TemplateMolecule::getNumDisjointSets(tMolecules,sets,uniqueSetId);
-
-//		cout<<"Unique Set Ids for the templates: "<<endl;
-//		for(unsigned int i=0; i<uniqueSetId.size(); i++) {
-//			cout<<uniqueSetId.at(i)<<endl;
-//		}
 
 		if(setCount>1) {
 			// Auto-enable complex bookkeeping for disjoint patterns
@@ -4533,20 +4498,6 @@ int NFinput::readTemplatePattern(
 				tMolecules.at(tm1)->addConnectedTo(tMolecules.at(tm2),ctIndex2);
 				tMolecules.at(tm2)->addConnectedTo(tMolecules.at(tm1),ctIndex1);
 			}
-
-
-			//for(unsigned int i=0; i<tMolecules.size(); i++) {
-			//	tMolecules.at(i).addConnectedTo(tMolecules.at())
-			//	tMolecules.at(i)->printDetails();
-			//}
-
-			//cout<<"traversing...  let's see if we got everyone:"<<endl;
-			//vector <TemplateMolecule *> tmList;
-			//TemplateMolecule::traverse(tMolecules.at(1),tmList);
-			//for(unsigned int i=0; i<tmList.size(); i++) {
-			//	tmList.at(i)->printDetails();
-			//}
-
 
 		}
 
