@@ -91,5 +91,46 @@ void NFtest_util::run()
 	}
 
 	cout << "  RANDOM_INT tests passed!" << endl;
+
+	cout << "  Testing trim..." << endl;
+
+	std::string t1 = "  hello world  ";
+	NFutil::trim(t1);
+	if (t1 != "hello world") throw std::runtime_error("trim failed on normal case with leading and trailing spaces");
+
+	std::string t2 = "  hello world";
+	NFutil::trim(t2);
+	if (t2 != "hello world") throw std::runtime_error("trim failed on case with only leading spaces");
+
+	std::string t3 = "hello world  ";
+	NFutil::trim(t3);
+	if (t3 != "hello world") throw std::runtime_error("trim failed on case with only trailing spaces");
+
+	std::string t4 = "";
+	NFutil::trim(t4);
+	if (t4 != "") throw std::runtime_error("trim failed on empty string");
+
+	std::string t5 = "     ";
+	NFutil::trim(t5);
+	if (t5 != "") throw std::runtime_error("trim failed on string with only spaces");
+
+	std::string t6 = "\t\t";
+	NFutil::trim(t6);
+	if (t6 != "") throw std::runtime_error("trim failed on string with only tabs");
+
+	std::string t7 = " \t \t ";
+	NFutil::trim(t7);
+	if (t7 != "") throw std::runtime_error("trim failed on mixed spaces and tabs");
+
+	std::string t8 = "hello";
+	NFutil::trim(t8);
+	if (t8 != "hello") throw std::runtime_error("trim failed on string without spaces");
+
+	std::string t9 = "\t hello \t ";
+	NFutil::trim(t9);
+	if (t9 != "hello") throw std::runtime_error("trim failed on string with spaces and tabs around");
+
+	cout << "  trim tests passed!" << endl;
+
 	cout << "NFutil tests completed successfully." << endl;
 }
