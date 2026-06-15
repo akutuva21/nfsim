@@ -3514,10 +3514,6 @@ TemplateMolecule *NFinput::readPattern(
 		vector <int> uniqueSetId;
 		int setCount = TemplateMolecule::getNumDisjointSets(tMolecules,sets,uniqueSetId);
 
-//		cout<<"Unique Set Ids for the templates: "<<endl;
-//		for(unsigned int i=0; i<uniqueSetId.size(); i++) {
-//			cout<<uniqueSetId.at(i)<<endl;
-//		}
 
 
 		if(setCount>1) {
@@ -4499,10 +4495,6 @@ int NFinput::readTemplatePattern(
 		vector <int> uniqueSetId;
 		int setCount = TemplateMolecule::getNumDisjointSets(tMolecules,sets,uniqueSetId);
 
-//		cout<<"Unique Set Ids for the templates: "<<endl;
-//		for(unsigned int i=0; i<uniqueSetId.size(); i++) {
-//			cout<<uniqueSetId.at(i)<<endl;
-//		}
 
 		if(setCount>1) {
 			// Auto-enable complex bookkeeping for disjoint patterns
