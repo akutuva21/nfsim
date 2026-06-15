@@ -337,17 +337,17 @@ namespace NFcore
 
 			/* tell the system where to ouptut results*/
 			void setOutputToBinary();
-			void registerOutputFileLocation(string filename);
+			void registerOutputFileLocation(const string& filename);
 			/* reaction firings are output to this file
 			 * if any reaction has tag flag set to 1 */
-			void registerReactionFileLocation(string filename);
+			void registerReactionFileLocation(const string& filename);
 			/* Connected reactions upon each reaction firing are written to this location */
-			void registerConnectedRxnFileLocation(string filename);
+			void registerConnectedRxnFileLocation(const string& filename);
 			/* Connected reactions for each reaction as calculated are written to this location */
-			void registerListOfConnectedRxnFileLocation(string filename);
+			void registerListOfConnectedRxnFileLocation(const string& filename);
 			/* list of molecule types and reaction firing counts are stored in these files */
-			void registerMoleculeTypeFileLocation(string filename);
-			void registerRxnListFileLocation(string filename);
+			void registerMoleculeTypeFileLocation(const string& filename);
+			void registerRxnListFileLocation(const string& filename);
 
 
 			void setDumpOutputter(DumpSystem *ds);

@@ -297,7 +297,7 @@ Observable * System::getSpeciesObs(int index) const
 }
 
 
-void System::registerOutputFileLocation(string filename)
+void System::registerOutputFileLocation(const string& filename)
 {
 	if(outputFileStream.is_open()) { outputFileStream.close(); }
 	if(useBinaryOutput) {
@@ -355,7 +355,7 @@ void System::registerOutputFileLocation(string filename)
  * Note reactions can be tagged in BioNetGen or PySB or from the command line using the rtag flag
  * @author: Rasi Subramaniam
  */
-void System::registerReactionFileLocation(string filename)
+void System::registerReactionFileLocation(const string& filename)
 {
 	if (reactionOutputFileStream.is_open()) { reactionOutputFileStream.close(); }
 	reactionOutputFileStream.open(filename.c_str());
@@ -372,7 +372,7 @@ void System::registerReactionFileLocation(string filename)
 	setReactionTrackingStatus(true);
 }
 
-void System::registerMoleculeTypeFileLocation(string filename) {
+void System::registerMoleculeTypeFileLocation(const string& filename) {
 	if (moleculeTypeFileStream.is_open()) { moleculeTypeFileStream.close(); }
 	moleculeTypeFileStream.open(filename.c_str());
 
@@ -388,7 +388,7 @@ void System::registerMoleculeTypeFileLocation(string filename) {
 	moleculeTypeFileStream << "mol_type_id" << "\t" << "mol_type" << endl;
 }
 
-void System::registerRxnListFileLocation(string filename) {
+void System::registerRxnListFileLocation(const string& filename) {
 	if (rxnListFileStream.is_open()) { rxnListFileStream.close(); }
 	rxnListFileStream.open(filename.c_str());
 
@@ -407,7 +407,7 @@ void System::registerRxnListFileLocation(string filename) {
 			"name" << endl;
 }
 
-void System::registerConnectedRxnFileLocation(string filename)
+void System::registerConnectedRxnFileLocation(const string& filename)
 {
 	if (connectedRxnFileStream.is_open()) { connectedRxnFileStream.close(); }
 	connectedRxnFileStream.open(filename.c_str());
@@ -432,7 +432,7 @@ void System::registerConnectedRxnFileLocation(string filename)
 			endl;
 }
 
-void System::registerListOfConnectedRxnFileLocation(string filename)
+void System::registerListOfConnectedRxnFileLocation(const string& filename)
 {
 	if (connectedRxnListFileStream.is_open()) { connectedRxnListFileStream.close(); }
 	connectedRxnListFileStream.open(filename.c_str());
