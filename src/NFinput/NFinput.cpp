@@ -3415,21 +3415,6 @@ TemplateMolecule *NFinput::readPattern(
 				//Get the information on this bond that tells us which molecules to connect
 				try {
 
-//					cout<<"here"<<endl;
-//					cout<<"bSite1: "<<bSite1<<endl;
-//					cout<<"bSite2: "<<bSite2<<endl;
-//
-//					cout<<"bSiteSiteMapping"<<endl;
-//					for ( std::map< string, string>::const_iterator iter = bSiteSiteMapping.begin();
-//					iter != bSiteSiteMapping.end(); ++iter )
-//						cout << iter->first << '\t' << iter->second << '\n';
-//					cout<<"bSiteMolMapping"<<endl;
-//					for ( std::map< string, string>::const_iterator iter = bSiteSiteMapping.begin();
-//					iter != bSiteSiteMapping.end(); ++iter )
-//						cout << iter->first << '\t' << iter->second << '\n';
-
-
-
 					//First look up the info from the component maps
 					auto it_site1 = bSiteSiteMapping.find(bSite1);
 					auto it_site1_mol = bSiteMolMapping.find(bSite1);
@@ -4400,21 +4385,6 @@ int NFinput::readTemplatePattern(
 
 				//Get the information on this bond that tells us which molecules to connect
 				try {
-
-//					cout<<"here"<<endl;
-//					cout<<"bSite1: "<<bSite1<<endl;
-//					cout<<"bSite2: "<<bSite2<<endl;
-//
-//					cout<<"bSiteSiteMapping"<<endl;
-//					for ( std::map< string, string>::const_iterator iter = bSiteSiteMapping.begin();
-//					iter != bSiteSiteMapping.end(); ++iter )
-//						cout << iter->first << '\t' << iter->second << '\n';
-//					cout<<"bSiteMolMapping"<<endl;
-//					for ( std::map< string, string>::const_iterator iter = bSiteSiteMapping.begin();
-//					iter != bSiteSiteMapping.end(); ++iter )
-//						cout << iter->first << '\t' << iter->second << '\n';
-
-
 
 					//First look up the info from the component maps
 					auto it_site1 = bSiteSiteMapping.find(bSite1);
