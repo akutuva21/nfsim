@@ -30,6 +30,7 @@ set(SUB_DIRS
     src/NFtest/agentcell/cell
     src/NFtest/agentcell
     src/NFtest/util
+    src/NFtest/energyPattern
     src/NFtest/tinyxml
     src/NFtest/nauty24
     src/NFtest/system

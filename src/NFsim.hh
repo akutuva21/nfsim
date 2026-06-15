@@ -46,6 +46,7 @@
 #include "NFtest/compartment/test_compartment.hh"
 #include "NFtest/reactionClass/test_reactionClass.hh"
 #include "NFtest/observable/test_observable.hh"
+#include "NFtest/energyPattern/test_energyPattern.hh"
 
 
 
