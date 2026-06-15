@@ -3537,7 +3537,6 @@ TemplateMolecule *NFinput::readPattern(
 			//connect them in order, 0 to 1, then 1 to 2, then 2 to 3...
 			for(int cSet=0; cSet<(setCount-1); cSet++) {
 
-				//cout<<"Matching up set: "<<cSet<<" to "<<cSet+1<<endl;
 				for(unsigned int i=0; i<tMolecules.size(); i++) {
 					if(uniqueSetId.at(i)==cSet) { tm1=i; break; }
 				}
@@ -3549,20 +3548,6 @@ TemplateMolecule *NFinput::readPattern(
 				tMolecules.at(tm1)->addConnectedTo(tMolecules.at(tm2),ctIndex2);
 				tMolecules.at(tm2)->addConnectedTo(tMolecules.at(tm1),ctIndex1);
 			}
-
-
-			//for(unsigned int i=0; i<tMolecules.size(); i++) {
-			//	tMolecules.at(i).addConnectedTo(tMolecules.at())
-			//	tMolecules.at(i)->printDetails();
-			//}
-
-			//cout<<"traversing...  let's see if we got everyone:"<<endl;
-			//vector <TemplateMolecule *> tmList;
-			//TemplateMolecule::traverse(tMolecules.at(1),tmList);
-			//for(unsigned int i=0; i<tmList.size(); i++) {
-			//	tmList.at(i)->printDetails();
-			//}
-
 
 		}
 
