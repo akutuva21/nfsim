@@ -222,10 +222,6 @@ int runNFsimMain(int argc, char *argv[])
 {
 
 
-	// Check if scheduler should handle the work.  This functionality is
-	// turned off for the general release code.
-	//if (!schedulerInterpreter(&argc, &argv)) return 0;
-
 	string versionNumber = "1.14.3";
 	cout<<"starting NFsim v"+versionNumber+"..."<<endl<<endl;
 	clock_t start,finish;
