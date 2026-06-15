@@ -4483,26 +4483,12 @@ int NFinput::readTemplatePattern(
 			return 0;
 		}
 
-		//Print out all the templates we made...
-		//for(int k=0; k<tMolecules.size(); k++) {
-		//	tMolecules.at(k)->printDetails(cout);
-		//}
-
-
 		//Now we have to find disjointed sets - that is whenever we have a Template
 		//Molecule that is connected, but not explicitly through bonds, we have to
 		//connect them via the connectedTo specification
-
-
-		//cout<<"checking for disjoint sets..."<<endl;
 		vector <vector <TemplateMolecule *> > sets;
 		vector <int> uniqueSetId;
 		int setCount = TemplateMolecule::getNumDisjointSets(tMolecules,sets,uniqueSetId);
-
-//		cout<<"Unique Set Ids for the templates: "<<endl;
-//		for(unsigned int i=0; i<uniqueSetId.size(); i++) {
-//			cout<<uniqueSetId.at(i)<<endl;
-//		}
 
 		if(setCount>1) {
 			// Auto-enable complex bookkeeping for disjoint patterns
