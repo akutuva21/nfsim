@@ -171,7 +171,7 @@ void TemplateMolecule::addMapGenerator(MapGenerator *mg) {
 
 
 
-void TemplateMolecule::addEmptyComponent(string cName) {
+void TemplateMolecule::addEmptyComponent(const string& cName) {
 	if(moleculeType->isEquivalentComponent(cName)) {
 		printErrorAndExit("Cannot add empty binding site of a symmetric component with addEmptyComponent() function.");
 	}
@@ -185,7 +185,7 @@ void TemplateMolecule::addEmptyComponent(string cName) {
 	n_emptyComps++;
 	compIsAlwaysMapped[compIndex]=true;
 }
-void TemplateMolecule::addBoundComponent(string cName) {
+void TemplateMolecule::addBoundComponent(const string& cName) {
 	if(moleculeType->isEquivalentComponent(cName)) {
 		printErrorAndExit("Cannot add bound binding site of a symmetric component with addBoundComponent() function.");
 	}
@@ -199,7 +199,7 @@ void TemplateMolecule::addBoundComponent(string cName) {
 	n_occupiedComps++;
 	compIsAlwaysMapped[compIndex]=true;
 }
-void TemplateMolecule::addComponentConstraint(string cName, string stateName) {
+void TemplateMolecule::addComponentConstraint(const string& cName, const string& stateName) {
 	if(moleculeType->isEquivalentComponent(cName)) {
 		printErrorAndExit("Cannot add component constraint of a symmetric component with addComponentConstraint() function.");
 	}
@@ -208,7 +208,7 @@ void TemplateMolecule::addComponentConstraint(string cName, string stateName) {
 	addComponentConstraint(cName,stateValue);
 
 }
-void TemplateMolecule::addComponentConstraint(string cName, int stateValue) {
+void TemplateMolecule::addComponentConstraint(const string& cName, int stateValue) {
 	if(moleculeType->isEquivalentComponent(cName)) {
 		printErrorAndExit("Cannot add component constraint of a symmetric component with addComponentConstraint() function.");
 	}
@@ -238,7 +238,7 @@ void TemplateMolecule::addComponentConstraint(string cName, int stateValue) {
 	n_compStateConstraint++;
 	compIsAlwaysMapped[compIndex]=true;
 }
-void TemplateMolecule::addComponentExclusion(string cName, string stateName) {
+void TemplateMolecule::addComponentExclusion(const string& cName, const string& stateName) {
 	if(moleculeType->isEquivalentComponent(cName)) {
 		printErrorAndExit("Cannot add component exclusion of a symmetric component with addComponentExclusion() function.");
 	}
@@ -246,7 +246,7 @@ void TemplateMolecule::addComponentExclusion(string cName, string stateName) {
 	int stateValue=moleculeType->getStateValueFromName(compIndex,stateName);
 	addComponentExclusion(cName,stateValue);
 }
-void TemplateMolecule::addComponentExclusion(string cName, int stateValue) {
+void TemplateMolecule::addComponentExclusion(const string& cName, int stateValue) {
 	if(moleculeType->isEquivalentComponent(cName)) {
 		printErrorAndExit("Cannot add component exclusion of a symmetric component with addComponentExclusion() function.");
 	}
