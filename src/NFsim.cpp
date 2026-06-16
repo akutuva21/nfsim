@@ -399,6 +399,10 @@ int runNFsimMain(int argc, char *argv[])
 					NFtest_mappingSet::run();
 					foundATest=true;
 				}
+				if(test=="energyPattern") {
+					NFtest_energyPattern::run();
+					foundATest=true;
+				}
 
 				if(!foundATest) {
 					cout<<"  That test could not be identified!!  Skipping!"<<endl;
