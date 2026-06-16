@@ -728,6 +728,11 @@ string ConvergeAllData(int Rank,int Size,string Buffer) {
 					std::cerr << "CRITICAL SECURITY ERROR: MPI_Recv MessageSize (" << MessageSize << ") is out of bounds or causes overflow!" << std::endl;
 					MPI_Abort(MPI_COMM_WORLD, 1);
 				}
+				// 🛡️ Sentinel check: validate total message size to prevent memory exhaustion across multiple recvs
+				if (CurrentMessageSize > 1024 * 1024 * 1024 - MessageSize) {
+					std::cerr << "CRITICAL SECURITY ERROR: Total MessageSize exceeds 1GB limit!" << std::endl;
+					MPI_Abort(MPI_COMM_WORLD, 1);
+				}
 				if (MessageSize > 0) {
 					char* OldMessage = CurrentMessage;
 					CurrentMessage = new char[CurrentMessageSize+MessageSize];
