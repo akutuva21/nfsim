@@ -385,7 +385,7 @@ void System::registerMoleculeTypeFileLocation(string filename) {
 	moleculeTypeFileStream.setf(ios::dec);
 	moleculeTypeFileStream.precision(2);
 	// print header for file
-	moleculeTypeFileStream << "mol_type_id" << "\t" << "mol_type" << endl;
+	moleculeTypeFileStream << "mol_type_id" << "\t" << "mol_type" << '\n';
 }
 
 void System::registerRxnListFileLocation(string filename) {
@@ -1849,11 +1849,11 @@ void System::outputAllMoleculeTypes() {
 	for(molTypeIter = allMoleculeTypes.begin(); molTypeIter != allMoleculeTypes.end(); molTypeIter++ )
 	{
 		moleculeTypeFileStream <<
-		(*molTypeIter)->getTypeID() << "\t" << (*molTypeIter)->getName() << endl;
+		(*molTypeIter)->getTypeID() << "\t" << (*molTypeIter)->getName() << '\n';
 	}
-	moleculeTypeFileStream << this->getLastRxnTime() << "\tlast_rxn_firing_time" << endl;
-	moleculeTypeFileStream << this->current_time << "\tsimulated_time" << endl;
-	moleculeTypeFileStream << this->current_cpu_time << "\tcpu_time" << endl;
+	moleculeTypeFileStream << this->getLastRxnTime() << "\tlast_rxn_firing_time" << '\n';
+	moleculeTypeFileStream << this->current_time << "\tsimulated_time" << '\n';
+	moleculeTypeFileStream << this->current_cpu_time << "\tcpu_time" << '\n';
 	moleculeTypeFileStream.close();
 }
 
@@ -1862,7 +1862,7 @@ void System::outputAllRxnFiringCounts() {
 	{
 		rxnListFileStream <<
 		(*rxnIter)->getRxnId() << "\t" <<
-			(*rxnIter)->getFireCounter() << "\t" << (*rxnIter)->getName() << endl;
+			(*rxnIter)->getFireCounter() << "\t" << (*rxnIter)->getName() << '\n';
 	}
 	rxnListFileStream.close();
 }
