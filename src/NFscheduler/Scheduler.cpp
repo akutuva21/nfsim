@@ -13,10 +13,10 @@ static int safe_stoi(const std::string& str, int default_val = 0) {
 	try {
 		return std::stoi(str);
 	} catch (const std::invalid_argument& e) {
-		std::cerr << "Warning: invalid argument to stoi for: " << str << ", defaulting to " << default_val << std::endl;
+		std::cerr << "Warning: invalid argument to stoi for: " << str << ", defaulting to " << default_val << '\n';
 		return default_val;
 	} catch (const std::out_of_range& e) {
-		std::cerr << "Warning: out of range value for stoi for: " << str << ", defaulting to " << default_val << std::endl;
+		std::cerr << "Warning: out of range value for stoi for: " << str << ", defaulting to " << default_val << '\n';
 		return default_val;
 	}
 }
@@ -25,10 +25,10 @@ static double safe_stod(const std::string& str, double default_val = 0.0) {
 	try {
 		return std::stod(str);
 	} catch (const std::invalid_argument& e) {
-		std::cerr << "Warning: invalid argument to stod for: " << str << ", defaulting to " << default_val << std::endl;
+		std::cerr << "Warning: invalid argument to stod for: " << str << ", defaulting to " << default_val << '\n';
 		return default_val;
 	} catch (const std::out_of_range& e) {
-		std::cerr << "Warning: out of range value for stod for: " << str << ", defaulting to " << default_val << std::endl;
+		std::cerr << "Warning: out of range value for stod for: " << str << ", defaulting to " << default_val << '\n';
 		return default_val;
 	}
 }
@@ -575,7 +575,7 @@ void DynamicParallel (map<string, string> argMap,int rank,int size) {
 			for (int i = 0; i < slave_filenames.size(); ++i) {
 				int n_written = snprintf(str, MSG_DATA_SIZE, "%zu,%s", slave_buffers[i].length()+1, slave_filenames[i].c_str());
 				if (n_written < 0 || n_written >= MSG_DATA_SIZE) {
-					std::cerr << "CRITICAL SECURITY ERROR: snprintf truncated or failed!" << std::endl;
+					std::cerr << "CRITICAL SECURITY ERROR: snprintf truncated or failed!" << '\n';
 #ifdef NF_MPI
 					MPI_Abort(MPI_COMM_WORLD, 1);
 #else
@@ -667,7 +667,7 @@ string BroadcastString(int Rank,int From,string InBuffer) {
 
 	// 🛡️ Sentinel check: validate MPI dynamic allocation bounds
 	if (Length < 0 || Length > 500 * 1024 * 1024) {
-		std::cerr << "CRITICAL SECURITY ERROR: MPI_Bcast Length (" << Length << ") is out of bounds or negative!" << std::endl;
+		std::cerr << "CRITICAL SECURITY ERROR: MPI_Bcast Length (" << Length << ") is out of bounds or negative!" << '\n';
 		MPI_Abort(MPI_COMM_WORLD, 1);
 	}
 
@@ -725,7 +725,7 @@ string ConvergeAllData(int Rank,int Size,string Buffer) {
 				MPI_Recv(&MessageSize,1, MPI_INT, OtherNode, TAG_DATA, MPI_COMM_WORLD, &status);
 				// 🛡️ Sentinel check: validate MPI dynamic allocation bounds and prevent integer overflow
 				if (MessageSize < 0 || MessageSize > 500 * 1024 * 1024 || MessageSize > 2147483647 - CurrentMessageSize) {
-					std::cerr << "CRITICAL SECURITY ERROR: MPI_Recv MessageSize (" << MessageSize << ") is out of bounds or causes overflow!" << std::endl;
+					std::cerr << "CRITICAL SECURITY ERROR: MPI_Recv MessageSize (" << MessageSize << ") is out of bounds or causes overflow!" << '\n';
 					MPI_Abort(MPI_COMM_WORLD, 1);
 				}
 				// 🛡️ Sentinel check: validate total message size to prevent memory exhaustion across multiple recvs
