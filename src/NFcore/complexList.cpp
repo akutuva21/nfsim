@@ -106,11 +106,11 @@ void ComplexList::clearAllComplexes()
 
 void ComplexList::printAllComplexes()
 {
-	cout<<"All System Complexes:"<<endl;
+	cout<<"All System Complexes:"<<"\n";
 	for( complexIter = allComplexes.begin(); complexIter != allComplexes.end(); complexIter++ )
 		if( (*complexIter)->isAlive() )
 			(*complexIter)->printDetailsLong();
-	cout<<endl;
+	cout<<"\n";
 }
 
 
@@ -124,7 +124,7 @@ void ComplexList::outputComplexSizes(double cSampleTime)
 		size = (*complexIter)->getComplexSize();
 		if (size!=0) (sys->getOutputFileStream())<<"\t"<<size;
 	}
-	(sys->getOutputFileStream())<<endl;
+	(sys->getOutputFileStream())<<"\n";
 }
 
 
@@ -144,15 +144,15 @@ double ComplexList::outputMeanCount(MoleculeType *m)
 		if(size>=1) { allSum += size; allCount++; }
 
 	}
-	//cout<<sum<<"/"<<count<<"   "<<allSum<<"/"<<allCount<<endl;
+	//cout<<sum<<"/"<<count<<"   "<<allSum<<"/"<<allCount<<"\n";
 	if(count!=0)
 	{
-		(sys->getOutputFileStream())<<"\t"<<((double)sum/(double)count)<<endl;
+		(sys->getOutputFileStream())<<"\t"<<((double)sum/(double)count)<<"\n";
 		return ((double)sum/(double)count);
 	}
 	else
 	{
-		(sys->getOutputFileStream())<<"\t"<<0.0<<endl;
+		(sys->getOutputFileStream())<<"\t"<<0.0<<"\n";
 		return 0.0;
 	}
 
@@ -190,7 +190,7 @@ void ComplexList::outputMoleculeTypeCountPerComplex(MoleculeType *m)
 
 		if(size>=1) (sys->getOutputFileStream())<<"\t"<<size;
 	}
-	(sys->getOutputFileStream())<<endl;
+	(sys->getOutputFileStream())<<"\n";
 
 }
 
