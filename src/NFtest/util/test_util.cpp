@@ -271,5 +271,24 @@ void NFtest_util::run()
 	}
 	cout << "  NfsimRNG bounds tests passed!" << endl;
 
+	cout << "  Testing MTRand53 operator()..." << endl;
+	MTRand53 rand53(12345UL);
+	double min_val = 1.0;
+	double max_val = 0.0;
+	for (int i = 0; i < NUM_ITERATIONS; ++i) {
+		double val = rand53();
+		if (val < 0.0 || val >= 1.0) {
+			throw std::runtime_error("MTRand53 generated a value out of bounds: " + std::to_string(val));
+		}
+		if (val < min_val) min_val = val;
+		if (val > max_val) max_val = val;
+	}
+
+	if (min_val > 0.1 || max_val < 0.9) {
+		throw std::runtime_error("MTRand53 generated values do not span a reasonable range. Min: " + std::to_string(min_val) + ", Max: " + std::to_string(max_val));
+	}
+
+	cout << "  MTRand53 tests passed!" << endl;
+
 	cout << "NFutil tests completed successfully." << endl;
 }
