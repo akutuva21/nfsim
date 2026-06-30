@@ -43,7 +43,8 @@ void EnergyFunction::findRelevantPatternsForBinding(
 ) const {
     relevant.clear();
 
-    for (int i = 0; i < (int)patterns.size(); i++) {
+    int nPatterns = (int)patterns.size();
+    for (int i = 0; i < nPatterns; i++) {
         const EnergyPatternInfo &ep = patterns[i];
 
         // Check if this pattern contains a bond between molType1.site1 and molType2.site2
@@ -78,7 +79,8 @@ void EnergyFunction::findRelevantPatternsForStateChange(
 ) const {
     relevant.clear();
 
-    for (int i = 0; i < (int)patterns.size(); i++) {
+    int nPatterns = (int)patterns.size();
+    for (int i = 0; i < nPatterns; i++) {
         const EnergyPatternInfo &ep = patterns[i];
         for (const auto &mol : ep.molecules) {
             if (mol.typeName == molType) {
@@ -118,7 +120,8 @@ vector<ContextCondition> EnergyFunction::extractContextConditions(
 
         // For each molecule in the pattern that matches a reactant type,
         // check for components beyond the reaction center
-        for (int mi = 0; mi < (int)ep.molecules.size(); mi++) {
+        int nMolecules = (int)ep.molecules.size();
+        for (int mi = 0; mi < nMolecules; mi++) {
             const EpMolecule &mol = ep.molecules[mi];
 
             int reactantIdx = -1;
@@ -228,7 +231,8 @@ vector<ExpandedRuleInfo> EnergyFunction::expandBindingRule(
     vector<int> alwaysPatterns;    // indices into 'relevant'
     vector<int> conditionalPatterns;
 
-    for (int ri = 0; ri < (int)relevant.size(); ri++) {
+    int nRelevant = (int)relevant.size();
+    for (int ri = 0; ri < nRelevant; ri++) {
         int pi = relevant[ri];
         const EnergyPatternInfo &ep = patterns[pi];
 
@@ -398,7 +402,8 @@ vector<ExpandedRuleInfo> EnergyFunction::expandStateChangeRule(
     vector<int> alwaysPatterns;
     vector<int> conditionalPatterns;
 
-    for (int ri = 0; ri < (int)relevant.size(); ri++) {
+    int nRelevant = (int)relevant.size();
+    for (int ri = 0; ri < nRelevant; ri++) {
         int pi = relevant[ri];
         const EnergyPatternInfo &ep = patterns[pi];
 
