@@ -274,6 +274,27 @@ void NFtest_system::run()
 
 	cout << "  System::getObservableByName tests passed!" << endl;
 
+	vector<string> funcs, argNames;
+	CompositeFunction* cf1 = new CompositeFunction(sys, "Func1", "x + y", funcs, argNames, paramNames);
+	CompositeFunction* cf2 = new CompositeFunction(sys, "Func2", "a * b", funcs, argNames, paramNames);
+	sys->addCompositeFunction(cf1);
+	sys->addCompositeFunction(cf2);
+
+	if (sys->getCompositeFunctionByName("Func1") != cf1) {
+		throw std::runtime_error("System::getCompositeFunctionByName did not return correct function for 'Func1'.");
+	}
+	if (sys->getCompositeFunctionByName("Func2") != cf2) {
+		throw std::runtime_error("System::getCompositeFunctionByName did not return correct function for 'Func2'.");
+	}
+	if (sys->getCompositeFunctionByName("Func3") != NULL) {
+		throw std::runtime_error("System::getCompositeFunctionByName did not return NULL for nonexistent function 'Func3'.");
+	}
+	if (sys->getCompositeFunctionByName("") != NULL) {
+		throw std::runtime_error("System::getCompositeFunctionByName did not return NULL for empty string name.");
+	}
+
+	cout << "  System::getCompositeFunctionByName tests passed!" << endl;
+
 	// Cleanup
 	// Note: System destructor deletes MoleculeTypes added to it
 	// It also cleans up reactions added to it.
