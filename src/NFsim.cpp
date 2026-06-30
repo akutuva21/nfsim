@@ -165,6 +165,7 @@
 
 
 #include "NFsim.hh"
+#include "NFtest/rng/test_rng.hh"
 #include "NFtest/util/test_util.hh"
 #include "NFtest/mapping/test_mapping.hh"
 #include "NFtest/moleculeType/test_moleculeType.hh"
@@ -349,6 +350,10 @@ int runNFsimMain(int argc, char *argv[])
 				}
 				if(test=="commandLineParser") {
 					NFtest_commandLineParser::run();
+					foundATest=true;
+				}
+				if(test=="rng") {
+					NFtest_rng::run();
 					foundATest=true;
 				}
 				if(test=="util") {

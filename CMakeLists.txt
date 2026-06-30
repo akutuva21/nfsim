@@ -30,6 +30,7 @@ set(SUB_DIRS
     src/NFtest/commandLineParser
     src/NFtest/agentcell/cell
     src/NFtest/agentcell
+    src/NFtest/rng
     src/NFtest/util
     src/NFtest/energyPattern
     src/NFtest/tinyxml
