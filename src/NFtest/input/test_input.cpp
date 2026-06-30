@@ -1,9 +1,12 @@
 #include "test_input.hh"
+#include "../../NFinput/NFinput.hh"
 #include <iostream>
 #include <sstream>
 #include <stdexcept>
+#include <map>
 
 using namespace std;
+using namespace NFinput;
 
 #include "../../NFcore/NFcore.hh"
 
@@ -157,6 +160,30 @@ void NFtest_input::run() {
             string output = out.str();
             if (output.find("Could not convert eq times or output steps to numbers") == string::npos) {
                 throw runtime_error("Expected error message in stdout, got: " + output);
+            }
+        }
+
+        // Test NFinput::lookup for missing component
+        {
+            stringstream errOut;
+            cerr.rdbuf(errOut.rdbuf());
+
+            map<string, component> comps;
+            map<string, component> symMap;
+            component* c = nullptr;
+
+            bool result = NFinput::lookup(c, "nonexistent_id", comps, symMap);
+
+            if (result != false) {
+                throw runtime_error("Expected lookup to return false for non-existent component id");
+            }
+
+            string output = errOut.str();
+            if (output.find("It seems that I couldn't find the binding sites or states you are refering to.") == string::npos) {
+                throw runtime_error("Expected error message for missing component in output, got: " + output);
+            }
+            if (output.find("Could not find the component that matches the id: nonexistent_id") == string::npos) {
+                throw runtime_error("Expected error message indicating missing component id in output, got: " + output);
             }
         }
 
