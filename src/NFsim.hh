@@ -34,6 +34,7 @@
 //#include  "NFtest/transformations/transformations.hh"
 #include  "NFtest/simple_system/simple_system.hh"
 #include  "NFtest/transcription/transcription.hh"
+#include "NFtest/rng/test_rng.hh"
 #include  "NFtest/tlbr/tlbr.hh"
 #include  "NFtest/agentcell/agentcell.hh"
 #include  "NFtest/scheduler/scheduler.hh"
