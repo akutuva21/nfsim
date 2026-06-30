@@ -44,7 +44,7 @@ ReactionClass::ReactionClass(string name, double baseRate, string baseRateParame
 		TemplateMolecule::traverse(curTemplate,tmList,TemplateMolecule::FIND_ALL);
 
 		//First, single out all the templates that have at least one map generator
-		for(unsigned int i=0; i<tmList.size(); i++) {
+		for(unsigned int i=0, n=tmList.size(); i<n; i++) {
 
 			if(tmList.at(i)->getN_mapGenerators()>0) {
 				hasMapGenerator.push_back(i);
@@ -53,7 +53,7 @@ ReactionClass::ReactionClass(string name, double baseRate, string baseRateParame
 
 		//Find the one with the least sym comp bonds...
 		int minSymSites = 999999;
-		for(unsigned int k=0; k<hasMapGenerator.size(); k++) {
+		for(unsigned int k=0, n=hasMapGenerator.size(); k<n; k++) {
 			if(tmList.at(hasMapGenerator.at(k))->getN_symCompBonds()<minSymSites) {
 				curTemplate = tmList.at(hasMapGenerator.at(k));
 				minSymSites = curTemplate->getN_symCompBonds();
@@ -101,7 +101,7 @@ ReactionClass::ReactionClass(string name, double baseRate, string baseRateParame
 		for(int s=0; s<setCount; s++) { numMapGenerators.push_back(0); }
 
 		int curTemplateSetId = -1;
-		for(unsigned int t=0;t<tmList.size();t++) {
+		for(unsigned int t=0, n=tmList.size(); t<n; t++) {
 			if(tmList.at(t)==curTemplate) {
 				curTemplateSetId = uniqueSetId.at(t);
 			}
@@ -115,14 +115,14 @@ ReactionClass::ReactionClass(string name, double baseRate, string baseRateParame
 		//connected to all other molecules.  This will better suit our needs.
 
 		// first, clear out the old connections
-		for(unsigned int i=0; i<tmList.size(); i++) {
+		for(unsigned int i=0, n=tmList.size(); i<n; i++) {
 			tmList.at(i)->clearConnectedTo();
 		}
 
 		// add back the connections, but always through the head template
 		int rxnCenterSets = 1;
 		int curSet=0;
-		for(unsigned int i=0; i<uniqueSetId.size(); i++) {
+		for(unsigned int i=0, n=uniqueSetId.size(); i<n; i++) {
 			if(uniqueSetId.at(i)==curTemplateSetId) {
 				if(curSet==curTemplateSetId) curSet++;
 				continue;
@@ -157,7 +157,7 @@ ReactionClass::ReactionClass(string name, double baseRate, string baseRateParame
 
 
 		//Finally, clear out the data structures.
-		for(unsigned int i=0; i<sets.size(); i++) sets.at(i).clear();
+		for(unsigned int i=0, n=sets.size(); i<n; i++) sets.at(i).clear();
 		sets.clear(); uniqueSetId.clear();
 		numMapGenerators.clear();
 	}
@@ -258,14 +258,14 @@ bool ReactionClass::isReactionConnected(ReactionClass * rxn) {
 
 	// Full membership refresh revisits every explicit reactant template in the
 	// fired rule, not only templates that carry direct transformations.
-	for (unsigned int i=0; i<allReactantTemplates.size(); i++) {
+	for (unsigned int i=0, n=allReactantTemplates.size(); i<n; i++) {
 		if (rxn->isTemplateCompatible(allReactantTemplates[i])) return true;
 	}
 
 	// Product templates can also create new compatible mappings, but avoid
 	// broadening pure-synthesis rules where this over-connects add-only paths.
 	if (n_reactants > 0) {
-		for (unsigned int i=0; i<allProductTemplates.size(); i++) {
+		for (unsigned int i=0, n=allProductTemplates.size(); i<n; i++) {
 			if (rxn->isTemplateCompatible(allProductTemplates[i])) return true;
 		}
 	}
@@ -658,7 +658,7 @@ void ReactionClass::identifyConnectedReactions() {
 	ReactionClass * rxn;
 	vector <ReactionClass *> allReactions;
 	allReactions = system->getAllReactions();
-	for (unsigned int r=0; r < allReactions.size(); r++) {
+	for (unsigned int r=0, n=allReactions.size(); r<n; r++) {
 		rxn = allReactions.at(r);
 		if (this->isReactionConnected(rxn)) this->appendConnectedRxn(rxn);
 	}
@@ -666,7 +666,7 @@ void ReactionClass::identifyConnectedReactions() {
 
 bool ReactionClass::areMoleculeTypeAndComponentPresent(MoleculeType * mt, int cIndex) {
 	TemplateMolecule * t2;
-	for (unsigned int i=0; i<allReactantTemplates.size(); i++) {
+	for (unsigned int i=0, n=allReactantTemplates.size(); i<n; i++) {
 		t2 = allReactantTemplates[i];
 		if (t2->isMoleculeTypeAndComponentPresent(mt, cIndex)) return true;
 	}
@@ -676,7 +676,7 @@ bool ReactionClass::areMoleculeTypeAndComponentPresent(MoleculeType * mt, int cI
 
 bool ReactionClass::isTemplateCompatible(TemplateMolecule * t) {
 	TemplateMolecule * t2;
-	for (unsigned int i=0; i<allReactantTemplates.size(); i++) {
+	for (unsigned int i=0, n=allReactantTemplates.size(); i<n; i++) {
 		t2 = allReactantTemplates[i];
 		if (t->isTemplateCompatible(t2)) return true;
 	}
