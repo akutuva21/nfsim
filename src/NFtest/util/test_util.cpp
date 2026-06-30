@@ -3,6 +3,7 @@
 #include <stdexcept>
 #include <cmath>
 #include "../../NFutil/MTrand/mtrand.h"
+#include "../../NFutil/nfsim_rng.h"
 
 using namespace std;
 using namespace NFutil;
@@ -248,6 +249,27 @@ void NFtest_util::run()
 		}
 	}
 	cout << "  MTRand_closed bounds test passed (all values in [0, 1])!" << endl;
+
+	cout << "  Testing NfsimRNG bounds..." << endl;
+	NFcore::NfsimRNG nf_rng;
+
+	for (int i = 0; i < NUM_ITERATIONS; ++i) {
+		double rho = nf_rng.rand_half_open();
+		if (rho < 0.0 || rho >= 1.0) {
+			throw std::runtime_error("rand_half_open generated a number out of range: " + std::to_string(rho));
+		}
+
+		double rc = nf_rng.rand_closed();
+		if (rc < 0.0 || rc > 1.0) {
+			throw std::runtime_error("rand_closed generated a number out of range: " + std::to_string(rc));
+		}
+
+		double ro = nf_rng.rand_open();
+		if (ro <= 0.0 || ro >= 1.0) {
+			throw std::runtime_error("rand_open generated a number out of range: " + std::to_string(ro));
+		}
+	}
+	cout << "  NfsimRNG bounds tests passed!" << endl;
 
 	cout << "NFutil tests completed successfully." << endl;
 }
