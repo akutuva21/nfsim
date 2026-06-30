@@ -1,5 +1,6 @@
 #include "test_system.hh"
 #include "../../NFreactions/reactions/reaction.hh"
+#include "../../NFfunction/NFfunction.hh"
 #include <iostream>
 #include <stdexcept>
 #include <vector>
@@ -151,6 +152,33 @@ void NFtest_system::run()
 	}
 
 	cout << "  System::getReactionByName tests passed!" << endl;
+
+	cout << "  Testing System::getGlobalFunctionByName..." << endl;
+
+	vector<string> emptyVec;
+	GlobalFunction* gf1 = new GlobalFunction("Func1", "1.0", emptyVec, emptyVec, emptyVec, sys);
+	GlobalFunction* gf2 = new GlobalFunction("Func2", "2.0", emptyVec, emptyVec, emptyVec, sys);
+
+	sys->addGlobalFunction(gf1);
+	sys->addGlobalFunction(gf2);
+
+	if (sys->getGlobalFunctionByName("Func1") != gf1) {
+		throw std::runtime_error("System::getGlobalFunctionByName did not return correct function for 'Func1'.");
+	}
+
+	if (sys->getGlobalFunctionByName("Func2") != gf2) {
+		throw std::runtime_error("System::getGlobalFunctionByName did not return correct function for 'Func2'.");
+	}
+
+	if (sys->getGlobalFunctionByName("Func3") != NULL) {
+		throw std::runtime_error("System::getGlobalFunctionByName did not return NULL for nonexistent function 'Func3'.");
+	}
+
+	if (sys->getGlobalFunctionByName("") != NULL) {
+		throw std::runtime_error("System::getGlobalFunctionByName did not return NULL for empty string name.");
+	}
+
+	cout << "  System::getGlobalFunctionByName tests passed!" << endl;
 
 	cout << "  Testing System::getMoleculeTypeByName..." << endl;
 
