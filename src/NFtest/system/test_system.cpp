@@ -2,6 +2,7 @@
 #include "../../NFreactions/reactions/reaction.hh"
 #include "../../NFfunction/NFfunction.hh"
 #include <iostream>
+#include <sstream>
 #include <stdexcept>
 #include <vector>
 #include <string>
@@ -235,6 +236,43 @@ void NFtest_system::run()
 	}
 
 	cout << "  System::getLocalFunctionByName tests passed!" << endl;
+
+	cout << "  Testing System::getObservableByName..." << endl;
+
+	// Create and add an observable
+	vector<TemplateMolecule*> obsTemplates;
+	TemplateMolecule* tmObs = new TemplateMolecule(mtA);
+	obsTemplates.push_back(tmObs);
+	Observable* obs1 = new MoleculesObservable("Obs1", obsTemplates);
+	sys->addObservableForOutput(obs1);
+
+	if (sys->getObservableByName("Obs1") != obs1) {
+		throw std::runtime_error("System::getObservableByName did not return correct observable for 'Obs1'.");
+	}
+
+	// Capture cout/cerr for edge cases (avoid console spam during tests)
+	std::streambuf* oldCout = std::cout.rdbuf();
+	std::streambuf* oldCerr = std::cerr.rdbuf();
+	std::ostringstream localCout;
+	std::ostringstream localCerr;
+	std::cout.rdbuf(localCout.rdbuf());
+	std::cerr.rdbuf(localCerr.rdbuf());
+
+	Observable* notFoundObs = sys->getObservableByName("NonExistentObs");
+
+	std::cout.rdbuf(oldCout);
+	std::cerr.rdbuf(oldCerr);
+
+	if (notFoundObs != NULL) {
+		throw std::runtime_error("System::getObservableByName did not return NULL for nonexistent observable.");
+	}
+
+	string expectedWarning = "!!Warning, the system could not identify the observable: NonExistentObs.\n";
+	if (localCerr.str().find(expectedWarning) == string::npos) {
+		throw std::runtime_error("System::getObservableByName did not print correct warning for nonexistent observable.");
+	}
+
+	cout << "  System::getObservableByName tests passed!" << endl;
 
 	// Cleanup
 	// Note: System destructor deletes MoleculeTypes added to it
