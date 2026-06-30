@@ -865,14 +865,16 @@ int TemplateMolecule::getNumDisjointSets(vector < TemplateMolecule * > &tMolecul
 				vector <int> &uniqueSetId)
 {
 	int setCount=0;
-	for(unsigned int i=0; i<tMolecules.size(); i++)
+	const unsigned int numMolecules = tMolecules.size();
+	for(unsigned int i=0; i<numMolecules; i++)
 	{
 		//First see if this template was already found in a previous set.
 		//if it was, then we don't have to traverse
 		bool alreadyFound = false;
 		for(unsigned int j=0; j<i; j++) {
 			//search set J for this template
-			for(unsigned int kj=0; kj<sets.at(j).size(); kj++) {
+			const unsigned int setJSize = sets.at(j).size();
+			for(unsigned int kj=0; kj<setJSize; kj++) {
 				if(sets.at(j).at(kj)==tMolecules.at(i)) {
 					alreadyFound = true;
 					break;
