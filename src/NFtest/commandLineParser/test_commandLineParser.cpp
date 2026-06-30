@@ -113,6 +113,11 @@ void NFtest_commandLineParser::run() {
             if (val1 != 100) throw runtime_error("Expected parseAsInt to return 100");
             if (val2 != 20) throw runtime_error("Expected parseAsInt to return default 20");
             if (val3 != 30) throw runtime_error("Expected parseAsInt to return default 30 on invalid input");
+
+            string output = out.str();
+            if (output.find("Warning: I couldn't parse your flag '-invalid abc' as an integer.") == string::npos) {
+                throw runtime_error("Expected error message in output for parseAsInt, got: " + output);
+            }
         }
 
         // Test parseAsDouble
@@ -133,6 +138,11 @@ void NFtest_commandLineParser::run() {
             if (val1 != 3.14) throw runtime_error("Expected parseAsDouble to return 3.14");
             if (val2 != 2.0) throw runtime_error("Expected parseAsDouble to return default 2.0");
             if (val3 != 3.0) throw runtime_error("Expected parseAsDouble to return default 3.0 on invalid input");
+
+            string output = out.str();
+            if (output.find("Warning: I couldn't parse your flag '-invalid abc' as a double.") == string::npos) {
+                throw runtime_error("Expected error message in output for parseAsDouble, got: " + output);
+            }
         }
 
         // Test parseAsCommaSeparatedSequence
