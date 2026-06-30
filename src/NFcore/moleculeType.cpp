@@ -17,7 +17,8 @@ MoleculeType::MoleculeType(
 	vector <string> defaultCompState;
 	vector < vector <string> > possibleCompStates;
 	vector <bool> isIntegerComponent;
-	for(unsigned int i=0; i<compName.size(); i++) {
+	unsigned int compNameSize = compName.size();
+	for(unsigned int i=0; i<compNameSize; i++) {
 		vector <string> v;
 		possibleCompStates.push_back(v);
 		defaultCompState.push_back("NO_STATE");
@@ -36,7 +37,8 @@ MoleculeType::MoleculeType(
 {
 	vector < vector <string> > possibleCompStates;
 	vector <bool> isIntegerComponent;
-	for(unsigned int i=0; i<compName.size(); i++) {
+	unsigned int compNameSize = compName.size();
+	for(unsigned int i=0; i<compNameSize; i++) {
 		vector <string> v;
 		possibleCompStates.push_back(v);
 		isIntegerComponent.push_back(false);
@@ -59,7 +61,8 @@ MoleculeType::MoleculeType(
  : population_type( false ), isFixed_(false), fixedCount_(0), fixedCompartment_(nullptr)
 {
 	vector <bool> isIntegerComponent;
-	for(unsigned int i=0; i<compName.size(); i++) {
+	unsigned int compNameSize = compName.size();
+	for(unsigned int i=0; i<compNameSize; i++) {
 		isIntegerComponent.push_back(false);
 	}
 	init(name, compName, defaultCompState, possibleCompStates, isIntegerComponent, system);
