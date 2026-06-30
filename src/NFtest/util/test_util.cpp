@@ -132,5 +132,16 @@ void NFtest_util::run()
 
 	cout << "  trim tests passed!" << endl;
 
+	cout << "  Testing MTRand_closed..." << endl;
+
+	MTRand_closed closed_rng;
+	for (int i = 0; i < NUM_ITERATIONS; ++i) {
+		double result = closed_rng();
+		if (result < 0.0 || result > 1.0) {
+			throw std::runtime_error("MTRand_closed generated a number out of range [0, 1]: " + std::to_string(result));
+		}
+	}
+	cout << "  MTRand_closed bounds test passed (all values in [0, 1])!" << endl;
+
 	cout << "NFutil tests completed successfully." << endl;
 }
