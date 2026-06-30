@@ -146,6 +146,24 @@ void NFtest_commandLineParser::run() {
             if (seq.size() != 4 || seq[0] != 1 || seq[1] != 2 || seq[2] != 3 || seq[3] != 4) {
                 throw runtime_error("parseAsCommaSeparatedSequence failed");
             }
+
+            // Error handling: invalid format
+            argMap["seq"] = "1, 2, a, 4";
+            seq.clear();
+
+            stringstream out;
+            auto oldCout2 = cout.rdbuf(out.rdbuf());
+            bool caught = false;
+            try {
+                parseAsCommaSeparatedSequence(argMap, "seq", seq);
+            } catch (const std::runtime_error& e) {
+                caught = true;
+            }
+            cout.rdbuf(oldCout2);
+
+            if (!caught) {
+                throw runtime_error("Expected parseAsCommaSeparatedSequence to throw runtime_error on invalid input");
+            }
         }
 
         // Test createSystemDumper
