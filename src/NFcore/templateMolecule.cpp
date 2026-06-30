@@ -1736,7 +1736,8 @@ string TemplateMolecule::getPatternString() {
 	TemplateMolecule::traverse(this,tmList,false);
 
 	//First put in the basic information, from non symmetric constraints...
-	for(unsigned int t=0; t<tmList.size(); t++) {
+	unsigned int tmListSize = tmList.size();
+	for(unsigned int t=0; t<tmListSize; t++) {
 		TemplateMolecule *tm = tmList.at(t);
 		//tm->printDetails(cout);
 		MoleculeType * mt = tm->getMoleculeType();
