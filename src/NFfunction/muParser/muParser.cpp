@@ -178,7 +178,17 @@ namespace mu
     stringstream_type stream(a_szExpr);
     stream.imbue(Parser::s_locale);
     stream >> fVal;
-    int iEnd = stream.tellg(); // Position after reading
+
+    if (stream.fail())
+      return 0;
+
+    int iEnd;
+    if (stream.eof()) {
+      string_type sExpr(a_szExpr);
+      iEnd = sExpr.length();
+    } else {
+      iEnd = stream.tellg(); // Position after reading
+    }
 
     if (iEnd==-1)
       return 0;
