@@ -344,15 +344,6 @@ MoleculeType *ReactionClass::getMoleculeTypeOfReactantTemplate(int pos) const {
 
 
 void ReactionClass::printDetails() const {
-	cout<< name <<"  (id="<<this->rxnId<<", baseRate="<<baseRate<<",  a="<<a<<", fired="<<fireCounter<<" times )"<<endl;
-	// added by rasi to look at only nonzero mapping reactions
-	int n_mappings = 0;
-	for(unsigned int r=0; r<n_reactants; r++)
-	{
-		n_mappings += this->getReactantCount(r);
-	}
-//	if (n_mappings == 0) return;
-
 	cout << name << "  (id=" << this->rxnId << ", baseRate=" << baseRate
 			<< ",  a=" << a << ", fired=" << fireCounter << " times )" << endl;
 	for (unsigned int r = 0; r < n_reactants; r++) {
