@@ -1,6 +1,7 @@
 #include "test_util.hh"
 #include <iostream>
 #include <stdexcept>
+#include <cmath>
 #include "../../NFutil/MTrand/mtrand.h"
 
 using namespace std;
@@ -91,6 +92,50 @@ void NFtest_util::run()
 	}
 
 	cout << "  RANDOM_INT tests passed!" << endl;
+
+	cout << "  Testing RANDOM_GAUSSIAN..." << endl;
+
+	// Test case 1: Test caching logic of haveNextGaussian
+	NFutil::SEED_RANDOM(12345);
+	double g1 = NFutil::RANDOM_GAUSSIAN();
+	double g2 = NFutil::RANDOM_GAUSSIAN();
+	double g3 = NFutil::RANDOM_GAUSSIAN();
+
+	NFutil::SEED_RANDOM(12345);
+	double g4 = NFutil::RANDOM_GAUSSIAN();
+	double g5 = NFutil::RANDOM_GAUSSIAN();
+	double g6 = NFutil::RANDOM_GAUSSIAN();
+
+	bool cached_works = false;
+	if (g5 == g1 && g6 == g2) {
+		cached_works = true;
+	} else if (g4 == g2 && g5 == g3) {
+		cached_works = true;
+	}
+	if (!cached_works) {
+		throw std::runtime_error("RANDOM_GAUSSIAN caching logic failed");
+	}
+
+	// Test case 2: Statistical check for Normal Distribution (Mean ~ 0, Variance ~ 1)
+	double sum = 0;
+	double sum_sq = 0;
+	for (int i = 0; i < NUM_ITERATIONS; ++i) {
+		double v = NFutil::RANDOM_GAUSSIAN();
+		sum += v;
+		sum_sq += v * v;
+	}
+
+	double mean = sum / NUM_ITERATIONS;
+	double variance = (sum_sq / NUM_ITERATIONS) - (mean * mean);
+
+	if (std::abs(mean) > 0.05) {
+		throw std::runtime_error("RANDOM_GAUSSIAN mean is not close to 0: " + std::to_string(mean));
+	}
+	if (std::abs(variance - 1.0) > 0.05) {
+		throw std::runtime_error("RANDOM_GAUSSIAN variance is not close to 1: " + std::to_string(variance));
+	}
+
+	cout << "  RANDOM_GAUSSIAN tests passed!" << endl;
 
 	cout << "  Testing trim..." << endl;
 
