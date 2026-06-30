@@ -5,10 +5,15 @@
 
 using namespace std;
 
+#include "../../NFcore/NFcore.hh"
+
 // Declare the external functions we want to test in the global namespace
 // as they are defined in walk.cpp without a namespace.
 int getInput(int min, int max);
 double getInput(double min);
+
+// equilibrate is defined in rnfRunner.cpp without a namespace, so we declare it here to test it.
+void equilibrate(const std::string& command, NFcore::System *s);
 
 void NFtest_input::run() {
     cout << "Running NFinput tests..." << endl;
@@ -16,6 +21,7 @@ void NFtest_input::run() {
     // Save old buffers
     streambuf* oldCin = cin.rdbuf();
     streambuf* oldCout = cout.rdbuf();
+    streambuf* oldCerr = cerr.rdbuf();
 
     try {
         // Test getInput(double min)
@@ -136,16 +142,36 @@ void NFtest_input::run() {
             }
         }
 
+        // Test equilibrate error handling
+        {
+            stringstream out;
+            stringstream err;
+            cout.rdbuf(out.rdbuf());
+            cerr.rdbuf(err.rdbuf());
+
+            NFcore::System s("test_system");
+
+            // Should catch runtime_error inside equilibrate and print to out/err
+            equilibrate("eq bad_arg", &s);
+
+            string output = out.str();
+            if (output.find("Could not convert eq times or output steps to numbers") == string::npos) {
+                throw runtime_error("Expected error message in stdout, got: " + output);
+            }
+        }
+
     } catch (...) {
         // Restore buffers before throwing
         cin.rdbuf(oldCin);
         cout.rdbuf(oldCout);
+        cerr.rdbuf(oldCerr);
         throw;
     }
 
     // Restore buffers
     cin.rdbuf(oldCin);
     cout.rdbuf(oldCout);
+    cerr.rdbuf(oldCerr);
 
     // Explicitly write the passed message to the real cout
     cout << "NFinput tests passed!" << endl;
