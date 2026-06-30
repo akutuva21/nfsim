@@ -10,6 +10,124 @@
 using namespace std;
 using namespace NFcore;
 
+namespace {
+
+    void buildNodes(list<Molecule*>& complexMembers, vector<Node*>& nodes, map<node_t, Node*>& node_index, int& nv, int& nde) {
+        nde = 0;  /* keep track of edges */
+        for (list<Molecule*>::iterator molIter = complexMembers.begin(); molIter != complexMembers.end(); ++molIter) {
+            Molecule* mol = *molIter;
+            MoleculeType* moltype = mol->getMoleculeType();
+            nodes.push_back(new Node(mol, Node::IS_MOLECULE));
+            node_index.insert(node_index_t(node_t(mol, Node::IS_MOLECULE), nodes.back()));
+
+            for (int icomp = 0; icomp < moltype->getNumOfComponents(); ++icomp) {
+                nodes.push_back(new Node(mol, icomp));
+                node_index.insert(node_index_t(node_t(mol, icomp), nodes.back()));
+
+                nde += 2;  /* add two edges (mol->comp) and (comp->mol) */
+                if (mol->isBindingSiteBonded(icomp)) ++nde;
+            }
+        }
+
+        // get number of vertices
+        nv = nodes.size();
+        // sort nodes (N logN)
+        std::sort(nodes.begin(), nodes.end(), Node::less_by_label);
+        // index nodes (N)
+        int v_index = 0;
+        for (vector<Node*>::iterator node_iter = nodes.begin(); node_iter != nodes.end(); ++node_iter, ++v_index) {
+            (*node_iter)->setIndex(v_index);
+        }
+    }
+
+    bool buildSparseGraph(vector<Node*>& nodes, map<node_t, Node*>& node_index, int nv, int nde, sparsegraph& sg, int* lab, int* ptn) {
+        bool nauty_required = false;
+        Node* curr_node = NULL;
+        Node* prev_node = NULL;
+        int e_index = 0;
+        int v_index = 0;
+
+        for (vector<Node*>::iterator node_iter = nodes.begin(); node_iter != nodes.end(); ++node_iter, ++v_index) {
+            curr_node = *node_iter;
+            Molecule* mol = curr_node->getMolecule();
+            MoleculeType* moltype = mol->getMoleculeType();
+            int icomp = curr_node->getComponent();
+
+            // this vertex is labeled v_index
+            lab[v_index] = v_index;
+            // edges for this vertex begin at e_index
+            sg.v[v_index] = e_index;
+
+            // compare current node to the previous node
+            if (v_index != 0) {
+                if (Node::less_by_label(prev_node, curr_node)) {
+                    ptn[v_index-1] = 0;
+                } else {
+                    nauty_required = true;
+                    ptn[v_index-1] = 1;
+                }
+            }
+
+            // build edges
+            if (curr_node->isMolecule()) {   // this is a molecule
+                for (int icomp_nbh = 0; icomp_nbh < moltype->getNumOfComponents(); ++icomp_nbh) {
+                    map<node_t, Node*>::iterator node_index_iter = node_index.find(node_t(mol, icomp_nbh));
+                    sg.e[e_index] = node_index_iter->second->getIndex();
+                    ++e_index;
+                }
+            } else {   // this is a component
+                map<node_t, Node*>::iterator node_index_iter = node_index.find(node_t(mol, Node::IS_MOLECULE));
+                sg.e[e_index] = node_index_iter->second->getIndex();
+                ++e_index;
+
+                if (mol->isBindingSiteBonded(icomp)) {
+                    node_index_iter = node_index.find(node_t(mol->getBondedMolecule(icomp),
+                                                           mol->getBondedMoleculeBindingSiteIndex(icomp)));
+                    sg.e[e_index] = node_index_iter->second->getIndex();
+                    ++e_index;
+                }
+            }
+
+            // calculate degree of this node
+            sg.d[v_index] = (v_index == 0 ? e_index : e_index-(sg.v[v_index-1]+sg.d[v_index-1]));
+            // remember this node for comparison
+            prev_node = curr_node;
+        }
+
+        // assignment the last value of the partition to 0.
+        ptn[nv-1] = 0;
+        return nauty_required;
+    }
+
+    void buildLabelString(vector<Node*>& nodes, map<node_t, Node*>& node_index, stringstream& labelstream) {
+        for (vector<Node*>::iterator node_iter = nodes.begin(); node_iter != nodes.end(); ++node_iter) {
+            Node* curr_node = *node_iter;
+            Molecule* mol = curr_node->getMolecule();
+            MoleculeType* moltype = mol->getMoleculeType();
+            int icomp = curr_node->getComponent();
+
+            labelstream << curr_node->getLabel();
+
+            if (curr_node->isMolecule()) {   // this is a molecule
+                for (int icomp_nbh = 0; icomp_nbh < moltype->getNumOfComponents(); ++icomp_nbh) {
+                    map<node_t, Node*>::iterator node_index_iter = node_index.find(node_t(mol, icomp_nbh));
+                    labelstream << "!" << node_index_iter->second->getIndex();
+                }
+            } else {   // this is a component
+                map<node_t, Node*>::iterator node_index_iter = node_index.find(node_t(mol, Node::IS_MOLECULE));
+                labelstream << "!" << node_index_iter->second->getIndex();
+
+                if (mol->isBindingSiteBonded(icomp)) {
+                    node_index_iter = node_index.find(node_t(mol->getBondedMolecule(icomp),
+                                                           mol->getBondedMoleculeBindingSiteIndex(icomp)));
+                    labelstream << "!" << node_index_iter->second->getIndex();
+                }
+            }
+            labelstream << ",";
+        }
+    }
+}
+
 const int Node::IS_MOLECULE = -1;
 
 Complex::Complex(System * s, int ID_complex, Molecule * m)
@@ -222,48 +340,12 @@ void Complex::generateCanonicalLabel ( )
     // declare containers
     vector < Node * >  nodes;
     map < node_t, Node * >  node_index;
-    // declare iterators
-    vector < Node * >::iterator       node_iter;
-    map < node_t, Node * >::iterator  node_index_iter;
-    // other variables
-    bool      nauty_required;
-    Node      *curr_node, *prev_node;
-    Molecule  *mol;
-    MoleculeType *moltype;
-    int       icomp, icomp_nbh;
+
     // nauty related variables
-    int      nv, m, nde;
-    int      v_index, e_index;
-    int      *lab, *ptn, *orbits;
-    setword  *workspace;
+    int nv = 0, m = 0, nde = 0;
 
-	// construct Node objects
-    nde = 0;  /* keep track of edges */
-	for ( molIter = complexMembers.begin(); molIter != complexMembers.end(); ++molIter )
-	{
-		mol = *molIter;
-		moltype = mol->getMoleculeType();
-		nodes.push_back( new Node(mol, Node::IS_MOLECULE) );
-        node_index.insert( node_index_t( node_t(mol, Node::IS_MOLECULE), nodes.back() ) );
-
-    	for ( icomp=0; icomp < moltype->getNumOfComponents(); ++icomp )
-		{
-			nodes.push_back( new Node(mol, icomp) );
-            node_index.insert( node_index_t( node_t(mol, icomp), nodes.back() ) );
-
-            nde += 2;  /* add two edges (mol->comp) and (comp->mol) */
-			if ( mol->isBindingSiteBonded(icomp) )  ++nde;
-        }
-	}
-
-    // get number of vertices
-    nv = nodes.size();
-    // sort nodes (N logN)
-    std::sort ( nodes.begin(), nodes.end(), Node::less_by_label );
-    // index nodes (N)
-    for ( v_index=0, node_iter = nodes.begin();  node_iter != nodes.end();  ++node_iter, ++v_index )
-        (*node_iter)->setIndex( v_index );
-
+    // 1. Build Nodes and handle indexing
+    buildNodes(complexMembers, nodes, node_index, nv, nde);
 
     // declare various data elements for Nauty
     static DEFAULTOPTIONS_SPARSEGRAPH(options);
@@ -283,74 +365,15 @@ void Complex::generateCanonicalLabel ( )
     SG_ALLOC( sg, nv, nde, "malloc" );
     sg.nv  = nv;   /* Number of vertices */
     sg.nde = nde;  /* Number of directed edges */
+
     // allocate memory for other Nauty data structures
-    orbits     = new int [nv];
-    workspace  = new setword [10*m];
-    lab        = new int [nv];
-    ptn        = new int [nv];
+    int* orbits     = new int [nv];
+    setword* workspace  = new setword [10*m];
+    int* lab        = new int [nv];
+    int* ptn        = new int [nv];
 
-    // build sparse graph representation for Nauty ( N + sum_N[ deg(n) logN ] )
-    nauty_required = false;
-    for ( e_index=0, v_index=0, node_iter = nodes.begin();  node_iter != nodes.end();  ++node_iter, ++v_index )
-    {
-        curr_node = *node_iter;
-        mol   = curr_node->getMolecule();
-        moltype = mol->getMoleculeType();
-        icomp = curr_node->getComponent();
-
-        // this vertex is labeled v_index
-        lab[v_index]  = v_index;
-        // edges for this vertex begin at e_index
-        sg.v[v_index] = e_index;
-
-        // compare current node to the previous node
-        if ( v_index != 0 )
-        {
-            if ( Node::less_by_label(prev_node, curr_node) )
-            {
-                ptn[v_index-1] = 0;
-            }
-            else
-            {
-                nauty_required = true;
-                ptn[v_index-1] = 1;
-            }
-        }
-
-        // build edges
-        if ( curr_node->isMolecule() )
-        {   // this is a molecule
-    	    for ( int icomp_nbh=0; icomp_nbh < moltype->getNumOfComponents(); ++icomp_nbh )
-		    {
-                node_index_iter = node_index.find( node_t(mol, icomp_nbh) );
-                sg.e[ e_index ] = node_index_iter->second->getIndex();
-                ++e_index;
-            }
-        }
-        else
-        {   // this is a component
-            node_index_iter = node_index.find( node_t( mol, Node::IS_MOLECULE ) );
-            sg.e[ e_index ] = node_index_iter->second->getIndex();
-            ++e_index;
-
-			if ( mol->isBindingSiteBonded( icomp ) )
-			{
-                node_index_iter = node_index.find( node_t( mol->getBondedMolecule(icomp),
-                                                       mol->getBondedMoleculeBindingSiteIndex(icomp) ) );
-                sg.e[ e_index ] = node_index_iter->second->getIndex();
-                ++e_index;
-			}
-        }
-
-        // calculate degree of this node
-        sg.d[v_index] = ( v_index == 0 ? e_index : e_index-(sg.v[v_index-1]+sg.d[v_index-1]) );
-        // remember this node for comparison
-        prev_node = curr_node;
-    }
-
-    // assignment the last value of the partition to 0.
-    ptn[nv-1] = 0;
-
+    // 2. Build Sparse Graph and Partition
+    bool nauty_required = buildSparseGraph(nodes, node_index, nv, nde, sg, lab, ptn);
 
     #if DEBUG_NAUTY==1
     cout << "lab: ";
@@ -366,7 +389,6 @@ void Complex::generateCanonicalLabel ( )
     cout << "\nnv:  " << sg.nv;
     cout << "\nnde: " << sg.nde << endl;
     #endif
-
 
     if ( nauty_required )
     {  /*  Label sg, result in cg and labelling in lab.
@@ -384,7 +406,7 @@ void Complex::generateCanonicalLabel ( )
     #endif
 
     // Reindex nodes (N)
-    for ( v_index = 0;  v_index < nv;  ++v_index )
+    for ( int v_index = 0;  v_index < nv;  ++v_index )
         nodes.at( lab[v_index] )->setIndex( v_index );
 
     // Free Nauty data
@@ -398,41 +420,11 @@ void Complex::generateCanonicalLabel ( )
     // sort nodes
     std::sort ( nodes.begin(), nodes.end(), Node::less_by_index );
 
-    // Build label  ( N + sum_N[ Edges(n)*logN ] )
-    for ( node_iter = nodes.begin();  node_iter != nodes.end();  ++node_iter )
-    {
-        curr_node = *node_iter;
-        mol = curr_node->getMolecule();
-        moltype = mol->getMoleculeType();
-        icomp = curr_node->getComponent();
-
-        labelstream << curr_node->getLabel();
-
-        if ( curr_node->isMolecule() )
-        {   // this is a molecule
-    	    for ( icomp_nbh=0; icomp_nbh < moltype->getNumOfComponents(); ++icomp_nbh )
-		    {
-                node_index_iter = node_index.find( node_t(mol, icomp_nbh) );
-                labelstream << "!" << node_index_iter->second->getIndex();
-            }
-        }
-        else
-        {   // this is a component
-            node_index_iter = node_index.find( node_t( mol, Node::IS_MOLECULE ) );
-            labelstream << "!" << node_index_iter->second->getIndex();
-
-			if ( mol->isBindingSiteBonded( icomp ) )
-			{
-                node_index_iter = node_index.find( node_t( mol->getBondedMolecule(icomp),
-                                                       mol->getBondedMoleculeBindingSiteIndex(icomp) ) );
-                labelstream << "!" << node_index_iter->second->getIndex();
-			}
-        }
-        labelstream << ",";
-    }
+    // 3. Build Label String
+    buildLabelString(nodes, node_index, labelstream);
 
     // Free nodes
-    for ( node_iter = nodes.begin(); node_iter != nodes.end(); ++node_iter )
+    for (vector<Node*>::iterator node_iter = nodes.begin(); node_iter != nodes.end(); ++node_iter )
         delete *node_iter;
 
     // set canonical label
