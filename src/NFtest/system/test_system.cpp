@@ -1,5 +1,6 @@
 #include "test_system.hh"
 #include "../../NFreactions/reactions/reaction.hh"
+#include "../../NFfunction/NFfunction.hh"
 #include <iostream>
 #include <stdexcept>
 #include <vector>
@@ -175,6 +176,38 @@ void NFtest_system::run()
 	}
 
 	cout << "  System::getMoleculeTypeByName tests passed!" << endl;
+
+	cout << "  Testing System::getLocalFunctionByName..." << endl;
+
+	// Create dummy arguments for LocalFunction
+	vector<string> args;
+	args.push_back("arg1");
+	vector<string> varRefNames;
+	vector<string> varObservableNames;
+	vector<Observable *> varObservables;
+	vector<int> varRefScope;
+	vector<string> paramNames;
+
+	LocalFunction* lf1 = new LocalFunction(sys, "func1", "1.0", "1.0", args, varRefNames, varObservableNames, varObservables, varRefScope, paramNames);
+	LocalFunction* lf2 = new LocalFunction(sys, "func2", "2.0", "2.0", args, varRefNames, varObservableNames, varObservables, varRefScope, paramNames);
+
+	sys->addLocalFunction(lf1);
+	sys->addLocalFunction(lf2);
+
+	if (sys->getLocalFunctionByName("func1") != lf1) {
+		throw std::runtime_error("System::getLocalFunctionByName did not return correct LocalFunction for 'func1'.");
+	}
+	if (sys->getLocalFunctionByName("func2") != lf2) {
+		throw std::runtime_error("System::getLocalFunctionByName did not return correct LocalFunction for 'func2'.");
+	}
+	if (sys->getLocalFunctionByName("NonExistentFunc") != NULL) {
+		throw std::runtime_error("System::getLocalFunctionByName did not return NULL for non-existent local function.");
+	}
+	if (sys->getLocalFunctionByName("") != NULL) {
+		throw std::runtime_error("System::getLocalFunctionByName did not return NULL for empty string name.");
+	}
+
+	cout << "  System::getLocalFunctionByName tests passed!" << endl;
 
 	// Cleanup
 	// Note: System destructor deletes MoleculeTypes added to it
