@@ -28,6 +28,58 @@ using namespace NFcore;
 
 namespace NFinput {
 
+static void parseEnergyMolecules(TiXmlElement *pListOfMols, EnergyPatternInfo &epInfo, map<string, pair<int,int>> &compIdMap)
+{
+    TiXmlElement *pMol;
+    for (pMol = pListOfMols->FirstChildElement("Molecule"); pMol != 0; pMol = pMol->NextSiblingElement("Molecule"))
+    {
+        EpMolecule mol;
+        mol.xmlId = pMol->Attribute("id") ? pMol->Attribute("id") : "";
+        mol.typeName = pMol->Attribute("name") ? pMol->Attribute("name") : "";
+        int molIdx = (int)epInfo.molecules.size();
+
+        TiXmlElement *pListOfComps = pMol->FirstChildElement("ListOfComponents");
+        if (pListOfComps) {
+            TiXmlElement *pComp;
+            for (pComp = pListOfComps->FirstChildElement("Component"); pComp != 0; pComp = pComp->NextSiblingElement("Component"))
+            {
+                EpMolecule::CompInfo ci;
+                ci.name = pComp->Attribute("name") ? pComp->Attribute("name") : "";
+                string compId = pComp->Attribute("id") ? pComp->Attribute("id") : "";
+                string numBonds = pComp->Attribute("numberOfBonds") ? pComp->Attribute("numberOfBonds") : "0";
+                ci.isBound = (numBonds != "0" && numBonds != "");
+                ci.bondPartnerId = "";
+
+                if (pComp->Attribute("state")) ci.stateConstraint = pComp->Attribute("state");
+
+                int compIdx = (int)mol.components.size();
+                compIdMap[compId] = make_pair(molIdx, compIdx);
+                mol.components.push_back(ci);
+            }
+        }
+        epInfo.molecules.push_back(mol);
+    }
+}
+
+static void parseEnergyBonds(TiXmlElement *pListOfBonds, EnergyPatternInfo &epInfo, map<string, pair<int,int>> &compIdMap)
+{
+    if (!pListOfBonds) return;
+    TiXmlElement *pBond;
+    for (pBond = pListOfBonds->FirstChildElement("Bond"); pBond != 0; pBond = pBond->NextSiblingElement("Bond"))
+    {
+        string site1 = pBond->Attribute("site1") ? pBond->Attribute("site1") : "";
+        string site2 = pBond->Attribute("site2") ? pBond->Attribute("site2") : "";
+        if (compIdMap.count(site1) && compIdMap.count(site2)) {
+            EnergyPatternInfo::Bond bond;
+            bond.mol1 = compIdMap[site1].first; bond.comp1 = compIdMap[site1].second;
+            bond.mol2 = compIdMap[site2].first; bond.comp2 = compIdMap[site2].second;
+            epInfo.bonds.push_back(bond);
+            epInfo.molecules[bond.mol1].components[bond.comp1].bondPartnerId = epInfo.molecules[bond.mol2].xmlId;
+            epInfo.molecules[bond.mol2].components[bond.comp2].bondPartnerId = epInfo.molecules[bond.mol1].xmlId;
+        }
+    }
+}
+
 /*
  * Parse <ListOfEnergyPatterns> from the XML model element.
  */
@@ -89,53 +141,11 @@ bool parseEnergyPatterns(
         }
 
         map<string, pair<int,int>> compIdMap;
-        TiXmlElement *pMol;
-        for (pMol = pListOfMols->FirstChildElement("Molecule"); pMol != 0; pMol = pMol->NextSiblingElement("Molecule"))
-        {
-            EpMolecule mol;
-            mol.xmlId = pMol->Attribute("id") ? pMol->Attribute("id") : "";
-            mol.typeName = pMol->Attribute("name") ? pMol->Attribute("name") : "";
-            int molIdx = (int)epInfo.molecules.size();
-
-            TiXmlElement *pListOfComps = pMol->FirstChildElement("ListOfComponents");
-            if (pListOfComps) {
-                TiXmlElement *pComp;
-                for (pComp = pListOfComps->FirstChildElement("Component"); pComp != 0; pComp = pComp->NextSiblingElement("Component"))
-                {
-                    EpMolecule::CompInfo ci;
-                    ci.name = pComp->Attribute("name") ? pComp->Attribute("name") : "";
-                    string compId = pComp->Attribute("id") ? pComp->Attribute("id") : "";
-                    string numBonds = pComp->Attribute("numberOfBonds") ? pComp->Attribute("numberOfBonds") : "0";
-                    ci.isBound = (numBonds != "0" && numBonds != "");
-                    ci.bondPartnerId = "";
-
-                    if (pComp->Attribute("state")) ci.stateConstraint = pComp->Attribute("state");
-
-                    int compIdx = (int)mol.components.size();
-                    compIdMap[compId] = make_pair(molIdx, compIdx);
-                    mol.components.push_back(ci);
-                }
-            }
-            epInfo.molecules.push_back(mol);
-        }
+        parseEnergyMolecules(pListOfMols, epInfo, compIdMap);
 
         TiXmlElement *pListOfBonds = pPattern ? pPattern->FirstChildElement("ListOfBonds") : pEP->FirstChildElement("ListOfBonds");
-        if (pListOfBonds) {
-            TiXmlElement *pBond;
-            for (pBond = pListOfBonds->FirstChildElement("Bond"); pBond != 0; pBond = pBond->NextSiblingElement("Bond"))
-            {
-                string site1 = pBond->Attribute("site1") ? pBond->Attribute("site1") : "";
-                string site2 = pBond->Attribute("site2") ? pBond->Attribute("site2") : "";
-                if (compIdMap.count(site1) && compIdMap.count(site2)) {
-                    EnergyPatternInfo::Bond bond;
-                    bond.mol1 = compIdMap[site1].first; bond.comp1 = compIdMap[site1].second;
-                    bond.mol2 = compIdMap[site2].first; bond.comp2 = compIdMap[site2].second;
-                    epInfo.bonds.push_back(bond);
-                    epInfo.molecules[bond.mol1].components[bond.comp1].bondPartnerId = epInfo.molecules[bond.mol2].xmlId;
-                    epInfo.molecules[bond.mol2].components[bond.comp2].bondPartnerId = epInfo.molecules[bond.mol1].xmlId;
-                }
-            }
-        }
+        parseEnergyBonds(pListOfBonds, epInfo, compIdMap);
+
         ef->addEnergyPattern(epInfo);
     }
 
