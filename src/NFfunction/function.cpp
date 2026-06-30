@@ -155,7 +155,6 @@ void GlobalFunction::prepareForSimulation(System *s)
 }
 
 void GlobalFunction::updateParameters(System *s) {
-	//cout<<"Updating parameters for function: "<<name<<endl;
 	for(unsigned int i=0; i<n_params; i++) {
 		p->DefineConst(paramNames[i],s->getParameter(paramNames[i]));
 	}
@@ -191,17 +190,6 @@ void GlobalFunction::printDetails()
 
 
 
-
-
-//	// Get the map with the variables
-//	mu::Parser::varmap_type variables = p->GetVar();
-//	cout << (int)variables.size() << " variables."<<endl;
-//	mu::Parser::varmap_type::const_iterator item = variables.begin();
-//	// Query the variables
-//	for (; item!=variables.end(); ++item)
-//	{
-//	  cout << "  Name: " << item->first << " Address: [0x" << item->second << "]  Value: "<< *(item->second)<<"\n";
-//	}
 
 
 	if(p!=0) {
@@ -399,10 +387,6 @@ StateCounter::~StateCounter() {
 
 void StateCounter::add(Molecule *m) {
 	if(m->getMoleculeType()==mt) {
-
-	//	cout<<"matched moleculeType"<<endl;
 		value+=m->getComponentState(stateIndex);
-	//	cout<<"found component state: "<<m->getComponentState(stateIndex)<<endl;
-	//	cout<<"updating v`alue to: "<< value<<endl;
 	}
 }
