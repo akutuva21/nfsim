@@ -47,6 +47,67 @@ void NFtest_util::run()
 
 	cout << "  MTRand_int32 initialization error paths passed!" << endl;
 
+	cout << "  Testing MTRand_int32 seed functionality..." << endl;
+
+	// Note: MTRand_int32 uses static state, so all instances share the same state.
+	// We test it by seeding, saving a sequence, reseeding with the same seed,
+	// and verifying the sequence is identical.
+
+	MTRand_int32 rng;
+	const int SEQ_LENGTH = 100;
+
+	// Test setting seed with 32-bit int
+	rng.seed(12345UL);
+	std::vector<unsigned long> int_seq;
+	for (int i = 0; i < SEQ_LENGTH; ++i) {
+		int_seq.push_back(rng());
+	}
+
+	rng.seed(12345UL);
+	for (int i = 0; i < SEQ_LENGTH; ++i) {
+		unsigned long val = rng();
+		if (val != int_seq[i]) {
+			throw std::runtime_error("MTRand_int32 reseeding with identical int seed produced different outputs");
+		}
+	}
+
+	// Test resetting seed with 32-bit int (shorter check)
+	rng.seed(98765UL);
+	unsigned long first_val_1 = rng();
+	rng.seed(98765UL);
+	unsigned long first_val_2 = rng();
+	if (first_val_1 != first_val_2) {
+		throw std::runtime_error("MTRand_int32 reseeding with same int seed did not reset sequence");
+	}
+
+	// Test setting seed with array
+	unsigned long seed_array[4] = {0x111, 0x222, 0x333, 0x444};
+	rng.seed(seed_array, 4);
+	std::vector<unsigned long> arr_seq;
+	for (int i = 0; i < SEQ_LENGTH; ++i) {
+		arr_seq.push_back(rng());
+	}
+
+	rng.seed(seed_array, 4);
+	for (int i = 0; i < SEQ_LENGTH; ++i) {
+		unsigned long val = rng();
+		if (val != arr_seq[i]) {
+			throw std::runtime_error("MTRand_int32 reseeding with identical array seed produced different outputs");
+		}
+	}
+
+	// Test resetting seed with array
+	unsigned long seed_array2[4] = {0x555, 0x666, 0x777, 0x888};
+	rng.seed(seed_array2, 4);
+	unsigned long first_val_3 = rng();
+	rng.seed(seed_array2, 4);
+	unsigned long first_val_4 = rng();
+	if (first_val_3 != first_val_4) {
+		throw std::runtime_error("MTRand_int32 reseeding with same array seed did not reset sequence");
+	}
+
+	cout << "  MTRand_int32 seed functionality passed!" << endl;
+
 	cout << "  Testing RANDOM_INT..." << endl;
 
 	// Test case 1: range [0, 10)
