@@ -338,7 +338,10 @@ void job2str(job& j, char* p, size_t max_len) {
 	for (size_t i = 0; i < j.parameters.size(); ++i) {
 		oss << j.parameters[i] << "," << j.values[i] << ",";
 	}
-	snprintf(p, max_len, "%s", oss.str().c_str());
+		int n_written = snprintf(p, max_len, "%s", oss.str().c_str());
+		if (n_written < 0 || (size_t)n_written >= max_len) {
+			throw std::runtime_error("Buffer truncation in job2str");
+		}
 }
 
 void str2job(char* str, job& jnow) {
