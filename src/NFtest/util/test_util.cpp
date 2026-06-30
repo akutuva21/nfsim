@@ -290,5 +290,18 @@ void NFtest_util::run()
 
 	cout << "  MTRand53 tests passed!" << endl;
 
+	cout << "  Testing MTRand_open..." << endl;
+	MTRand_open rand_open;
+	bool hit_out_of_bounds = false;
+	for (int i = 0; i < NUM_ITERATIONS; ++i) {
+		double result = rand_open();
+		if (result <= 0.0 || result >= 1.0) {
+			hit_out_of_bounds = true;
+			break;
+		}
+	}
+	if (hit_out_of_bounds) throw std::runtime_error("MTRand_open generated a number out of bounds (<= 0.0 or >= 1.0)");
+	cout << "  MTRand_open tests passed!" << endl;
+
 	cout << "NFutil tests completed successfully." << endl;
 }
