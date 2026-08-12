@@ -457,6 +457,49 @@ class TestIssueRegressions(unittest.TestCase):
             "-sim 2 -oTimes 0,1,2 -seed 1",
         )
 
+    def test_mm_rate_law_survives_small_km_with_enzyme_in_excess(self):
+        # BioNetGen issue 323. The free substrate of the MM rate law used to be
+        # computed as 0.5*(b + sqrt(b*b + 4*Km*S)) with b = S - Km - E. That form
+        # cancels catastrophically for b < 0 and rounds to exactly zero once
+        # 4*Km*S drops below about 1e-16*b*b, leaving a propensity of zero and a
+        # reaction that never fires. With Km << E - S the free substrate is
+        # Km*S/(E-S) and the propensity reduces to kcat*S, so the substrate decays
+        # as a first order death process: P(t) = S0*(1 - exp(-kcat*t)).
+        xmlPath = os.path.join(nfsimPrePath, "test", "MM", "mm_small_km.xml")
+        S0, kcat, nSeeds = 100.0, 1.0, 20
+
+        total = None
+        headers = None
+        with tempfile.TemporaryDirectory() as tmpdir:
+            for seed in range(1, nSeeds + 1):
+                outPath = os.path.join(tmpdir, "mm_{0}.gdat".format(seed))
+                self._run_nfsim_xml(xmlPath, outPath, "-sim 4 -oSteps 4 -seed {0}".format(seed))
+                headers, data = self._load_gdat(outPath)
+                total = data if total is None else total + data
+        mean = total / nSeeds
+
+        times = mean[:, headers.index("time")]
+        meanP = mean[:, headers.index("Pn")]
+        expected = S0 * (1.0 - np.exp(-kcat * times))
+
+        # The reaction fired at all. On the old expression every seed returns a
+        # flat zero trajectory, so this alone catches the regression.
+        self.assertTrue(
+            meanP[-1] > 0.0,
+            "MM rate law never fired for small Km with the enzyme in excess",
+        )
+        # Well clear of the stochastic spread: at t=1 the standard error of the
+        # mean over 20 seeds is about 1.7% of the expected value.
+        for t, got, want in zip(times[1:], meanP[1:], expected[1:]):
+            self.assertAlmostEqual(
+                got / want,
+                1.0,
+                delta=0.15,
+                msg="MM product at t={0} averaged {1} over {2} seeds, expected about {3}".format(
+                    t, got, nSeeds, want
+                ),
+            )
+
     def test_tfun_inline_time_outputs_expected_global_function(self):
         outputDirectory = mfolder
         fileNumber = "44"
