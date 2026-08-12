@@ -187,7 +187,15 @@ double MMRxnClass::update_a()
 {
 	double S = (double)getCorrectedReactantCount(0);
 	double E = (double)getCorrectedReactantCount(1);
-	sFree=0.5*( (S-Km-E) + pow((pow( (S-Km-E),2.0) + 4.0*Km*S),  0.5) );
+	// Free substrate is the non-negative root of sFree^2 - b*sFree - Km*S = 0, b = S-Km-E.
+	// The textbook form 0.5*(b + sqrt(b*b + 4*Km*S)) cancels catastrophically when b < 0,
+	// and rounds to exactly zero once 4*Km*S drops below about 1e-16*b*b, which silently
+	// stops the reaction when Km is small and the enzyme is in excess. The two roots
+	// multiply to -Km*S, so the b < 0 case is written as a sum of like-signed quantities.
+	// See https://github.com/RuleWorld/bionetgen/issues/323
+	double b = S-Km-E;
+	double q = sqrt(b*b + 4.0*Km*S);
+	sFree = (b>=0.0) ? 0.5*(b+q) : 2.0*Km*S/(q-b);
 	a=kcat*sFree*E/(Km+sFree);
 	return a;
 }

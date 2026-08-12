@@ -1,0 +1,34 @@
+# Regression fixture for the Michaelis-Menten rate law with a small Km and the
+# enzyme in excess. See https://github.com/RuleWorld/bionetgen/issues/323.
+#
+# With Km << E - S the free substrate is Km*S/(E-S) and the propensity reduces to
+# kcat*S, so the substrate decays as a first order death process and the product
+# follows P(t) = S0*(1 - exp(-kcat*t)). The free substrate used to be computed as
+# 0.5*(b + sqrt(b*b + 4*Km*S)) with b = S - Km - E, which rounds to exactly zero
+# for these parameters, leaving a propensity of zero and a reaction that never fires.
+begin model
+begin parameters
+  kcat 1.0
+  Km   1e-15
+end parameters
+begin molecule types
+  S()
+  E()
+  P()
+end molecule types
+begin seed species
+  S()  100
+  E()  200
+  P()    0
+end seed species
+begin observables
+  Molecules Pn P()
+  Molecules Sn S()
+end observables
+begin reaction rules
+  R: S() + E() -> P() + E()  MM(kcat,Km)
+end reaction rules
+end model
+begin actions
+writeXML()
+end actions
