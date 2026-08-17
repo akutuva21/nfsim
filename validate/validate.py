@@ -500,6 +500,123 @@ class TestIssueRegressions(unittest.TestCase):
                 ),
             )
 
+    def _mean_final_row(self, xmlPath, runOptions, nSeeds):
+        """Mean of the final output row over seeds 1..nSeeds. Returns (headers, row)."""
+        total = None
+        headers = None
+        with tempfile.TemporaryDirectory() as tmpdir:
+            for seed in range(1, nSeeds + 1):
+                outPath = os.path.join(tmpdir, "run_{0}.gdat".format(seed))
+                self._run_nfsim_xml(
+                    xmlPath, outPath, "{0} -seed {1}".format(runOptions, seed)
+                )
+                headers, data = self._load_gdat(outPath)
+                total = data if total is None else total + data
+        return headers, (total / nSeeds)[-1]
+
+    def test_symmetry_factor_is_applied_on_every_rate_law(self):
+        # ReactionClass's constructor scaled its own baseRate *argument*, which the
+        # member had already been copied out of, so the symmetry correction was
+        # computed and discarded. Only Ele recovered it, via setBaseRate(). Every
+        # other rate law is built with baseRate=1 and never calls setBaseRate, so a
+        # rule whose reactant pattern has a non-trivial automorphism ran at
+        # 1/symmetry_factor times its intended rate -- 2x for a homodimer.
+        #
+        # Five dimer pools of X0 copies decay under five rate laws that all encode
+        # the same intended per-dimer rate mu, so one expected value covers them
+        # all: X0*exp(-mu*t) = 4000*exp(-1) = 1471.5. A dropped factor gives
+        # 4000*exp(-2) = 541.3 instead, which is nowhere near it.
+        xmlPath = os.path.join(
+            nfsimPrePath, "test", "symmetry", "symmetry_factor_rate_laws.xml"
+        )
+        headers, mean = self._mean_final_row(xmlPath, "-sim 1000 -oSteps 2 -cb", 5)
+
+        expected = 4000.0 * np.exp(-1.0)
+        # Per-seed scatter is ~30 counts, so a 5-seed mean has sigma ~13. A +/-170
+        # band is ~13 sigma wide and still leaves the dropped-factor value 930
+        # counts outside it.
+        tolerance = 170.0
+
+        pools = [
+            ("Sym_fn", "symmetric, global function (FunctionalRxnClass)"),
+            ("Sym_dor", "symmetric, local function (DORRxnClass)"),
+            ("Sym_mm", "symmetric, Michaelis-Menten (MMRxnClass)"),
+            # These three were already correct; they guard against applying the
+            # factor twice, or applying it to an asymmetric rule.
+            ("Sym_k", "symmetric, constant rate (BasicRxnClass, control)"),
+            ("Asym_fn", "asymmetric, global function (control)"),
+            ("Asym_mm", "asymmetric, Michaelis-Menten (control)"),
+        ]
+        for name, description in pools:
+            got = mean[headers.index(name)]
+            self.assertAlmostEqual(
+                got,
+                expected,
+                delta=tolerance,
+                msg="{0} ({1}) ended at {2:.1f}, expected about {3:.1f}; "
+                "{4:.1f} means the symmetry factor was dropped".format(
+                    name, description, got, expected, 4000.0 * np.exp(-2.0)
+                ),
+            )
+
+        # The sharpest form of the claim, needing no expected value at all: a
+        # rule's decay must not depend on whether its reactant pattern happens
+        # to be symmetric.
+        for symName, asymName, rateLaw in [
+            ("Sym_fn", "Asym_fn", "global function"),
+            ("Sym_mm", "Asym_mm", "Michaelis-Menten"),
+        ]:
+            sym = mean[headers.index(symName)]
+            asym = mean[headers.index(asymName)]
+            self.assertAlmostEqual(
+                sym,
+                asym,
+                delta=2 * tolerance,
+                msg="{0}: symmetric pool ended at {1:.1f}, asymmetric at {2:.1f}".format(
+                    rateLaw, sym, asym
+                ),
+            )
+
+    def test_michaelis_menten_symmetry_factor_scales_the_substrate_count(self):
+        # Where the MM law is linear in the substrate match count, scaling that
+        # count and scaling the finished propensity coincide, so the fixture above
+        # cannot tell them apart. This one sits at X0/Km = 0.4, where they
+        # separate. The two rules differ only in whether the substrate dimer's
+        # halves are the same molecule type, so they must decay together; there is
+        # no closed form here and the pairing is the oracle.
+        #
+        # Measured over 10 seeds at t=2000:
+        #     no factor at all              sym 164.4   asym 761.2
+        #     factor on the propensity      sym 993.9   asym 751.8
+        #     factor on the substrate count sym 758.0   asym 756.3
+        xmlPath = os.path.join(
+            nfsimPrePath, "test", "symmetry", "symmetry_factor_mm_saturated.xml"
+        )
+        headers, mean = self._mean_final_row(xmlPath, "-sim 2000 -oSteps 2 -cb", 10)
+
+        sym = mean[headers.index("Sym_mm")]
+        asym = mean[headers.index("Asym_mm")]
+        # Per-seed scatter is ~25 counts, so a 10-seed mean has sigma ~8. An
+        # 80-count band is ~10 sigma wide and leaves the propensity placement's
+        # ~240 gap far outside.
+        self.assertAlmostEqual(
+            sym,
+            asym,
+            delta=80.0,
+            msg="saturated MM: symmetric ended at {0:.1f}, asymmetric at {1:.1f}. A "
+            "gap near +240 means the factor is being applied to the finished "
+            "propensity instead of to the substrate count".format(sym, asym),
+        )
+        # Guard the fixture itself: if a parameter edit drifted this model back
+        # into the linear regime the assertion above would keep passing while
+        # having stopped discriminating. Linear-regime decay leaves ~1471.
+        self.assertLess(
+            asym,
+            1100.0,
+            "the MM control ended at {0:.1f}, too close to the linear-regime value "
+            "-- this fixture no longer probes the nonlinear range".format(asym),
+        )
+
     def test_tfun_inline_time_outputs_expected_global_function(self):
         outputDirectory = mfolder
         fileNumber = "44"
