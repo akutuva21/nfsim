@@ -712,6 +712,120 @@ class TestIssueRegressions(unittest.TestCase):
         # perturbing the underlying simulation.
         self.assertAlmostEqual(noFlags[headers.index("Mtot")], 394.0, delta=1e-6)
 
+    def test_pure_context_reactant_is_counted_once_per_complex(self):
+        # Issue #87. BioNetGen gives a reactant pattern the rule does not transform
+        # one reaction instance per matching complex, however many molecules inside
+        # that complex match it, because every embedding yields the identical
+        # reaction. NFsim enumerated matches per molecule, so a homodimeric
+        # catalyst drove its rule twice as fast as a heterodimeric one and a
+        # homotrimer ring three times as fast.
+        #
+        # Every pool below carries the same intended per-substrate rate
+        # mu = kcat*E0 = 2.5e-4, so the oracle is BNG's own generated network
+        # integrated as ODEs: X0*exp(-mu*t) = 4000*exp(-0.5) = 2426.1. The
+        # Michaelis-Menten pair has no closed form and lands at 2344.8.
+        xmlPath = os.path.join(nfsimPrePath, "test", "context", "context_symmetry.xml")
+        headers, mean = self._mean_final_row(xmlPath, "-sim 2000 -oSteps 2 -cb", 10)
+
+        expected = 4000.0 * np.exp(-0.5)
+        expectedMM = 2344.8
+        # Per-seed scatter is ~30 counts, so a 10-seed mean has sigma ~10. A +/-100
+        # band is ~10 sigma wide and leaves every over-counted value (~1471 at 2x,
+        # ~893 at 3x) more than 900 counts outside it.
+        tolerance = 100.0
+
+        pools = [
+            ("Dim_sym", "homodimer catalyst, constant rate", expected),
+            ("Fn_sym", "homodimer catalyst, global function", expected),
+            ("Dor_sym", "homodimer catalyst, local function", expected),
+            ("Mm_sym", "symmetric enzyme, Michaelis-Menten", expectedMM),
+            ("Ring_sym", "homotrimer ring catalyst (3x, not 2x)", expected),
+            ("Sub_subunit", "single-subunit pattern against a homodimer", expected),
+            # The load-bearing case: a single-molecule pattern against a complex
+            # holding two *distinguishable* copies. No automorphism anywhere, and
+            # still over-counted -- which rules out embeddings/|Aut(pattern)|.
+            ("Sub_scaffold", "two distinguishable copies, no symmetry at all", expected),
+            # Sharper still: single-molecule pattern against a homotrimer ring, so
+            # embeddings/|Aut| would say 3, a hardcoded factor of two 1.5, and
+            # once-per-complex 1. BNG says 1.
+            ("Sub_trimer", "single-molecule pattern against a homotrimer ring", expected),
+        ]
+        for name, description, want in pools:
+            got = mean[headers.index(name)]
+            self.assertAlmostEqual(
+                got,
+                want,
+                delta=tolerance,
+                msg="{0} ({1}) ended at {2:.1f}, expected about {3:.1f}; a value "
+                "near 1471 means two matching molecules in one complex were "
+                "counted as two reaction instances, near 893 means three".format(
+                    name, description, got, want
+                ),
+            )
+
+        # Needs no oracle: two catalysts present at the same complex count and
+        # carrying the same rate constant must give the same rate, whatever the
+        # rate law.
+        for multi, single, rateLaw in [
+            ("Dim_sym", "Dim_asym", "constant rate"),
+            ("Ring_sym", "Ring_asym", "constant rate, trimer ring"),
+            ("Fn_sym", "Fn_asym", "global function"),
+            ("Dor_sym", "Dor_asym", "local function"),
+            ("Mm_sym", "Mm_asym", "Michaelis-Menten"),
+        ]:
+            many = mean[headers.index(multi)]
+            one = mean[headers.index(single)]
+            self.assertAlmostEqual(
+                many,
+                one,
+                delta=2 * tolerance,
+                msg="{0}: multi-subunit catalyst ended at {1:.1f}, single-subunit "
+                "control at {2:.1f}".format(rateLaw, many, one),
+            )
+
+    def test_a_transformed_symmetric_pattern_keeps_both_of_its_sites(self):
+        # The other direction, and the reason "which reactants are pure context"
+        # has to be decided before finalize() appends its placeholder. Bind_sym's
+        # catalyst dimer IS transformed -- one half of it binds -- so its two
+        # halves are two genuinely distinct reactive sites and two distinct
+        # reactions. BNG agrees explicitly: the generated network gives this rule
+        # 2*kb where the heterodimer control gets kb.
+        #
+        # NFsim marks the second partner of a binding with an EMPTY transform, the
+        # same type finalize() uses for its placeholder, so deciding pure context
+        # from the transformation types afterwards misclassifies exactly this rule
+        # and erases its factor of two -- landing it on top of its own control.
+        xmlPath = os.path.join(nfsimPrePath, "test", "context", "context_symmetry.xml")
+        headers, mean = self._mean_final_row(xmlPath, "-sim 2000 -oSteps 2 -cb", 10)
+
+        sym = mean[headers.index("Bind_sym")]
+        asym = mean[headers.index("Bind_asym")]
+        self.assertAlmostEqual(
+            sym,
+            218.0,
+            delta=25.0,
+            msg="Bind_sym ended at {0:.1f}, expected about 218. A value near its "
+            "control ({1:.1f}) means per-complex counting reached a reactant the "
+            "rule transforms and divided out a factor BNG put there on "
+            "purpose".format(sym, asym),
+        )
+        self.assertAlmostEqual(
+            asym,
+            320.0,
+            delta=30.0,
+            msg="Bind_asym ended at {0:.1f}, expected about 320. This rule has one "
+            "reactive site and one matching molecule per complex, so nothing here "
+            "should move it".format(asym),
+        )
+        # Guard the pair: the two assertions above only discriminate while the
+        # two-site arm actually runs faster than its control.
+        self.assertGreater(
+            asym - sym,
+            50.0,
+            "Bind_sym and Bind_asym have converged -- this pair no longer tells a "
+            "transformed pattern's real multiplicity from a context over-count",
+        )
+
     def test_tfun_inline_time_outputs_expected_global_function(self):
         outputDirectory = mfolder
         fileNumber = "44"
