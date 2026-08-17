@@ -674,6 +674,44 @@ class TestIssueRegressions(unittest.TestCase):
                     "regressed".format(rings, seed),
                 )
 
+    def test_species_observable_counts_without_a_bookkeeping_flag(self):
+        # System.useComplex used to be derived solely from blockSameComplexBinding.
+        # A Species-typed observable is tallied by iterating complexes, so run
+        # without complex bookkeeping it was counted with tracking disabled and
+        # reported a number with no physical ceiling.
+        #
+        # ring2_homodimer.xml declares the Species observable `dimers` over 197
+        # two-bond rings, so the count can never exceed 197. Run with no flags at
+        # all, it used to report ~3612. It must now be physical, and agree with the
+        # bookkeeping-enabled run -- this model has no same-complex binding, so the
+        # two modes describe the same trajectory.
+        xmlPath = os.path.join(
+            nfsimPrePath, "test", "molecularity", "ring2_homodimer.xml"
+        )
+        headers, noFlags = self._mean_final_row(xmlPath, "-sim 200000 -oSteps 2", 3)
+        _, withBscb = self._mean_final_row(xmlPath, "-sim 200000 -oSteps 2 -bscb", 3)
+
+        seeded = 197.0
+        dimers = noFlags[headers.index("dimers")]
+        self.assertLessEqual(
+            dimers,
+            seeded,
+            "the Species observable reported {0:.1f} dimers with no bookkeeping "
+            "flag, but only {1:.0f} rings were ever seeded -- complex tracking is "
+            "not on for a model that needs it".format(dimers, seeded),
+        )
+        self.assertAlmostEqual(
+            dimers,
+            withBscb[headers.index("dimers")],
+            delta=20.0,
+            msg="the Species observable disagrees between the default run and the "
+            "-bscb run, which describe the same trajectory for this model",
+        )
+        # The molecules themselves were always counted correctly; it is only the
+        # complex-level tally that was wrong. Guards against "fixing" the count by
+        # perturbing the underlying simulation.
+        self.assertAlmostEqual(noFlags[headers.index("Mtot")], 394.0, delta=1e-6)
+
     def test_tfun_inline_time_outputs_expected_global_function(self):
         outputDirectory = mfolder
         fileNumber = "44"
