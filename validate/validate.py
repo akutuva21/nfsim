@@ -617,6 +617,63 @@ class TestIssueRegressions(unittest.TestCase):
             "-- this fixture no longer probes the nonlinear range".format(asym),
         )
 
+    def test_multibond_ring_opening_dissociation_can_fire(self):
+        # Product molecularity for a unimolecular unbinding rule used to be tested
+        # one deleted bond at a time. For a rule that opens a cyclic complex by
+        # deleting several bonds at once that is the wrong question: each ring bond
+        # alone leaves the partners connected through the others, so the check
+        # refused every one of them and the dissociation never fired.
+        #
+        # 197 copies of the two-bond ring M(h!1,f!2).M(h!2,f!1), whose only reaction
+        # is the reverse homodimerization deleting both ring bonds. BNG's
+        # generate_network() integrated as ODEs relaxes to about 63 free monomers.
+        # Before the fix the monomer count stayed pinned at 0.
+        xmlPath = os.path.join(
+            nfsimPrePath, "test", "molecularity", "ring2_homodimer.xml"
+        )
+        headers, mean = self._mean_final_row(xmlPath, "-sim 200000 -oSteps 2 -bscb", 3)
+
+        # Conservation first: 197 rings is 394 monomer-equivalents of M.
+        self.assertAlmostEqual(mean[headers.index("Mtot")], 394.0, delta=1e-6)
+
+        monomers = mean[headers.index("monomers")]
+        # The decisive contrast is 0 (trapped) against the ~63 equilibrium, so a
+        # generous band still separates the two hypotheses completely.
+        self.assertGreater(
+            monomers,
+            30.0,
+            "the two-bond ring did not dissociate (monomers={0:.1f}); the "
+            "product-molecularity check is still being applied one bond at a "
+            "time".format(monomers),
+        )
+        self.assertLess(monomers, 110.0)
+
+    def test_singlebond_ring_dissociation_stays_blocked(self):
+        # The negative control, and the behavior issues #48 and #61 produced:
+        # 100 copies of a size-2 ring whose rule deletes a single L-R bond, which
+        # leaves the partners connected through the rest of the cycle. The products
+        # do not separate, the network generator drops the reaction, and the ring
+        # count must stay at 100 exactly -- no variance across seeds.
+        xmlPath = os.path.join(
+            nfsimPrePath, "test", "molecularity", "ring_singlebond.xml"
+        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            for seed in (1, 2, 3):
+                outPath = os.path.join(tmpdir, "ring_{0}.gdat".format(seed))
+                self._run_nfsim_xml(
+                    xmlPath, outPath, "-sim 5 -oSteps 1 -bscb -seed {0}".format(seed)
+                )
+                headers, data = self._load_gdat(outPath)
+                rings = data[-1][headers.index("Ring2")]
+                self.assertAlmostEqual(
+                    rings,
+                    100.0,
+                    delta=1e-6,
+                    msg="a single-bond break inside a ring fired (Ring2={0}, "
+                    "seed={1}); product-molecularity enforcement has "
+                    "regressed".format(rings, seed),
+                )
+
     def test_tfun_inline_time_outputs_expected_global_function(self):
         outputDirectory = mfolder
         fileNumber = "44"

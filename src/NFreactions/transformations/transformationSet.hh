@@ -5,6 +5,8 @@
 #include "../NFreactions.hh"
 #include <algorithm>
 #include <unordered_set>
+#include <vector>
+#include <utility>
 
 using namespace std;
 
@@ -340,15 +342,19 @@ namespace NFcore
 
 			/*!
 				Helper method to check if two molecules remain connected through alternative paths
-				when a specific bond is removed. This is used to enforce product-side molecularity
-				for unimolecular unbinding rules (Issue #48).
+				when a set of bonds is removed. This is used to enforce product-side molecularity
+				for unimolecular unbinding rules (Issue #48). The full set of bonds that the firing
+				rule will delete is excluded at once, so multi-bond ring-opening dissociations are
+				judged on the post-reaction graph rather than one bond in isolation.
 				@param mol1 The molecule containing the binding site
 				@param mol2 The bonded partner molecule
-				@param excludeComponentIndex The component index of the bond to exclude
+				@param excludedBonds The bonds to exclude, each recorded as both of its
+				       (molecule, component-index) half-edges
 				@return true if mol1 can be reached from mol2 through alternative paths, false otherwise
-				@author Fix for Issue #48
+				@author Fix for Issues #48 and #61
 			*/
-			bool canReachExcludingBond(Molecule *mol1, Molecule *mol2, int excludeComponentIndex);
+			bool canReachExcludingBonds(Molecule *mol1, Molecule *mol2,
+				const std::vector< std::pair<Molecule *, int> > &excludedBonds);
 
 			/*!	Remembers if the finalize function has been called	*/
 			bool finalized;
