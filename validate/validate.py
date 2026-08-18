@@ -500,6 +500,332 @@ class TestIssueRegressions(unittest.TestCase):
                 ),
             )
 
+    def _mean_final_row(self, xmlPath, runOptions, nSeeds):
+        """Mean of the final output row over seeds 1..nSeeds. Returns (headers, row)."""
+        total = None
+        headers = None
+        with tempfile.TemporaryDirectory() as tmpdir:
+            for seed in range(1, nSeeds + 1):
+                outPath = os.path.join(tmpdir, "run_{0}.gdat".format(seed))
+                self._run_nfsim_xml(
+                    xmlPath, outPath, "{0} -seed {1}".format(runOptions, seed)
+                )
+                headers, data = self._load_gdat(outPath)
+                total = data if total is None else total + data
+        return headers, (total / nSeeds)[-1]
+
+    def test_symmetry_factor_is_applied_on_every_rate_law(self):
+        # ReactionClass's constructor scaled its own baseRate *argument*, which the
+        # member had already been copied out of, so the symmetry correction was
+        # computed and discarded. Only Ele recovered it, via setBaseRate(). Every
+        # other rate law is built with baseRate=1 and never calls setBaseRate, so a
+        # rule whose reactant pattern has a non-trivial automorphism ran at
+        # 1/symmetry_factor times its intended rate -- 2x for a homodimer.
+        #
+        # Five dimer pools of X0 copies decay under five rate laws that all encode
+        # the same intended per-dimer rate mu, so one expected value covers them
+        # all: X0*exp(-mu*t) = 4000*exp(-1) = 1471.5. A dropped factor gives
+        # 4000*exp(-2) = 541.3 instead, which is nowhere near it.
+        xmlPath = os.path.join(
+            nfsimPrePath, "test", "symmetry", "symmetry_factor_rate_laws.xml"
+        )
+        headers, mean = self._mean_final_row(xmlPath, "-sim 1000 -oSteps 2 -cb", 5)
+
+        expected = 4000.0 * np.exp(-1.0)
+        # Per-seed scatter is ~30 counts, so a 5-seed mean has sigma ~13. A +/-170
+        # band is ~13 sigma wide and still leaves the dropped-factor value 930
+        # counts outside it.
+        tolerance = 170.0
+
+        pools = [
+            ("Sym_fn", "symmetric, global function (FunctionalRxnClass)"),
+            ("Sym_dor", "symmetric, local function (DORRxnClass)"),
+            ("Sym_mm", "symmetric, Michaelis-Menten (MMRxnClass)"),
+            # These three were already correct; they guard against applying the
+            # factor twice, or applying it to an asymmetric rule.
+            ("Sym_k", "symmetric, constant rate (BasicRxnClass, control)"),
+            ("Asym_fn", "asymmetric, global function (control)"),
+            ("Asym_mm", "asymmetric, Michaelis-Menten (control)"),
+        ]
+        for name, description in pools:
+            got = mean[headers.index(name)]
+            self.assertAlmostEqual(
+                got,
+                expected,
+                delta=tolerance,
+                msg="{0} ({1}) ended at {2:.1f}, expected about {3:.1f}; "
+                "{4:.1f} means the symmetry factor was dropped".format(
+                    name, description, got, expected, 4000.0 * np.exp(-2.0)
+                ),
+            )
+
+        # The sharpest form of the claim, needing no expected value at all: a
+        # rule's decay must not depend on whether its reactant pattern happens
+        # to be symmetric.
+        for symName, asymName, rateLaw in [
+            ("Sym_fn", "Asym_fn", "global function"),
+            ("Sym_mm", "Asym_mm", "Michaelis-Menten"),
+        ]:
+            sym = mean[headers.index(symName)]
+            asym = mean[headers.index(asymName)]
+            self.assertAlmostEqual(
+                sym,
+                asym,
+                delta=2 * tolerance,
+                msg="{0}: symmetric pool ended at {1:.1f}, asymmetric at {2:.1f}".format(
+                    rateLaw, sym, asym
+                ),
+            )
+
+    def test_michaelis_menten_symmetry_factor_scales_the_substrate_count(self):
+        # Where the MM law is linear in the substrate match count, scaling that
+        # count and scaling the finished propensity coincide, so the fixture above
+        # cannot tell them apart. This one sits at X0/Km = 0.4, where they
+        # separate. The two rules differ only in whether the substrate dimer's
+        # halves are the same molecule type, so they must decay together; there is
+        # no closed form here and the pairing is the oracle.
+        #
+        # Measured over 10 seeds at t=2000:
+        #     no factor at all              sym 164.4   asym 761.2
+        #     factor on the propensity      sym 993.9   asym 751.8
+        #     factor on the substrate count sym 758.0   asym 756.3
+        xmlPath = os.path.join(
+            nfsimPrePath, "test", "symmetry", "symmetry_factor_mm_saturated.xml"
+        )
+        headers, mean = self._mean_final_row(xmlPath, "-sim 2000 -oSteps 2 -cb", 10)
+
+        sym = mean[headers.index("Sym_mm")]
+        asym = mean[headers.index("Asym_mm")]
+        # Per-seed scatter is ~25 counts, so a 10-seed mean has sigma ~8. An
+        # 80-count band is ~10 sigma wide and leaves the propensity placement's
+        # ~240 gap far outside.
+        self.assertAlmostEqual(
+            sym,
+            asym,
+            delta=80.0,
+            msg="saturated MM: symmetric ended at {0:.1f}, asymmetric at {1:.1f}. A "
+            "gap near +240 means the factor is being applied to the finished "
+            "propensity instead of to the substrate count".format(sym, asym),
+        )
+        # Guard the fixture itself: if a parameter edit drifted this model back
+        # into the linear regime the assertion above would keep passing while
+        # having stopped discriminating. Linear-regime decay leaves ~1471.
+        self.assertLess(
+            asym,
+            1100.0,
+            "the MM control ended at {0:.1f}, too close to the linear-regime value "
+            "-- this fixture no longer probes the nonlinear range".format(asym),
+        )
+
+    def test_multibond_ring_opening_dissociation_can_fire(self):
+        # Product molecularity for a unimolecular unbinding rule used to be tested
+        # one deleted bond at a time. For a rule that opens a cyclic complex by
+        # deleting several bonds at once that is the wrong question: each ring bond
+        # alone leaves the partners connected through the others, so the check
+        # refused every one of them and the dissociation never fired.
+        #
+        # 197 copies of the two-bond ring M(h!1,f!2).M(h!2,f!1), whose only reaction
+        # is the reverse homodimerization deleting both ring bonds. BNG's
+        # generate_network() integrated as ODEs relaxes to about 63 free monomers.
+        # Before the fix the monomer count stayed pinned at 0.
+        xmlPath = os.path.join(
+            nfsimPrePath, "test", "molecularity", "ring2_homodimer.xml"
+        )
+        headers, mean = self._mean_final_row(xmlPath, "-sim 200000 -oSteps 2 -bscb", 3)
+
+        # Conservation first: 197 rings is 394 monomer-equivalents of M.
+        self.assertAlmostEqual(mean[headers.index("Mtot")], 394.0, delta=1e-6)
+
+        monomers = mean[headers.index("monomers")]
+        # The decisive contrast is 0 (trapped) against the ~63 equilibrium, so a
+        # generous band still separates the two hypotheses completely.
+        self.assertGreater(
+            monomers,
+            30.0,
+            "the two-bond ring did not dissociate (monomers={0:.1f}); the "
+            "product-molecularity check is still being applied one bond at a "
+            "time".format(monomers),
+        )
+        self.assertLess(monomers, 110.0)
+
+    def test_singlebond_ring_dissociation_stays_blocked(self):
+        # The negative control, and the behavior issues #48 and #61 produced:
+        # 100 copies of a size-2 ring whose rule deletes a single L-R bond, which
+        # leaves the partners connected through the rest of the cycle. The products
+        # do not separate, the network generator drops the reaction, and the ring
+        # count must stay at 100 exactly -- no variance across seeds.
+        xmlPath = os.path.join(
+            nfsimPrePath, "test", "molecularity", "ring_singlebond.xml"
+        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            for seed in (1, 2, 3):
+                outPath = os.path.join(tmpdir, "ring_{0}.gdat".format(seed))
+                self._run_nfsim_xml(
+                    xmlPath, outPath, "-sim 5 -oSteps 1 -bscb -seed {0}".format(seed)
+                )
+                headers, data = self._load_gdat(outPath)
+                rings = data[-1][headers.index("Ring2")]
+                self.assertAlmostEqual(
+                    rings,
+                    100.0,
+                    delta=1e-6,
+                    msg="a single-bond break inside a ring fired (Ring2={0}, "
+                    "seed={1}); product-molecularity enforcement has "
+                    "regressed".format(rings, seed),
+                )
+
+    def test_species_observable_counts_without_a_bookkeeping_flag(self):
+        # System.useComplex used to be derived solely from blockSameComplexBinding.
+        # A Species-typed observable is tallied by iterating complexes, so run
+        # without complex bookkeeping it was counted with tracking disabled and
+        # reported a number with no physical ceiling.
+        #
+        # ring2_homodimer.xml declares the Species observable `dimers` over 197
+        # two-bond rings, so the count can never exceed 197. Run with no flags at
+        # all, it used to report ~3612. It must now be physical, and agree with the
+        # bookkeeping-enabled run -- this model has no same-complex binding, so the
+        # two modes describe the same trajectory.
+        xmlPath = os.path.join(
+            nfsimPrePath, "test", "molecularity", "ring2_homodimer.xml"
+        )
+        headers, noFlags = self._mean_final_row(xmlPath, "-sim 200000 -oSteps 2", 3)
+        _, withBscb = self._mean_final_row(xmlPath, "-sim 200000 -oSteps 2 -bscb", 3)
+
+        seeded = 197.0
+        dimers = noFlags[headers.index("dimers")]
+        self.assertLessEqual(
+            dimers,
+            seeded,
+            "the Species observable reported {0:.1f} dimers with no bookkeeping "
+            "flag, but only {1:.0f} rings were ever seeded -- complex tracking is "
+            "not on for a model that needs it".format(dimers, seeded),
+        )
+        self.assertAlmostEqual(
+            dimers,
+            withBscb[headers.index("dimers")],
+            delta=20.0,
+            msg="the Species observable disagrees between the default run and the "
+            "-bscb run, which describe the same trajectory for this model",
+        )
+        # The molecules themselves were always counted correctly; it is only the
+        # complex-level tally that was wrong. Guards against "fixing" the count by
+        # perturbing the underlying simulation.
+        self.assertAlmostEqual(noFlags[headers.index("Mtot")], 394.0, delta=1e-6)
+
+    def test_pure_context_reactant_is_counted_once_per_complex(self):
+        # Issue #87. BioNetGen gives a reactant pattern the rule does not transform
+        # one reaction instance per matching complex, however many molecules inside
+        # that complex match it, because every embedding yields the identical
+        # reaction. NFsim enumerated matches per molecule, so a homodimeric
+        # catalyst drove its rule twice as fast as a heterodimeric one and a
+        # homotrimer ring three times as fast.
+        #
+        # Every pool below carries the same intended per-substrate rate
+        # mu = kcat*E0 = 2.5e-4, so the oracle is BNG's own generated network
+        # integrated as ODEs: X0*exp(-mu*t) = 4000*exp(-0.5) = 2426.1. The
+        # Michaelis-Menten pair has no closed form and lands at 2344.8.
+        xmlPath = os.path.join(nfsimPrePath, "test", "context", "context_symmetry.xml")
+        headers, mean = self._mean_final_row(xmlPath, "-sim 2000 -oSteps 2 -cb", 10)
+
+        expected = 4000.0 * np.exp(-0.5)
+        expectedMM = 2344.8
+        # Per-seed scatter is ~30 counts, so a 10-seed mean has sigma ~10. A +/-100
+        # band is ~10 sigma wide and leaves every over-counted value (~1471 at 2x,
+        # ~893 at 3x) more than 900 counts outside it.
+        tolerance = 100.0
+
+        pools = [
+            ("Dim_sym", "homodimer catalyst, constant rate", expected),
+            ("Fn_sym", "homodimer catalyst, global function", expected),
+            ("Dor_sym", "homodimer catalyst, local function", expected),
+            ("Mm_sym", "symmetric enzyme, Michaelis-Menten", expectedMM),
+            ("Ring_sym", "homotrimer ring catalyst (3x, not 2x)", expected),
+            ("Sub_subunit", "single-subunit pattern against a homodimer", expected),
+            # The load-bearing case: a single-molecule pattern against a complex
+            # holding two *distinguishable* copies. No automorphism anywhere, and
+            # still over-counted -- which rules out embeddings/|Aut(pattern)|.
+            ("Sub_scaffold", "two distinguishable copies, no symmetry at all", expected),
+            # Sharper still: single-molecule pattern against a homotrimer ring, so
+            # embeddings/|Aut| would say 3, a hardcoded factor of two 1.5, and
+            # once-per-complex 1. BNG says 1.
+            ("Sub_trimer", "single-molecule pattern against a homotrimer ring", expected),
+        ]
+        for name, description, want in pools:
+            got = mean[headers.index(name)]
+            self.assertAlmostEqual(
+                got,
+                want,
+                delta=tolerance,
+                msg="{0} ({1}) ended at {2:.1f}, expected about {3:.1f}; a value "
+                "near 1471 means two matching molecules in one complex were "
+                "counted as two reaction instances, near 893 means three".format(
+                    name, description, got, want
+                ),
+            )
+
+        # Needs no oracle: two catalysts present at the same complex count and
+        # carrying the same rate constant must give the same rate, whatever the
+        # rate law.
+        for multi, single, rateLaw in [
+            ("Dim_sym", "Dim_asym", "constant rate"),
+            ("Ring_sym", "Ring_asym", "constant rate, trimer ring"),
+            ("Fn_sym", "Fn_asym", "global function"),
+            ("Dor_sym", "Dor_asym", "local function"),
+            ("Mm_sym", "Mm_asym", "Michaelis-Menten"),
+        ]:
+            many = mean[headers.index(multi)]
+            one = mean[headers.index(single)]
+            self.assertAlmostEqual(
+                many,
+                one,
+                delta=2 * tolerance,
+                msg="{0}: multi-subunit catalyst ended at {1:.1f}, single-subunit "
+                "control at {2:.1f}".format(rateLaw, many, one),
+            )
+
+    def test_a_transformed_symmetric_pattern_keeps_both_of_its_sites(self):
+        # The other direction, and the reason "which reactants are pure context"
+        # has to be decided before finalize() appends its placeholder. Bind_sym's
+        # catalyst dimer IS transformed -- one half of it binds -- so its two
+        # halves are two genuinely distinct reactive sites and two distinct
+        # reactions. BNG agrees explicitly: the generated network gives this rule
+        # 2*kb where the heterodimer control gets kb.
+        #
+        # NFsim marks the second partner of a binding with an EMPTY transform, the
+        # same type finalize() uses for its placeholder, so deciding pure context
+        # from the transformation types afterwards misclassifies exactly this rule
+        # and erases its factor of two -- landing it on top of its own control.
+        xmlPath = os.path.join(nfsimPrePath, "test", "context", "context_symmetry.xml")
+        headers, mean = self._mean_final_row(xmlPath, "-sim 2000 -oSteps 2 -cb", 10)
+
+        sym = mean[headers.index("Bind_sym")]
+        asym = mean[headers.index("Bind_asym")]
+        self.assertAlmostEqual(
+            sym,
+            218.0,
+            delta=25.0,
+            msg="Bind_sym ended at {0:.1f}, expected about 218. A value near its "
+            "control ({1:.1f}) means per-complex counting reached a reactant the "
+            "rule transforms and divided out a factor BNG put there on "
+            "purpose".format(sym, asym),
+        )
+        self.assertAlmostEqual(
+            asym,
+            320.0,
+            delta=30.0,
+            msg="Bind_asym ended at {0:.1f}, expected about 320. This rule has one "
+            "reactive site and one matching molecule per complex, so nothing here "
+            "should move it".format(asym),
+        )
+        # Guard the pair: the two assertions above only discriminate while the
+        # two-site arm actually runs faster than its control.
+        self.assertGreater(
+            asym - sym,
+            50.0,
+            "Bind_sym and Bind_asym have converged -- this pair no longer tells a "
+            "transformed pattern's real multiplicity from a context over-count",
+        )
+
     def test_tfun_inline_time_outputs_expected_global_function(self):
         outputDirectory = mfolder
         fileNumber = "44"

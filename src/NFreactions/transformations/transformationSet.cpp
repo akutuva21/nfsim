@@ -474,47 +474,63 @@ bool TransformationSet::addAddMolecule( MoleculeCreator *mc )
 
 
 
-bool TransformationSet::canReachExcludingBond(Molecule *mol1, Molecule *mol2, int excludeComponentIndex)
+bool TransformationSet::canReachExcludingBonds(Molecule *mol1, Molecule *mol2,
+		const std::vector< std::pair<Molecule *, int> > &excludedBonds)
 {
-	// Perform a BFS from mol2 to see if mol1 is reachable while excluding
-	// the specific bond at excludeComponentIndex on mol2.
-	// Returns true if mol1 can be reached, false otherwise.
-	
-	int excludeComponentIndexMol2 = mol1->getBondedMoleculeBindingSiteIndex(excludeComponentIndex);
-	
-	queue <Molecule *> q;
-	list <Molecule *> visited;
-	
+	// Perform a BFS from mol2 to see if mol1 is reachable while refusing to
+	// traverse any of the bonds in excludedBonds. Each excluded bond is recorded
+	// as both of its (molecule, component-index) half-edges, so the bond is
+	// skipped regardless of which endpoint the BFS reaches first.
+	// Returns true if mol1 can still be reached, false otherwise.
+	//
+	// Excluding the full set of bonds that the firing rule deletes (rather than
+	// one bond at a time) is what lets a multi-bond ring-opening dissociation be
+	// recognized as genuinely separating its products: each individual bond may
+	// leave the partners connected, while removing all of them does not.
+
+	// Use a static queue for efficiency (reusing the BFS infrastructure)
+	static queue <Molecule *> q;
+	static list <Molecule *> visited;
+
+	// Clear queues and visited list
+	while(!q.empty()) q.pop();
+	visited.clear();
 	// Start BFS from mol2
 	q.push(mol2);
 	visited.push_back(mol2);
 	mol2->setVisitedMolecule(true);
 
 	bool found = false;
-	
+
 	while(!q.empty()) {
 		Molecule *current = q.front();
 		q.pop();
-		
+
 		// Check if we reached mol1
 		if (current == mol1) {
 			found = true;
 			break;
 		}
-		
+
 		// Explore neighbors through bonds
 		int numComponents = current->getMoleculeType()->getNumOfComponents();
 		for (int c = 0; c < numComponents; ++c) {
-			// Skip the excluded bond from both endpoints.
-			if ((current == mol1 && c == excludeComponentIndex) ||
-			    (current == mol2 && c == excludeComponentIndexMol2)) {
+			// Skip any half-edge belonging to a bond the rule will delete.
+			bool isExcluded = false;
+			for (unsigned int e = 0; e < excludedBonds.size(); ++e) {
+				if (excludedBonds[e].first == current && excludedBonds[e].second == c) {
+					isExcluded = true;
+					break;
+				}
+			}
+			if (isExcluded) {
 				continue;
 			}
-			
+
 			// Check if this component is bonded
 			if (current->isBindingSiteBonded(c)) {
 				Molecule *neighbor = current->getBondedMolecule(c);
-				
+
 				// Check if we've already visited this neighbor
 				if (!neighbor->getVisitedMolecule()) {
 					// Haven't visited this neighbor yet
@@ -687,54 +703,66 @@ bool TransformationSet::checkMolecularity( MappingSet ** mappingSets )
 		// Issue #48: NFsim does not enforce product molecularity for unimolecular unbinding rules
 		if ( n_reactants == 1 && complex_bookkeeping && n_product_patterns > 1 )
 		{
-			// Check each transformation for unbinding that would violate product molecularity
+			// First pass: gather every bond this rule's UNBINDING transforms will
+			// delete. The connectivity test below must reflect the post-reaction
+			// graph with ALL of them removed at once. Testing each bond in
+			// isolation wrongly blocks multi-bond ring-opening dissociations
+			// (e.g. a symmetric two-bond homodimer splitting into two monomers):
+			// each single bond's removal leaves the partners connected through
+			// the rule's other deleted bond, even though removing both genuinely
+			// separates the products.
+			std::vector< std::pair<Molecule *, int> > excludedBonds;       // half-edges
+			std::vector< std::pair<Molecule *, Molecule *> > brokenPairs;  // endpoints to test
 			for ( unsigned int t = 0; t < getNumOfTransformations(0); ++t )
 			{
 				Transformation * transform = getTransformation(0, t);
-				if ( transform->getType() == TransformationFactory::UNBINDING )
-				{
-					UnbindingTransform * unbindingTransform = 
-						static_cast<UnbindingTransform *>( transform );
-					
-					Mapping * mapping = mappingSets[0]->get(t);
-					if (mapping == NULL) {
-						continue;
-					}
+				if ( transform->getType() != TransformationFactory::UNBINDING )
+					continue;
 
-					// Get the molecule that will be unbound
-					Molecule * mol = mapping->getMolecule();
-					if (mol == NULL) {
-						continue;
-					}
-					int componentIndex = unbindingTransform->getComponentIndex();
-					
-					// Get the molecule bonded at this site
-					if ( !mol->isBindingSiteBonded(componentIndex) )
-					{
-						// Site is not bonded, so this won't actually unbind anything
-						continue;
-					}
-					
-					Molecule * bondedMol = mol->getBondedMolecule(componentIndex);
-					if ( bondedMol == NULL )
-					{
-						// This shouldn't happen, but skip if it does
-						continue;
-					}
-					
-					// Check if bondedMol can reach mol through alternative paths
-					// (i.e., excluding the bond being broken)
-					if ( !canReachExcludingBond(mol, bondedMol, componentIndex) )
-					{
-						// Good: the molecules will be in different complexes after unbinding
-						continue;
-					}
-					else
-					{
-						// Bad: the molecules remain connected through other bonds
-						// This violates the product-side molecularity constraint
-						return false;
-					}
+				UnbindingTransform * unbindingTransform =
+					static_cast<UnbindingTransform *>( transform );
+
+				Mapping * mapping = mappingSets[0]->get(t);
+				if (mapping == NULL) {
+					continue;
+				}
+
+				// Get the molecule that will be unbound
+				Molecule * mol = mapping->getMolecule();
+				if (mol == NULL) {
+					continue;
+				}
+				int componentIndex = unbindingTransform->getComponentIndex();
+
+				// Get the molecule bonded at this site
+				if ( !mol->isBindingSiteBonded(componentIndex) )
+				{
+					// Site is not bonded, so this won't actually unbind anything
+					continue;
+				}
+
+				Molecule * bondedMol = mol->getBondedMolecule(componentIndex);
+				if ( bondedMol == NULL )
+				{
+					// This shouldn't happen, but skip if it does
+					continue;
+				}
+
+				int partnerIndex = mol->getBondedMoleculeBindingSiteIndex(componentIndex);
+				excludedBonds.push_back( std::make_pair(mol, componentIndex) );
+				excludedBonds.push_back( std::make_pair(bondedMol, partnerIndex) );
+				brokenPairs.push_back( std::make_pair(mol, bondedMol) );
+			}
+
+			// Second pass: with every deleted bond removed, each unbound pair must
+			// end up in different connected components. If any pair is still
+			// mutually reachable, the products do not actually separate, which
+			// violates the product-side molecularity constraint -> refuse to fire.
+			for ( unsigned int b = 0; b < brokenPairs.size(); ++b )
+			{
+				if ( canReachExcludingBonds( brokenPairs[b].first, brokenPairs[b].second, excludedBonds ) )
+				{
+					return false;
 				}
 			}
 		}
@@ -894,11 +922,35 @@ MappingSet *TransformationSet::generateBlankMappingSet(unsigned int reactantInde
 	return new MappingSet(mappingSetId, transformations[reactantIndex]);
 }
 
+
+bool TransformationSet::isPureContextReactant(unsigned int reactantIndex) const
+{
+	if( reactantIndex >= n_reactants ) return false;
+	return pureContextReactants.find(reactantIndex) != pureContextReactants.end();
+}
+
+
 void TransformationSet::finalize()
 {
 	//Be sure to add at least a blank transformation to every reactant if there is no transformation
 	//specified so that we count the reactants even if we don't do anything to it.
 	for(unsigned int r=0; r<getNmappingSets(); r++)  {
+
+		// Record which reactants the rule does not transform, before the placeholder
+		// below makes that indistinguishable.  EMPTY cannot be the test: it is also
+		// what genBindingTransform2() puts on the second partner of a binding, which
+		// very much is a reaction center.  A LOCAL_FUNCTION_REFERENCE, on the other
+		// hand, only marks the molecule a local function reads, so a DOR reactant
+		// can still be pure context.
+		bool pureContext = true;
+		for(unsigned int t=0; t<transformations[r].size(); t++) {
+			if(transformations[r].at(t)->getType() != (int)TransformationFactory::LOCAL_FUNCTION_REFERENCE) {
+				pureContext = false;
+				break;
+			}
+		}
+		if(pureContext) pureContextReactants.insert(r);
+
 		if(transformations[r].size()==0) {
 			transformations[r].push_back(TransformationFactory::genEmptyTransform());
 			MapGenerator *mg = new MapGenerator(transformations[r].size()-1);
