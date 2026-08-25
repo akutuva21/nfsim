@@ -197,6 +197,14 @@ bool NFinput::createSystemDumper(const string& paramStr, System *s, bool verbose
 		string::size_type arrowPos = pathToFolder.find("->");
 		if(arrowPos!=string::npos) {
 			pathToFolder = pathToFolder.substr(arrowPos+2);
+			// 🛡️ Sentinel check: prevent path traversal vulnerabilities
+			if (pathToFolder.find("..") != string::npos ||
+			    pathToFolder.find(":") != string::npos ||
+			    (pathToFolder.size() > 0 && (pathToFolder[0] == '/' || pathToFolder[0] == '\\'))) {
+				cout<<"Error in NFinput::createSystemDumper: Path traversal detected in dump folder path."<<endl;
+				cout<<"Output path cannot be absolute, contain '..' or ':'."<<endl;
+				return false;
+			}
 		} else {
 			cout<<"Warning: path to folder ("+pathToFolder+") is not written correctly."<<endl;
 			cout<<"Should be written as: [t1;t2;]->/path/to/folder/"<<endl;

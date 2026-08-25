@@ -1,0 +1,4 @@
+## 2024-08-25 - Prevent Path Traversal in File Writing Endpoints
+**Vulnerability:** The `-dump` parameter allowed arbitrary directory path input without sanitization. An attacker or malicious input could use relative path segments like `../` or an absolute path starting with `/` to write output files to any directory on the host's system where the application had write access, resulting in a path traversal vulnerability.
+**Learning:** This existed because the command line parser naively extracts the path string and concatenates it with the target filename without checking for potentially malicious path directory changes (`..`, `/`, `\`, `:`).
+**Prevention:** Always validate and reject strings containing `..`, absolute paths starting with `/` or `\`, or alternative data streams (`:`) when building filesystem paths using user-provided input. Fail securely by rejecting the operation completely.
