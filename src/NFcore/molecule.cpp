@@ -589,15 +589,15 @@ vector<int> Molecule::unbind(Molecule *m1, char * compName)
 // queue <Molecule *> Molecule::q;
 // queue <int> Molecule::d;
 // list <Molecule *>::iterator Molecule::molIter;
-bool Molecule::breadthFirstSearch(list <Molecule *> &members, Molecule *m, int depth)
+template <bool PROFILE, bool TRACKING, bool TRACK_TRUNCATION>
+bool Molecule::breadthFirstSearchImpl(
+		list <Molecule *> &members, Molecule *m, int depth,
+		string *logstr, System *profileSystem)
 {
 	static queue <Molecule *> q;
 	static queue <int> d;
 	static list <Molecule *>::iterator molIter;
-	System *profileSystem = m != 0 && m->getMoleculeType() != 0
-		? m->getMoleculeType()->getSystem() : 0;
-	bool profile = profileSystem != 0 && profileSystem->isProfileReactionActive();
-	ProfileTime profileStart = profile ? profileNow() : ProfileTime();
+	ProfileTime profileStart = ProfileTime();
 	unsigned long long moleculesVisited = 0;
 	unsigned long long edgeVisits = 0;
 	unsigned long long componentMinimumMoleculeId =
@@ -605,6 +605,7 @@ bool Molecule::breadthFirstSearch(list <Molecule *> &members, Molecule *m, int d
 	unsigned long long componentMaximumMoleculeId = 0;
 	unsigned long long componentSignature = 0;
 	bool traversalTruncated = false;
+	if (PROFILE) profileStart = profileNow();
 
 	// Reset queues to be safe (though they should be empty)
 	while(!q.empty()) q.pop();
@@ -639,8 +640,8 @@ bool Molecule::breadthFirstSearch(list <Molecule *> &members, Molecule *m, int d
 		currentDepth = d.front();
 		q.pop();
 		d.pop();
-		++moleculesVisited;
-		if (profile) {
+		if (PROFILE) {
+			++moleculesVisited;
 			unsigned long long moleculeId =
 				static_cast<unsigned long long>(cM->getUniqueID());
 			if (moleculeId < componentMinimumMoleculeId)
@@ -649,14 +650,20 @@ bool Molecule::breadthFirstSearch(list <Molecule *> &members, Molecule *m, int d
 				componentMaximumMoleculeId = moleculeId;
 			componentSignature ^= profileMoleculeSignature(cM->getUniqueID());
 		}
+		if (TRACKING && !logstr->empty()) {
+			*logstr += "          [\"Delete\"," +
+					to_string(cM->getUniqueID()) + "],\n";
+		}
 
 		//Make sure the depth does not exceed the limit we want to search
 		if((depth!=ReactionClass::NO_LIMIT) && (currentDepth>=depth)) {
-			for (int c=0; c<cM->numOfComponents; c++) {
-				if (cM->isBindingSiteBonded(c) &&
-						!cM->getBondedMolecule(c)->hasVisitedMolecule) {
-					traversalTruncated = true;
-					break;
+			if (TRACK_TRUNCATION) {
+				for (int c=0; c<cM->numOfComponents; c++) {
+					if (cM->isBindingSiteBonded(c) &&
+							!cM->getBondedMolecule(c)->hasVisitedMolecule) {
+						traversalTruncated = true;
+						break;
+					}
 				}
 			}
 			continue;
@@ -669,7 +676,7 @@ bool Molecule::breadthFirstSearch(list <Molecule *> &members, Molecule *m, int d
 			//cM->getComp
 			if(cM->isBindingSiteBonded(c))
 			{
-				++edgeVisits;
+				if (PROFILE) ++edgeVisits;
 				Molecule *neighbor = cM->getBondedMolecule(c);
 				//cout<<"looking at neighbor: "<<endl;
 				//neighbor->printDetails();
@@ -685,116 +692,39 @@ bool Molecule::breadthFirstSearch(list <Molecule *> &members, Molecule *m, int d
 		}
 	}
 
-
 	//clear the has visitedMolecule values
 	for( molIter = members.begin(); molIter != members.end(); molIter++ )
   		(*molIter)->hasVisitedMolecule=false;
-	if (profile)
+	if (PROFILE)
 		profileSystem->recordProfileConnectivity(profileElapsedSeconds(profileStart),
 				moleculesVisited, edgeVisits, componentMinimumMoleculeId,
 				componentMaximumMoleculeId, componentSignature);
 	return traversalTruncated;
 }
 
+bool Molecule::breadthFirstSearch(list <Molecule *> &members, Molecule *m, int depth)
+{
+	System *profileSystem = m != 0 && m->getMoleculeType() != 0
+		? m->getMoleculeType()->getSystem() : 0;
+	if (profileSystem != 0 && profileSystem->isProfileReactionActive())
+		return breadthFirstSearchImpl<true, false, true>(
+				members, m, depth, 0, profileSystem);
+	return breadthFirstSearchImpl<false, false, true>(
+				members, m, depth, 0, 0);
+}
+
 // AS2023 - alternative call sig for logging that includes a log string
 void Molecule::breadthFirstSearch(list <Molecule *> &members, Molecule *m, int depth, string &logstr)
 {
-	static queue <Molecule *> q;
-	static queue <int> d;
-	static list <Molecule *>::iterator molIter;
 	System *profileSystem = m != 0 && m->getMoleculeType() != 0
 		? m->getMoleculeType()->getSystem() : 0;
-	bool profile = profileSystem != 0 && profileSystem->isProfileReactionActive();
-	ProfileTime profileStart = profile ? profileNow() : ProfileTime();
-	unsigned long long moleculesVisited = 0;
-	unsigned long long edgeVisits = 0;
-	unsigned long long componentMinimumMoleculeId =
-		std::numeric_limits<unsigned long long>::max();
-	unsigned long long componentMaximumMoleculeId = 0;
-	unsigned long long componentSignature = 0;
-
-	// Reset queues to be safe
-	while(!q.empty()) q.pop();
-	while(!d.empty()) d.pop();
-
-	if(m==0) {
-		// Defensive check: mapping may be missing for some transformations (e.g., internal bond reconnection).
-		// Avoid crashing the entire simulation; just skip traversal.
-		cerr<<"Warning: Molecule::breadthFirstSearch called with m==null; skipping traversal.\n";
+	if (profileSystem != 0 && profileSystem->isProfileReactionActive()) {
+		breadthFirstSearchImpl<true, true, false>(
+				members, m, depth, &logstr, profileSystem);
 		return;
 	}
-
-	//Create the queues (for effeciency, now queues are a static attribute of Molecule...)
-	//queue <Molecule *> q;
-	//queue <int> d;
-	int currentDepth = 0;
-
-	//cout<<"traversing on:"<<endl;
-	//m->printDetails();
-
-	//First add this molecule
-	q.push(m);
-	members.push_back(m);
-	d.push(currentDepth+1);
-	m->hasVisitedMolecule=true;
-
-	//Look at children until the queue is empty
-	while(!q.empty())
-	{
-		//Get the next parent to look at (currentMolecule)
-		Molecule *cM = q.front();
-		currentDepth = d.front();
-		q.pop();
-		d.pop();
-		++moleculesVisited;
-		if (profile) {
-			unsigned long long moleculeId =
-				static_cast<unsigned long long>(cM->getUniqueID());
-			if (moleculeId < componentMinimumMoleculeId)
-				componentMinimumMoleculeId = moleculeId;
-			if (moleculeId > componentMaximumMoleculeId)
-				componentMaximumMoleculeId = moleculeId;
-			componentSignature ^= profileMoleculeSignature(cM->getUniqueID());
-		}
-
-		if (!logstr.empty()) {
-			logstr += "          [\"Delete\"," + to_string(cM->getUniqueID()) + "],\n";
-		}
-			
-		//Make sure the depth does not exceed the limit we want to search
-		if((depth!=ReactionClass::NO_LIMIT) && (currentDepth>=depth)) continue;
-
-		//Loop through the bonds
-		int cMax = cM->numOfComponents;
-		for(int c=0; c<cMax; c++)
-		{
-			//cM->getComp
-			if(cM->isBindingSiteBonded(c))
-			{
-				++edgeVisits;
-				Molecule *neighbor = cM->getBondedMolecule(c);
-				//cout<<"looking at neighbor: "<<endl;
-				//neighbor->printDetails();
-				if(!neighbor->hasVisitedMolecule)
-				{
-					neighbor->hasVisitedMolecule=true;
-					members.push_back(neighbor);
-					q.push(neighbor);
-					d.push(currentDepth+1);
-					//cout<<"adding... to traversal list."<<endl;
-				}
-			}
-		}
-	}
-
-
-	//clear the has visitedMolecule values
-	for( molIter = members.begin(); molIter != members.end(); molIter++ )
-  		(*molIter)->hasVisitedMolecule=false;
-	if (profile)
-		profileSystem->recordProfileConnectivity(profileElapsedSeconds(profileStart),
-				moleculesVisited, edgeVisits, componentMinimumMoleculeId,
-				componentMaximumMoleculeId, componentSignature);
+	breadthFirstSearchImpl<false, true, false>(
+			members, m, depth, &logstr, 0);
 }
 
 
