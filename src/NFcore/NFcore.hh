@@ -15,6 +15,7 @@
 #include <queue>
 #include <map>
 #include <unordered_map>
+#include <unordered_set>
 #include <algorithm>
 #include <set>
 // Include various NFsim classes from other files
@@ -1616,6 +1617,10 @@ namespace NFcore
 			*/
 			vector<MappingSet*> symmetricMappingSet;
 			bool comparisonResult;
+			/* Reused only when connectivity-aware membership updates are enabled.
+			 * Keeping this per reaction avoids allocating the same product set on
+			 * every firing while leaving the normal path free of this bookkeeping. */
+			unordered_set<Molecule *> directProductMolecules;
 			/* whether to use reaction connectivity for updating molecule
 			 * membership
 			 * Arvind Rasi Subramaniam
