@@ -574,6 +574,12 @@ string TransformationSet::transform(MappingSet **mappingSets)
 string TransformationSet::transform(MappingSet **mappingSets, bool tracking)
 {
 	if(!finalized) { cerr<<"TransformationSet cannot apply a transform if it is not finalized!"<<endl; exit(1); }
+	System *profileSystem = 0;
+	if (n_reactants > 0 && reactants[0] != 0 &&
+			reactants[0]->getMoleculeType() != 0)
+		profileSystem = reactants[0]->getMoleculeType()->getSystem();
+	bool profile = profileSystem != 0 && profileSystem->isProfileReactionActive();
+	ProfileTime profileStart = profile ? profileNow() : ProfileTime();
 
 	/*
 	 * NOTE: Check for "null conditions" was moved to ReactionClass::fire. This allows rejection of a reaction 
@@ -671,6 +677,8 @@ string TransformationSet::transform(MappingSet **mappingSets, bool tracking)
 			logstr += "        ]\n";
 		}
 	}
+	if (profile)
+		profileSystem->recordProfileTransformation(profileElapsedSeconds(profileStart));
 	return logstr;
 }
 
@@ -778,6 +786,14 @@ bool TransformationSet::checkMolecularity( MappingSet ** mappingSets )
 
 bool TransformationSet::getListOfProducts(MappingSet **mappingSets, list <Molecule *> &products, int traversalLimit)
 {
+	System *profileSystem = 0;
+	if (n_reactants > 0 && reactants[0] != 0 &&
+			reactants[0]->getMoleculeType() != 0)
+		profileSystem = reactants[0]->getMoleculeType()->getSystem();
+	bool profile = profileSystem != 0 && profileSystem->isProfileReactionActive();
+	unsigned long long productsBefore = profile
+		? static_cast<unsigned long long>(products.size()) : 0;
+	ProfileTime profileStart = profile ? profileNow() : ProfileTime();
 	std::unordered_set<Molecule*> product_set(products.begin(), products.end());
 	list <Molecule *>::iterator molIter;
 	for(unsigned int r=0; r<n_reactants; r++)
@@ -844,6 +860,10 @@ bool TransformationSet::getListOfProducts(MappingSet **mappingSets, list <Molecu
 	}
 
 	//cout<<"All together, we have: "<<products.size()<<endl;
+	if (profile)
+		profileSystem->recordProfileProductPreparation(
+				profileElapsedSeconds(profileStart),
+				static_cast<unsigned long long>(products.size()) - productsBefore);
 	return true;
 }
 
@@ -857,6 +877,14 @@ Molecule * TransformationSet::getPopulationPointer( unsigned int r ) const
 
 bool TransformationSet::getListOfAddedMolecules(MappingSet **mappingSets, list <Molecule *> &products, int traversalLimit)
 {
+	System *profileSystem = 0;
+	if (n_reactants > 0 && reactants[0] != 0 &&
+			reactants[0]->getMoleculeType() != 0)
+		profileSystem = reactants[0]->getMoleculeType()->getSystem();
+	bool profile = profileSystem != 0 && profileSystem->isProfileReactionActive();
+	unsigned long long productsBefore = profile
+		? static_cast<unsigned long long>(products.size()) : 0;
+	ProfileTime profileStart = profile ? profileNow() : ProfileTime();
 	std::unordered_set<Molecule*> product_set(products.begin(), products.end());
 
 	// Add new molecules (particle type) to the list of products
@@ -879,6 +907,10 @@ bool TransformationSet::getListOfAddedMolecules(MappingSet **mappingSets, list <
 			//  list separately and old molecules that bind to new molecules will be traversed elsewhere
 		}
 	}
+	if (profile)
+		profileSystem->recordProfileProductCollection(
+				profileElapsedSeconds(profileStart),
+				static_cast<unsigned long long>(products.size()) - productsBefore);
 
 	return true;
 }

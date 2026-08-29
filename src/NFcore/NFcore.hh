@@ -484,6 +484,82 @@ namespace NFcore
 			void recordProfileMembershipUpdate() {
 				profiler.recordMembershipUpdate();
 			}
+			void recordProfileMembershipPhase(double elapsed) {
+				profiler.recordMembershipPhase(elapsed);
+			}
+			bool isProfileReactionActive() const {
+				return profiler.isReactionActive();
+			}
+			void beginProfileTemplateCompare() {
+				profiler.beginTemplateCompare();
+			}
+			void endProfileTemplateCompare() {
+				profiler.endTemplateCompare();
+			}
+			void recordProfileConnectivity(double elapsed,
+					unsigned long long moleculesVisited,
+					unsigned long long edgeVisits) {
+				profiler.recordConnectivity(elapsed, moleculesVisited, edgeVisits);
+			}
+			void recordProfileBind(double elapsed) {
+				profiler.recordBind(elapsed);
+			}
+			void recordProfileUnbind(double elapsed) {
+				profiler.recordUnbind(elapsed);
+			}
+			void recordProfileComplexMaintenance(double elapsed,
+					unsigned long long moleculesTouched) {
+				profiler.recordComplexMaintenance(elapsed, moleculesTouched);
+			}
+			void recordProfileAffectedComplexes(unsigned long long complexes,
+					unsigned long long molecules) {
+				profiler.recordAffectedComplexes(complexes, molecules);
+			}
+			void recordProfileCanonicalLabel(double elapsed,
+					unsigned long long nodes,
+					unsigned long long edges,
+					bool nautyCalled) {
+				profiler.recordCanonicalLabel(elapsed, nodes, edges, nautyCalled);
+			}
+			void recordProfileMappingPush() {
+				profiler.recordMappingPush();
+			}
+			void recordProfileMappingPop() {
+				profiler.recordMappingPop();
+			}
+			void recordProfileMappingRemove() {
+				profiler.recordMappingRemove();
+			}
+			void recordProfileMappingConfirm() {
+				profiler.recordMappingConfirm();
+			}
+			void recordProfileReactantListExpansion(unsigned long long expandedSlots,
+					double elapsed) {
+				profiler.recordReactantListExpansion(expandedSlots, elapsed);
+			}
+			void recordProfileReactantTreeExpansion(unsigned long long expandedSlots,
+					double elapsed) {
+				profiler.recordReactantTreeExpansion(expandedSlots, elapsed);
+			}
+			void recordProfileTransformation(double elapsed) {
+				profiler.recordTransformation(elapsed);
+			}
+			void recordProfileProductPreparation(double elapsed,
+					unsigned long long moleculesPrepared) {
+				profiler.recordProductPreparation(elapsed, moleculesPrepared);
+			}
+			void recordProfileProductCollection(double elapsed,
+					unsigned long long moleculesAdded) {
+				profiler.recordProductCollection(elapsed, moleculesAdded);
+			}
+			void recordProfileObservableRemoval(double elapsed,
+					unsigned long long molecules) {
+				profiler.recordObservableRemoval(elapsed, molecules);
+			}
+			void recordProfileObservableAddition(double elapsed,
+					unsigned long long molecules) {
+				profiler.recordObservableAddition(elapsed, molecules);
+			}
 			bool writeProfile() const { return profiler.write(); }
 
 	        NFstream& getOutputFileStream();

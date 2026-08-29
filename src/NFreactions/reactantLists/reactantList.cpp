@@ -3,13 +3,15 @@
 
 using namespace NFcore;
 
-ReactantList::ReactantList(unsigned int reactantIndex, TransformationSet *ts, unsigned int init_capacity=50)
+ReactantList::ReactantList(unsigned int reactantIndex, TransformationSet *ts,
+		unsigned int init_capacity, System *system)
 {
 
 	this->n_mappingSets = 0;
 	this->capacity = init_capacity;
 	this->reactantIndex = reactantIndex;
 	this->ts=ts;
+	this->system=system;
 	this->mappingSets = new MappingSet *[init_capacity];
 	this->msPositionMap = new unsigned int [init_capacity];
 	for(int i=0; i<this->capacity; i++)
@@ -75,9 +77,14 @@ int ReactantList::getPopulation() const
 
 MappingSet * ReactantList::pushNextAvailableMappingSet()
 {
+	bool profile = system != 0 && system->isProfileReactionActive();
+	if (profile) system->recordProfileMappingPush();
+
 	//Check if we are going to exceed capacity
 	if(n_mappingSets>=capacity)
 	{
+		int oldCapacity = capacity;
+		ProfileTime profileStart = profile ? profileNow() : ProfileTime();
 		int newCapacity;
 		if(capacity>400000) {
 			newCapacity = capacity+50000;
@@ -103,6 +110,10 @@ MappingSet * ReactantList::pushNextAvailableMappingSet()
 		mappingSets = new_mappingSets;
 		msPositionMap = new_msPositionMap;
 		capacity=newCapacity;
+		if (profile)
+			system->recordProfileReactantListExpansion(
+					static_cast<unsigned long long>(newCapacity - oldCapacity),
+					profileElapsedSeconds(profileStart));
 	}
 
 	//Increase the number of reactants, and return the activated mappingSet
@@ -124,6 +135,8 @@ void ReactantList::popLastMappingSet()
 		cerr<<"Trying to pop from an empty ReactantList!!"<<endl;
 		exit(1);
 	}
+	if (system != 0 && system->isProfileReactionActive())
+		system->recordProfileMappingPop();
 
 	//Clear out the mappingSet (just in case) and decrease the count
 	unsigned int clone = mappingSets[n_mappingSets-1]->getClonedMapping();
@@ -177,6 +190,8 @@ void ReactantList::removeMappingSet(unsigned int mappingSetId)
 		cerr<<"Trying to remove from an empty ReactantList!!"<<endl;
 		exit(1);
 	}
+	if (system != 0 && system->isProfileReactionActive())
+		system->recordProfileMappingRemove();
 
 	//First, get the position of the mappingSet we need to remove
 	int pos = msPositionMap[mappingSetId];
