@@ -212,8 +212,8 @@ void DORRxnClass::remove(Molecule *m, unsigned int reactantPos)
 
 int DORRxnClass::checkForCollision(Molecule *m, MappingSet* ms, int rxnIndex){
 	
-	set<int> tempSet = m->getRxnListMappingSet(rxnIndex);
-	for(set<int>::iterator it= tempSet.begin();it!= tempSet.end(); ++it){
+	const set<int>& tempSet = m->getRxnListMappingSet(rxnIndex);
+	for(set<int>::const_iterator it= tempSet.begin();it!= tempSet.end(); ++it){
 		MappingSet* ms2 = reactantTree->getMappingSet(*it);
 		if(MappingSet::checkForEquality(ms,ms2)){
 			return *it;
@@ -1529,4 +1529,3 @@ void DOR2RxnClass::printDetails() const
 	if (n_reactants==0)
 		cout << "      >No Reactants: so this rule either creates new species or does nothing."<<endl;
 }
-

@@ -275,8 +275,8 @@ int BasicRxnClass::checkForEquality(Molecule *m, MappingSet* ms, int rxnIndex, R
 	/*
 	Check if mapping set clashes with any of the mapping sets already in reactantList
 	*/
-	set<int> tempSet = m->getRxnListMappingSet(rxnIndex);
-	for(set<int>::iterator it= tempSet.begin();it!= tempSet.end(); ++it){
+	const set<int>& tempSet = m->getRxnListMappingSet(rxnIndex);
+	for(set<int>::const_iterator it= tempSet.begin();it!= tempSet.end(); ++it){
 		MappingSet* ms2 = reactantList->getMappingSet(*it);
 		if(MappingSet::checkForEquality(ms,ms2)){
 			return *it;
