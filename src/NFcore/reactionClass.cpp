@@ -365,6 +365,32 @@ void ReactionClass::fire(double random_A_number) {
 // each firing for the rxnlog argument
 string ReactionClass::fire(double random_A_number, bool track) {
 	fireCounter++;
+	struct ProfileScope {
+		System *system;
+		int rxnId;
+		const string *rxnName;
+		clock_t start;
+		int nullEventsBefore;
+		bool enabled;
+
+		ProfileScope(System *s, int id, const string &name)
+			: system(s), rxnId(id), rxnName(&name), start(0),
+			  nullEventsBefore(System::NULL_EVENT_COUNTER), enabled(false) {
+			enabled = system != 0 && system->isProfilingEnabled();
+			if (enabled) {
+				start = clock();
+				system->beginProfileReactionFire(rxnId, *rxnName);
+			}
+		}
+
+		~ProfileScope() {
+			if (enabled) {
+				system->recordProfileReactionFire(
+					this->rxnId, *rxnName, clock() - start,
+					System::NULL_EVENT_COUNTER > nullEventsBefore);
+			}
+		}
+	} profileScope(system, rxnId, name);
 
 
 	// First randomly pick the reactants to fire by selecting the MappingSets

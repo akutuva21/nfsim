@@ -93,6 +93,9 @@
  *  -maxcputime - maximum run time for simulation in seconds (default: no limit).
  *                 @author Arvind Rasi Subramaniam
  * 
+ *  -profile [filename] - opt-in CPU phase and per-reaction profile. If no filename
+ *                       is given, the tab-separated report is written to stdout.
+ *
  *  -printmoltypes - output molecule types (default: false).
  * 						   @author Ali Sinan Saglam
  * 
@@ -817,6 +820,9 @@ bool runFromArgs(System *s, const map<string,string>& argMap, bool verbose)
 	}
 	s->setMaxCpuTime(maxCpuTime);
 
+	auto profileIt = argMap.find("profile");
+	if (profileIt != argMap.end()) s->enableProfiling(profileIt->second);
+
 	oSteps = NFinput::parseAsInt(argMap,"oSteps",(int)oSteps);
 
 	auto oTimesIt = argMap.find("oTimes");
@@ -855,6 +861,7 @@ bool runFromArgs(System *s, const map<string,string>& argMap, bool verbose)
 		// Do the run
 		cout<<endl<<endl<<endl<<"Equilibrating for :"<<eqTime<<"s.  Please wait."<<endl<<endl;
 		s->equilibrate(eqTime);
+		if (s->isProfilingEnabled()) s->resetProfiling();
 
 		if(useExplicitOutputTimes) {
 			if(explicitOutputTimes.back() > (sTime + SIM_TIME_TOL)) {
@@ -879,6 +886,8 @@ bool runFromArgs(System *s, const map<string,string>& argMap, bool verbose)
 			s->sim(sTime,oSteps);
 		}
 	}
+
+	if (s->isProfilingEnabled() && !s->writeProfile()) return false;
 
 	// save the final list of species, if requested...
 	auto ssIt = argMap.find("ss");
@@ -1030,9 +1039,11 @@ void printHelp(const string& version)
 	cout<<""<<endl;
 	cout<<"  -maxcputime       maximum run time for simulation in seconds (default: no limit)."<<endl;
 	cout<<""<<endl;
+	cout<<"  -profile [filename] opt-in CPU phase and per-reaction profile. If no filename"<<endl;
+	cout<<"                    is given, write the tab-separated report to stdout."<<endl;
+	cout<<""<<endl;
 	cout<<""<<endl;
 }
-
 
 
 

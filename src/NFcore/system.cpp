@@ -902,7 +902,11 @@ void System::update_A_tot(ReactionClass *r, double old_a, double new_a)
 
 double System::recompute_A_tot()
 {
+	clock_t profileStart = 0;
+	if (isProfilingEnabled()) profileStart = clock();
 	a_tot = selector->refactorPropensities();
+	if (isProfilingEnabled())
+		recordProfilePhase("propensity_refactor", clock() - profileStart);
 	return a_tot;
 
 }
@@ -916,11 +920,15 @@ double System::recompute_A_tot()
 double System::getNextRxn()
 {
 	nextReaction = 0;
+	clock_t profileStart = 0;
+	if (isProfilingEnabled()) profileStart = clock();
 	double x = selector->getNextReactionClass(nextReaction);
 	if((int)x==-1) {
 		this->printAllReactions();
 		exit(1);
 	}
+	if (isProfilingEnabled())
+		recordProfilePhase("reaction_selection", clock() - profileStart);
 	return x;
 
 
@@ -938,6 +946,7 @@ double System::sim(double duration, long int sampleTimes)
 double System::sim(double duration, long int sampleTimes, bool verbose)
 {
 	invalidateStepToCache();
+	if (isProfilingEnabled()) resetProfiling();
 	System::NULL_EVENT_COUNTER=0;
 	cout.setf(ios::scientific);
 	cout<<"simulating system for: "<<duration<<" second(s)."<<endl;
@@ -2248,4 +2257,3 @@ NFstream& System::getOutputFileStream()
 {
     return outputFileStream;
 }
-

@@ -153,6 +153,10 @@ LocalFunction * Molecule::getLocalFunction(int localFunctionIndex) {
 
 void Molecule::updateRxnMembership(ReactionClass * r, bool useConnectivity)
 {
+	System *profileSystem = parentMoleculeType->getSystem();
+	if (r != 0 && profileSystem != 0 && profileSystem->isProfilingEnabled())
+		profileSystem->recordProfileMembershipUpdate();
+
 	if (useConnectivity) {
 		parentMoleculeType->updateConnectedRxnMembership(this, r);
 	}
@@ -762,9 +766,6 @@ void Molecule::printMoleculeList(list <Molecule *> &members)
 		cout<<"_u"<<(*molIter)->getUniqueID()<<endl;
 	}
 }
-
-
-
 
 
 
