@@ -614,38 +614,42 @@ string ReactionClass::fire(double random_A_number, bool track) {
 
 	// update complex-scoped local functions for typeII dependencies
 	// NOTE: as a side-effect, dependent DOR reactions (via typeI molecule dependencies) will be updated
-	
-	// for each typeII product molecule, update all dependent local functions
-	if (system->isUsingComplex()) {
-		// this is the easy way: update all typeI molecules on each complex
-		for ( typeII_iter = typeII_products.begin(); typeII_iter != typeII_products.end(); ++typeII_iter ) {
-			MoleculeType * mt = *typeII_iter;
-			for (int i=0; i < mt->getNumOfTypeIIFunctions(); i++) {
-				for ( complexIter = productComplexes.begin(); complexIter != productComplexes.end(); ++complexIter )
-					mt->getTypeIILocalFunction(i)->evaluateOn( *complexIter );
+
+	// No Type-II local function depends on these products: avoid traversing
+	// connected components solely to execute an empty update loop.
+	if (!typeII_products.empty()) {
+		// for each typeII product molecule, update all dependent local functions
+		if (system->isUsingComplex()) {
+			// this is the easy way: update all typeI molecules on each complex
+			for ( typeII_iter = typeII_products.begin(); typeII_iter != typeII_products.end(); ++typeII_iter ) {
+				MoleculeType * mt = *typeII_iter;
+				for (int i=0; i < mt->getNumOfTypeIIFunctions(); i++) {
+					for ( complexIter = productComplexes.begin(); complexIter != productComplexes.end(); ++complexIter )
+						mt->getTypeIILocalFunction(i)->evaluateOn( *complexIter );
+				}
 			}
 		}
-	}
-	else {
-		// this is the hard way: find a representative molecule from each connected set
-		//  and evaluate TypeII functions on that representative.
-		std::unordered_set<Molecule*> allMols;
-		Molecule * mol;
-		for ( molIter = products.begin(); molIter != products.end(); molIter++ ) {
-			mol = *molIter;
-			if ( allMols.insert(mol).second ) {
-				// remember everything connected to this molecule so we don't
-				// evaluate this connected set multiple times.
-				list<Molecule*> connectedMols;
-				mol->traverseBondedNeighborhood( connectedMols, ReactionClass::NO_LIMIT );
-				for ( list<Molecule*>::iterator cm = connectedMols.begin(); cm != connectedMols.end(); ++cm )
-					allMols.insert(*cm);
+		else {
+			// this is the hard way: find a representative molecule from each connected set
+			//  and evaluate TypeII functions on that representative.
+			std::unordered_set<Molecule*> allMols;
+			Molecule * mol;
+			for ( molIter = products.begin(); molIter != products.end(); molIter++ ) {
+				mol = *molIter;
+				if ( allMols.insert(mol).second ) {
+					// remember everything connected to this molecule so we don't
+					// evaluate this connected set multiple times.
+					list<Molecule*> connectedMols;
+					mol->traverseBondedNeighborhood( connectedMols, ReactionClass::NO_LIMIT );
+					for ( list<Molecule*>::iterator cm = connectedMols.begin(); cm != connectedMols.end(); ++cm )
+						allMols.insert(*cm);
 
-				// evaluate typeII local functions on this connected set
-				for ( typeII_iter = typeII_products.begin(); typeII_iter != typeII_products.end(); ++typeII_iter ) {
-					MoleculeType * mt = *typeII_iter;
-					for (int i=0; i<mt->getNumOfTypeIIFunctions(); i++)
-						mt->getTypeIILocalFunction(i)->evaluateOn( mol, LocalFunction::SPECIES );
+					// evaluate typeII local functions on this connected set
+					for ( typeII_iter = typeII_products.begin(); typeII_iter != typeII_products.end(); ++typeII_iter ) {
+						MoleculeType * mt = *typeII_iter;
+						for (int i=0; i<mt->getNumOfTypeIIFunctions(); i++)
+							mt->getTypeIILocalFunction(i)->evaluateOn( mol, connectedMols );
+					}
 				}
 			}
 		}
