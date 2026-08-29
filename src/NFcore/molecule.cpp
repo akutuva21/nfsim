@@ -552,11 +552,12 @@ vector<int> Molecule::unbind(Molecule *m1, char * compName)
 // queue <Molecule *> Molecule::q;
 // queue <int> Molecule::d;
 // list <Molecule *>::iterator Molecule::molIter;
-void Molecule::breadthFirstSearch(list <Molecule *> &members, Molecule *m, int depth)
+bool Molecule::breadthFirstSearch(list <Molecule *> &members, Molecule *m, int depth)
 {
 	static queue <Molecule *> q;
 	static queue <int> d;
 	static list <Molecule *>::iterator molIter;
+	bool traversalTruncated = false;
 
 	// Reset queues to be safe (though they should be empty)
 	while(!q.empty()) q.pop();
@@ -566,7 +567,7 @@ void Molecule::breadthFirstSearch(list <Molecule *> &members, Molecule *m, int d
 		// Defensive check: mapping may be missing for some transformations (e.g., internal bond reconnection).
 		// Avoid crashing the entire simulation; just skip traversal.
 		cerr<<"Warning: Molecule::breadthFirstSearch called with m==null; skipping traversal.\n";
-		return;
+		return false;
 	}
 
 	//Create the queues (for effeciency, now queues are a static attribute of Molecule...)
@@ -593,7 +594,16 @@ void Molecule::breadthFirstSearch(list <Molecule *> &members, Molecule *m, int d
 		d.pop();
 
 		//Make sure the depth does not exceed the limit we want to search
-		if((depth!=ReactionClass::NO_LIMIT) && (currentDepth>=depth)) continue;
+		if((depth!=ReactionClass::NO_LIMIT) && (currentDepth>=depth)) {
+			for (int c=0; c<cM->numOfComponents; c++) {
+				if (cM->isBindingSiteBonded(c) &&
+						!cM->getBondedMolecule(c)->hasVisitedMolecule) {
+					traversalTruncated = true;
+					break;
+				}
+			}
+			continue;
+		}
 
 		//Loop through the bonds
 		int cMax = cM->numOfComponents;
@@ -621,6 +631,7 @@ void Molecule::breadthFirstSearch(list <Molecule *> &members, Molecule *m, int d
 	//clear the has visitedMolecule values
 	for( molIter = members.begin(); molIter != members.end(); molIter++ )
   		(*molIter)->hasVisitedMolecule=false;
+	return traversalTruncated;
 }
 
 // AS2023 - alternative call sig for logging that includes a log string
@@ -703,11 +714,11 @@ void Molecule::breadthFirstSearch(list <Molecule *> &members, Molecule *m, int d
 
 
 
-void Molecule::traverseBondedNeighborhood(list <Molecule *> &members, int traversalLimit)
+bool Molecule::traverseBondedNeighborhood(list <Molecule *> &members, int traversalLimit)
 {
 	//always call breadth first search, it is a bit faster
 	//if(traversalLimit>=0)
-		Molecule::breadthFirstSearch(members, this, traversalLimit);
+		return Molecule::breadthFirstSearch(members, this, traversalLimit);
 	//else
 	//	this->depthFirstSearch(members);
 }
@@ -762,7 +773,6 @@ void Molecule::printMoleculeList(list <Molecule *> &members)
 		cout<<"_u"<<(*molIter)->getUniqueID()<<endl;
 	}
 }
-
 
 
 
