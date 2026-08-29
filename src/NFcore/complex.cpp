@@ -164,6 +164,8 @@ void Complex::updateComplexMembership(Molecule * m)
 	if(m->getComplexID()!=this->ID_complex) { cerr<< "ERROR IN COMPLEX!!! "<<endl; return; }
 
 	bool profile = system != 0 && system->isProfileReactionActive();
+	ProfileConnectivityScope profileConnectivityScope(
+		system, PROFILE_CONNECTIVITY_COMPLEX_MAINTENANCE);
 	ProfileTime profileStart = profile ? profileNow() : ProfileTime();
 	unsigned long long complexSizeBefore = profile
 		? static_cast<unsigned long long>(this->getComplexSize()) : 0;

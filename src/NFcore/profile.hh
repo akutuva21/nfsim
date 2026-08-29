@@ -11,6 +11,18 @@ namespace NFcore {
 
 typedef std::chrono::steady_clock::time_point ProfileTime;
 
+enum ProfileConnectivityContext {
+    PROFILE_CONNECTIVITY_OTHER = 0,
+    PROFILE_CONNECTIVITY_MATCHING,
+    PROFILE_CONNECTIVITY_PRODUCT_PREPARATION,
+    PROFILE_CONNECTIVITY_TRANSFORMATION,
+    PROFILE_CONNECTIVITY_COMPLEX_MAINTENANCE,
+    PROFILE_CONNECTIVITY_LOCAL_FUNCTION,
+    PROFILE_CONNECTIVITY_CONTEXT_COUNT
+};
+
+static const unsigned int PROFILE_HISTOGRAM_BUCKETS = 65;
+
 inline ProfileTime profileNow()
 {
     return std::chrono::steady_clock::now();
@@ -20,6 +32,22 @@ inline double profileElapsedSeconds(const ProfileTime &start)
 {
     return std::chrono::duration<double>(profileNow() - start).count();
 }
+
+const char *profileConnectivityContextName(ProfileConnectivityContext context);
+
+struct ProfileConnectivityStats {
+    ProfileConnectivityStats();
+
+    unsigned long long traversalCalls;
+    unsigned long long moleculeVisits;
+    unsigned long long edgeVisits;
+    double elapsedSeconds;
+    unsigned long long fireSamples;
+    unsigned long long moleculeMaximum;
+    unsigned long long edgeMaximum;
+    unsigned long long moleculeHistogram[PROFILE_HISTOGRAM_BUCKETS];
+    unsigned long long edgeHistogram[PROFILE_HISTOGRAM_BUCKETS];
+};
 
 struct ProfileReactionStats {
     ProfileReactionStats();
@@ -73,6 +101,8 @@ struct ProfileReactionStats {
     double productCollectionCpuSeconds;
     double observableRemovalCpuSeconds;
     double observableAdditionCpuSeconds;
+    ProfileConnectivityStats connectivityByContext[
+        PROFILE_CONNECTIVITY_CONTEXT_COUNT];
 };
 
 class NFsimProfile {
@@ -116,7 +146,20 @@ public:
     }
     void recordConnectivity(double elapsed,
                             unsigned long long moleculesVisited,
-                            unsigned long long edgeVisits);
+                            unsigned long long edgeVisits,
+                            ProfileConnectivityContext context);
+    ProfileConnectivityContext beginConnectivityContext(
+        ProfileConnectivityContext context) {
+        ProfileConnectivityContext previous = connectivityContext;
+        connectivityContext = context;
+        return previous;
+    }
+    void endConnectivityContext(ProfileConnectivityContext previous) {
+        connectivityContext = previous;
+    }
+    ProfileConnectivityContext getConnectivityContext() const {
+        return connectivityContext;
+    }
     void recordBind(double elapsed);
     void recordUnbind(double elapsed);
     void recordComplexMaintenance(double elapsed,
@@ -176,6 +219,13 @@ private:
     ProfileReactionStats *activeStats;
     int templateCompareDepth;
     ProfileTime templateCompareStart;
+    ProfileConnectivityContext connectivityContext;
+    unsigned long long activeConnectivityMolecules[
+        PROFILE_CONNECTIVITY_CONTEXT_COUNT];
+    unsigned long long activeConnectivityEdges[
+        PROFILE_CONNECTIVITY_CONTEXT_COUNT];
+
+    void recordConnectivityFireSamples(ProfileReactionStats &stats);
 };
 
 }

@@ -1447,6 +1447,8 @@ bool TemplateMolecule::compare(Molecule *m, ReactantContainer *rc, MappingSet *m
 	System *profileSystem = 0;
 	if (m != 0 && m->getMoleculeType() != 0)
 		profileSystem = m->getMoleculeType()->getSystem();
+	ProfileConnectivityScope profileConnectivityScope(
+		profileSystem, PROFILE_CONNECTIVITY_MATCHING);
 	struct ProfileCompareScope {
 		System *system;
 		bool enabled;
