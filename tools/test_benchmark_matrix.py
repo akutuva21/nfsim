@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import os
+import argparse
 import sys
 import tempfile
 import unittest
@@ -19,7 +20,7 @@ class BenchmarkMatrixTests(unittest.TestCase):
         self.assertEqual(condition["args"], ["-utl", "1"])
 
     def test_parse_condition_rejects_output_override(self):
-        with self.assertRaises(Exception):
+        with self.assertRaises(argparse.ArgumentTypeError):
             benchmark_matrix.parse_condition("bad=-o result.gdat")
 
     def test_percentile_and_summary_are_deterministic(self):

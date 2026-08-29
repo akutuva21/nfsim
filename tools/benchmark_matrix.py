@@ -578,13 +578,21 @@ def driver_main(argv):
                             if record["returncode"] != 0:
                                 failures.append(row)
 
-                        total_events = sum(
-                            record["event_count"] or 0 for record in records
+                        event_counts = [record["event_count"] for record in records]
+                        total_events = (
+                            sum(event_counts)
+                            if all(event_count is not None for event_count in event_counts)
+                            else None
                         )
                         total_cpu = [
                             record["cpu_seconds"]
                             for record in records
                             if record["cpu_seconds"] is not None
+                        ]
+                        peak_rss = [
+                            record["peak_rss_kb"]
+                            for record in records
+                            if record["peak_rss_kb"] is not None
                         ]
                         group_rows.append(
                             {
@@ -598,9 +606,10 @@ def driver_main(argv):
                                 "driver_wall_seconds": driver_wall,
                                 "sum_cpu_seconds": sum(total_cpu) if total_cpu else None,
                                 "total_event_count": total_events,
+                                "max_peak_rss_kb": max(peak_rss) if peak_rss else None,
                                 "throughput_events_per_second": (
                                     float(total_events) / driver_wall
-                                    if driver_wall > 0
+                                    if total_events is not None and driver_wall > 0
                                     else None
                                 ),
                                 "returncode": max(
@@ -700,6 +709,9 @@ def driver_main(argv):
             "total_event_count": numeric_summary(
                 [row["total_event_count"] for row in rows]
             ),
+            "max_peak_rss_kb": numeric_summary(
+                [row["max_peak_rss_kb"] for row in rows]
+            ),
             "throughput_events_per_second": numeric_summary(
                 [row["throughput_events_per_second"] for row in rows]
             ),
@@ -715,6 +727,7 @@ def driver_main(argv):
                 "wall_p10_seconds": metrics["driver_wall_seconds"]["p10"],
                 "wall_p90_seconds": metrics["driver_wall_seconds"]["p90"],
                 "cpu_median_seconds": metrics["sum_cpu_seconds"]["median"],
+                "peak_rss_median_kb": metrics["max_peak_rss_kb"]["median"],
                 "events_median": metrics["total_event_count"]["median"],
                 "throughput_median_events_per_second": metrics[
                     "throughput_events_per_second"
@@ -762,6 +775,7 @@ def driver_main(argv):
         "driver_wall_seconds",
         "sum_cpu_seconds",
         "total_event_count",
+        "max_peak_rss_kb",
         "throughput_events_per_second",
         "returncode",
     ]
@@ -775,6 +789,7 @@ def driver_main(argv):
         "wall_p10_seconds",
         "wall_p90_seconds",
         "cpu_median_seconds",
+        "peak_rss_median_kb",
         "events_median",
         "throughput_median_events_per_second",
         "throughput_p10_events_per_second",
