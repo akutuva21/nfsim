@@ -106,6 +106,40 @@ for variant_exe in "baseline $baseline" "candidate $candidate"; do
 	fi
 done
 
+for variant_exe in "baseline $baseline" "candidate $candidate"; do
+	variant=${variant_exe%% *}
+	exe=${variant_exe#* }
+	profile="$out_dir/${variant}-typeII.profile.tsv"
+	"$exe" -xml "$typeii_xml" -sim 0.1 -oSteps 1 -seed "$seed" \
+		-notf -o /dev/null -profile "$profile" >"$out_dir/${variant}-typeII-profile.log" 2>&1
+
+	if [ "$variant" = candidate ]; then
+		awk -F '\t' '
+			$1 == "local_function_summary" && $2 != "rx_id" {
+				seen=1
+				if (($6 + 0) == 0 || ($7 + 0) != 1) bad=1
+			}
+			$1 == "connectivity_context" && $4 == "local_function" && ($5 + 0) > 0 { traversals += $5 }
+			END {
+				if (!seen || bad || traversals == 0) exit 1
+				print "candidate_typeII_component_reuse\tPASS"
+			}
+		' "$profile"
+	else
+		awk -F '\t' '
+			$1 == "local_function_summary" && $2 != "rx_id" {
+				seen=1
+				if (($6 + 0) == 0 || ($7 + 0) != 2) bad=1
+			}
+			$1 == "connectivity_context" && $4 == "local_function" && ($5 + 0) > 0 { traversals += $5 }
+			END {
+				if (!seen || bad || traversals == 0) exit 1
+				print "baseline_typeII_duplicate_traversal\tPASS"
+			}
+		' "$profile"
+	fi
+done
+
 "$candidate" -xml "$typeii_xml" -sim 0.1 -oSteps 1 -seed "$seed" \
 	-notf -o "$out_dir/candidate-typeII.gdat" >"$out_dir/candidate-typeII.log" 2>&1
 "$baseline" -xml "$typeii_xml" -sim 0.1 -oSteps 1 -seed "$seed" \

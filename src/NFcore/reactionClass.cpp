@@ -671,7 +671,7 @@ string ReactionClass::fire(double random_A_number, bool track) {
 					for ( typeII_iter = typeII_products.begin(); typeII_iter != typeII_products.end(); ++typeII_iter ) {
 						MoleculeType * mt = *typeII_iter;
 						for (int i=0; i<mt->getNumOfTypeIIFunctions(); i++)
-							mt->getTypeIILocalFunction(i)->evaluateOn( mol, LocalFunction::SPECIES );
+							mt->getTypeIILocalFunction(i)->evaluateOn( mol, connectedMols );
 					}
 				}
 			}
