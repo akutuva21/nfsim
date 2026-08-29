@@ -379,8 +379,8 @@ double LocalFunction::evaluateOn(Molecule *m, list <Molecule *> &members) {
 				}
 				//If the observables is of a different type
 				else {
-					cerr<<"Error in LocalFunction::evaluateOn()! cannot handle Species observable when"<<endl;
-					cerr<<"evaluating on a single molecule."<<endl;
+					cerr<<"Error in LocalFunction::evaluateOn()! cannot handle this observable type when"<<endl;
+					cerr<<"evaluating on a connected component."<<endl;
 					exit(1);
 				}
 			}

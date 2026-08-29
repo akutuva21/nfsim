@@ -115,13 +115,14 @@ for variant_exe in "baseline $baseline" "candidate $candidate"; do
 
 	if [ "$variant" = candidate ]; then
 		awk -F '\t' '
+			$1 == "connectivity_context" && $4 == "product_preparation" { prep_traversals += $5 }
 			$1 == "local_function_summary" && $2 != "rx_id" {
 				seen=1
-				if (($6 + 0) == 0 || ($7 + 0) != 1) bad=1
+				if (($4 + 0) == 0 || ($7 + 0) > 1) bad=1
 			}
 			$1 == "connectivity_context" && $4 == "local_function" && ($5 + 0) > 0 { traversals += $5 }
 			END {
-				if (!seen || bad || traversals == 0) exit 1
+				if (!seen || bad || prep_traversals == 0 || traversals != 0) exit 1
 				print "candidate_typeII_component_reuse\tPASS"
 			}
 		' "$profile"
@@ -150,3 +151,25 @@ else
 	echo "exact_output\ttypeII_fixture\tFAIL" >&2
 	exit 1
 fi
+
+for variant_exe in "baseline $baseline" "candidate $candidate"; do
+	variant=${variant_exe%% *}
+	exe=${variant_exe#* }
+	"$exe" -xml "$typeii_xml" -sim 0.1 -oSteps 1 -seed "$seed" -utl 1 \
+		-notf -o "$out_dir/${variant}-typeII-truncated.gdat" \
+		-profile "$out_dir/${variant}-typeII-truncated.profile.tsv" \
+		>"$out_dir/${variant}-typeII-truncated.log" 2>&1
+done
+if cmp -s "$out_dir/baseline-typeII-truncated.gdat" "$out_dir/candidate-typeII-truncated.gdat"; then
+	echo "exact_output\ttypeII_truncated_fixture\tPASS"
+else
+	echo "exact_output\ttypeII_truncated_fixture\tFAIL" >&2
+	exit 1
+fi
+awk -F '\t' '
+	$1 == "connectivity_context" && $4 == "local_function" && ($5 + 0) > 0 { seen=1 }
+	END {
+		if (!seen) exit 1
+		print "candidate_typeII_truncated_fallback\tPASS"
+	}
+' "$out_dir/candidate-typeII-truncated.profile.tsv"
