@@ -60,3 +60,29 @@ python\nfsim_api.py
                                                  rows = read_gdat(result.output_path)
 
 
+benchmark_matrix.py - Reproducible baseline/candidate performance matrix. It
+                      alternates variant order, runs fixed seeds, records
+                      executable/XML hashes and commands, reports raw per-run
+                      and median summary CSV files, and can launch independent
+                      trajectories in separate processes. It needs only the
+                      Python standard library. Example:
+
+  python3 tools/benchmark_matrix.py \
+      --baseline /path/to/NFsim-baseline \
+      --candidate /path/to/NFsim-candidate \
+      --output-dir results/nfsim-matrix-20260829 \
+      --workload e1=models/multisite_phos/e1.xml \
+      --workload poly=models/performance_test_models/poly.xml \
+      --workload egfr=models/performance_test_models/egfr_net.xml \
+      --seeds 17,18,19,20,21,22,23,24,25,26 \
+      --condition normal \
+      --condition connect=-connect \
+      --condition truncated=-utl 1 \
+      --workers 1,2,4,8,16 \
+      --sim 20 --osteps 1 --extra-arg=-notf --check-output
+
+  The XML files must already be generated. Keep generated XML, model inputs,
+  executable hashes, host/build labels, and result directory together as one
+  provenance bundle. Use separate invocations when a condition applies only
+  to a subset of workloads.
+
