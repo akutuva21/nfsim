@@ -180,6 +180,21 @@ rows = read_gdat(result.output_path)
 print(rows[0])
 ```
 
+## Optional Execution Profiler
+
+NFsim can write a tab-separated CPU profile for investigating irregular reaction
+work:
+
+```text
+NFsim -xml path/to/model.xml -sim 10 -oSteps 1 -profile profile.tsv
+```
+
+The report includes phase totals, per-reaction firing time, template matching,
+membership updates, mapping operations, product preparation, connectivity
+traversal by caller context, and bounded traversal-size distributions. Profiling
+is opt-in and adds measurement overhead; ordinary runs do not write a profile.
+Use fixed seeds and compare model output separately when evaluating a change.
+
 ## Release Notes
 
 ### v1.14.3 April, 2025
