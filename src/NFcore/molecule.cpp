@@ -638,7 +638,7 @@ void Molecule::breadthFirstSearch(list <Molecule *> &members, Molecule *m, int d
 		currentDepth = d.front();
 		q.pop();
 		d.pop();
-		++moleculesVisited;
+		if (profile) ++moleculesVisited;
 		if (profile) {
 			unsigned long long moleculeId =
 				static_cast<unsigned long long>(cM->getUniqueID());
@@ -659,7 +659,7 @@ void Molecule::breadthFirstSearch(list <Molecule *> &members, Molecule *m, int d
 			//cM->getComp
 			if(cM->isBindingSiteBonded(c))
 			{
-				++edgeVisits;
+				if (profile) ++edgeVisits;
 				Molecule *neighbor = cM->getBondedMolecule(c);
 				//cout<<"looking at neighbor: "<<endl;
 				//neighbor->printDetails();
@@ -735,7 +735,7 @@ void Molecule::breadthFirstSearch(list <Molecule *> &members, Molecule *m, int d
 		currentDepth = d.front();
 		q.pop();
 		d.pop();
-		++moleculesVisited;
+		if (profile) ++moleculesVisited;
 		if (profile) {
 			unsigned long long moleculeId =
 				static_cast<unsigned long long>(cM->getUniqueID());
@@ -760,7 +760,7 @@ void Molecule::breadthFirstSearch(list <Molecule *> &members, Molecule *m, int d
 			//cM->getComp
 			if(cM->isBindingSiteBonded(c))
 			{
-				++edgeVisits;
+				if (profile) ++edgeVisits;
 				Molecule *neighbor = cM->getBondedMolecule(c);
 				//cout<<"looking at neighbor: "<<endl;
 				//neighbor->printDetails();
