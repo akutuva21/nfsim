@@ -1076,7 +1076,7 @@ namespace NFcore
 				return (rxnListMappingId2[rxnIndex].size() > 0) ? *rxnListMappingId2[rxnIndex].begin() : -1;  //JJT: changing to handle multiple mappings per reaction
 			};
 
-			set<int> getRxnListMappingSet(int rxnIndex){
+			const set<int>& getRxnListMappingSet(int rxnIndex) const {
 
 				return rxnListMappingId2[rxnIndex];
 			}
