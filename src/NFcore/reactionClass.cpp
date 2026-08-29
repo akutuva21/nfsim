@@ -656,6 +656,8 @@ string ReactionClass::fire(double random_A_number, bool track) {
 				// remember everything connected to this molecule so we don't
 				// evaluate this connected set multiple times.
 				list<Molecule*> connectedMols;
+				ProfileConnectivityScope profileConnectivityScope(
+					system, PROFILE_CONNECTIVITY_LOCAL_FUNCTION);
 				mol->traverseBondedNeighborhood( connectedMols, ReactionClass::NO_LIMIT );
 				for ( list<Molecule*>::iterator cm = connectedMols.begin(); cm != connectedMols.end(); ++cm )
 					allMols.insert(*cm);

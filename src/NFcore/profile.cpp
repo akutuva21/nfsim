@@ -3,6 +3,7 @@
 #include <fstream>
 #include <iomanip>
 #include <iostream>
+#include <limits>
 
 using namespace std;
 
@@ -15,6 +16,87 @@ void addPhaseTotal(map<string, double> &totals, const string &name, double value
     if (value != 0.0) totals[name] += value;
 }
 
+unsigned int profileHistogramBucket(unsigned long long value)
+{
+    if (value == 0) return 0;
+
+    unsigned int bucket = 0;
+    while (value > 1 && bucket < PROFILE_HISTOGRAM_BUCKETS - 2) {
+        value >>= 1;
+        ++bucket;
+    }
+    return bucket + 1;
+}
+
+unsigned long long profileHistogramQuantile(
+    const unsigned long long *hist,
+    unsigned long long samples,
+    unsigned long long numerator,
+    unsigned long long denominator)
+{
+    if (hist == 0 || samples == 0 || denominator == 0 || numerator == 0)
+        return 0;
+
+    // Compute ceil(samples * numerator / denominator) without multiplying
+    // the potentially large sample count by the numerator.
+    unsigned long long whole = samples / denominator;
+    unsigned long long remainder = samples % denominator;
+    unsigned long long rank = whole >
+        std::numeric_limits<unsigned long long>::max() / numerator
+        ? std::numeric_limits<unsigned long long>::max()
+        : whole * numerator;
+    unsigned long long remainderProduct = remainder * numerator;
+    rank += remainderProduct / denominator;
+    if (remainderProduct % denominator != 0 &&
+            rank != std::numeric_limits<unsigned long long>::max()) {
+        ++rank;
+    }
+    if (rank == 0) rank = 1;
+
+    unsigned long long cumulative = 0;
+    for (unsigned int bucket = 0; bucket < PROFILE_HISTOGRAM_BUCKETS;
+            ++bucket) {
+        cumulative += hist[bucket];
+        if (cumulative >= rank) {
+            if (bucket == 0) return 0;
+            if (bucket >= PROFILE_HISTOGRAM_BUCKETS - 1)
+                return std::numeric_limits<unsigned long long>::max();
+            return (1ULL << bucket) - 1ULL;
+        }
+    }
+    return std::numeric_limits<unsigned long long>::max();
+}
+
+}
+
+const char *profileConnectivityContextName(ProfileConnectivityContext context)
+{
+    switch (context) {
+    case PROFILE_CONNECTIVITY_MATCHING:
+        return "matching";
+    case PROFILE_CONNECTIVITY_PRODUCT_PREPARATION:
+        return "product_preparation";
+    case PROFILE_CONNECTIVITY_TRANSFORMATION:
+        return "transformation";
+    case PROFILE_CONNECTIVITY_COMPLEX_MAINTENANCE:
+        return "complex_maintenance";
+    case PROFILE_CONNECTIVITY_LOCAL_FUNCTION:
+        return "local_function";
+    case PROFILE_CONNECTIVITY_OTHER:
+    default:
+        return "other";
+    }
+}
+
+ProfileConnectivityStats::ProfileConnectivityStats()
+    : traversalCalls(0), moleculeVisits(0), edgeVisits(0),
+      elapsedSeconds(0.0), fireSamples(0), moleculeMaximum(0),
+      edgeMaximum(0)
+{
+    for (unsigned int i = 0; i < PROFILE_HISTOGRAM_BUCKETS; ++i) {
+        moleculeHistogram[i] = 0;
+        edgeHistogram[i] = 0;
+    }
 }
 
 ProfileReactionStats::ProfileReactionStats()
@@ -46,7 +128,14 @@ ProfileReactionStats::ProfileReactionStats()
 NFsimProfile::NFsimProfile()
     : enabled(false), outputPath(), phaseCpuSeconds(), reactionStats(),
       activeReaction(false), activeStats(0), templateCompareDepth(0),
-      templateCompareStart() {}
+      templateCompareStart(),
+      connectivityContext(PROFILE_CONNECTIVITY_OTHER)
+{
+    for (unsigned int i = 0; i < PROFILE_CONNECTIVITY_CONTEXT_COUNT; ++i) {
+        activeConnectivityMolecules[i] = 0;
+        activeConnectivityEdges[i] = 0;
+    }
+}
 
 void NFsimProfile::enable(const string &path)
 {
@@ -63,6 +152,11 @@ void NFsimProfile::reset()
     activeStats = 0;
     templateCompareDepth = 0;
     templateCompareStart = ProfileTime();
+    connectivityContext = PROFILE_CONNECTIVITY_OTHER;
+    for (unsigned int i = 0; i < PROFILE_CONNECTIVITY_CONTEXT_COUNT; ++i) {
+        activeConnectivityMolecules[i] = 0;
+        activeConnectivityEdges[i] = 0;
+    }
 }
 
 string NFsimProfile::cleanField(const string &value)
@@ -94,6 +188,11 @@ void NFsimProfile::beginReactionFire(int rxnId, const string &name)
     setReactionIdentity(stats, rxnId, name);
     activeReaction = true;
     activeStats = &stats;
+    connectivityContext = PROFILE_CONNECTIVITY_OTHER;
+    for (unsigned int i = 0; i < PROFILE_CONNECTIVITY_CONTEXT_COUNT; ++i) {
+        activeConnectivityMolecules[i] = 0;
+        activeConnectivityEdges[i] = 0;
+    }
 }
 
 void NFsimProfile::recordReactionFire(int rxnId, const string &name,
@@ -108,8 +207,11 @@ void NFsimProfile::recordReactionFire(int rxnId, const string &name,
     ++stats.fireCalls;
     if (nullEvent) ++stats.nullEvents;
     stats.fireCpuSeconds += seconds(elapsed);
+    if (activeReaction && activeStats == activeStatsForFire)
+        recordConnectivityFireSamples(stats);
     activeReaction = false;
     activeStats = 0;
+    connectivityContext = PROFILE_CONNECTIVITY_OTHER;
 }
 
 void NFsimProfile::recordMembershipPhase(double elapsed)
@@ -120,12 +222,43 @@ void NFsimProfile::recordMembershipPhase(double elapsed)
 
 void NFsimProfile::recordConnectivity(double elapsed,
                                       unsigned long long moleculesVisited,
-                                      unsigned long long edgeVisits)
+                                      unsigned long long edgeVisits,
+                                      ProfileConnectivityContext context)
 {
     if (!isReactionActive()) return;
+    if (context < PROFILE_CONNECTIVITY_OTHER ||
+            context >= PROFILE_CONNECTIVITY_CONTEXT_COUNT) {
+        context = PROFILE_CONNECTIVITY_OTHER;
+    }
     activeStats->connectivityMoleculeVisits += moleculesVisited;
     activeStats->connectivityEdgeVisits += edgeVisits;
     activeStats->connectivityCpuSeconds += elapsed;
+
+    ProfileConnectivityStats &contextStats =
+        activeStats->connectivityByContext[context];
+    ++contextStats.traversalCalls;
+    contextStats.moleculeVisits += moleculesVisited;
+    contextStats.edgeVisits += edgeVisits;
+    contextStats.elapsedSeconds += elapsed;
+    activeConnectivityMolecules[context] += moleculesVisited;
+    activeConnectivityEdges[context] += edgeVisits;
+}
+
+void NFsimProfile::recordConnectivityFireSamples(ProfileReactionStats &stats)
+{
+    for (unsigned int i = 0; i < PROFILE_CONNECTIVITY_CONTEXT_COUNT; ++i) {
+        ProfileConnectivityStats &contextStats = stats.connectivityByContext[i];
+        ++contextStats.fireSamples;
+        const unsigned long long moleculeVisits = activeConnectivityMolecules[i];
+        const unsigned long long edgeVisits = activeConnectivityEdges[i];
+        if (moleculeVisits > contextStats.moleculeMaximum)
+            contextStats.moleculeMaximum = moleculeVisits;
+        if (edgeVisits > contextStats.edgeMaximum)
+            contextStats.edgeMaximum = edgeVisits;
+        ++contextStats.moleculeHistogram[
+            profileHistogramBucket(moleculeVisits)];
+        ++contextStats.edgeHistogram[profileHistogramBucket(edgeVisits)];
+    }
 }
 
 void NFsimProfile::recordBind(double elapsed)
@@ -247,7 +380,7 @@ bool NFsimProfile::write() const
 
 void NFsimProfile::write(ostream &output) const
 {
-    output << "# NFsim opt-in profile v2\n";
+    output << "# NFsim opt-in profile v3\n";
     output << "# fire_cpu_seconds and broad phases use process CPU clock() seconds.\n";
     output << "# Component timing fields use low-overhead steady elapsed seconds.\n";
     output << "# Nested phase times can overlap; use them for attribution, not summation.\n";
@@ -256,6 +389,9 @@ void NFsimProfile::write(ostream &output) const
     output << "# membership_update_seconds measures those refreshes, including dependent reaction-list work.\n";
     output << "# template_compare_calls counts recursive TemplateMolecule::compare invocations.\n";
     output << "# connectivity_edge_visits counts bonded-neighbor examinations (each bond can be seen twice).\n";
+    output << "# connectivity_context rows split traversals by their active caller context.\n";
+    output << "# Context histograms are bounded power-of-two bins; P50/P90/P99 are inclusive upper bounds.\n";
+    output << "# Context distribution samples include fires with zero traversal work.\n";
     output << "# canonical_label_calls counts generated labels, not cache hits; nauty_calls counts actual Nauty calls.\n";
     output << "# mapping operation counts are container-operation calls and may include nested clone cleanup.\n";
     output << "# transformation_seconds covers TransformationSet::transform; product collection is reported separately.\n";
@@ -404,6 +540,61 @@ void NFsimProfile::write(ostream &output) const
                << "\t" << connectivityEdgesPerFire
                << "\t" << affectedComplexesPerFire
                << "\t" << affectedComplexMoleculesPerFire << "\n";
+    }
+
+    output << "connectivity_context\trx_id\tname\tcontext\ttraversal_calls"
+           << "\tmolecule_visits\tedge_visits\tseconds\tfire_samples"
+           << "\tmolecule_mean_per_fire\tmolecule_p50_upper_bound"
+           << "\tmolecule_p90_upper_bound\tmolecule_p99_upper_bound"
+           << "\tmolecule_max\tedge_mean_per_fire\tedge_p50_upper_bound"
+           << "\tedge_p90_upper_bound\tedge_p99_upper_bound\tedge_max\n";
+    for (map<int, ProfileReactionStats>::const_iterator it = reactionStats.begin();
+         it != reactionStats.end(); ++it) {
+        const ProfileReactionStats &stats = it->second;
+        for (unsigned int context = 0;
+                context < PROFILE_CONNECTIVITY_CONTEXT_COUNT; ++context) {
+            const ProfileConnectivityStats &contextStats =
+                stats.connectivityByContext[context];
+            double moleculeMeanPerFire = contextStats.fireSamples == 0
+                ? 0.0
+                : static_cast<double>(contextStats.moleculeVisits) /
+                  static_cast<double>(contextStats.fireSamples);
+            double edgeMeanPerFire = contextStats.fireSamples == 0
+                ? 0.0
+                : static_cast<double>(contextStats.edgeVisits) /
+                  static_cast<double>(contextStats.fireSamples);
+            unsigned long long moleculeP50 = profileHistogramQuantile(
+                contextStats.moleculeHistogram, contextStats.fireSamples, 50, 100);
+            unsigned long long moleculeP90 = profileHistogramQuantile(
+                contextStats.moleculeHistogram, contextStats.fireSamples, 90, 100);
+            unsigned long long moleculeP99 = profileHistogramQuantile(
+                contextStats.moleculeHistogram, contextStats.fireSamples, 99, 100);
+            unsigned long long edgeP50 = profileHistogramQuantile(
+                contextStats.edgeHistogram, contextStats.fireSamples, 50, 100);
+            unsigned long long edgeP90 = profileHistogramQuantile(
+                contextStats.edgeHistogram, contextStats.fireSamples, 90, 100);
+            unsigned long long edgeP99 = profileHistogramQuantile(
+                contextStats.edgeHistogram, contextStats.fireSamples, 99, 100);
+            output << "connectivity_context\t" << stats.rxnId
+                   << "\t" << cleanField(stats.name)
+                   << "\t" << profileConnectivityContextName(
+                       static_cast<ProfileConnectivityContext>(context))
+                   << "\t" << contextStats.traversalCalls
+                   << "\t" << contextStats.moleculeVisits
+                   << "\t" << contextStats.edgeVisits
+                   << "\t" << contextStats.elapsedSeconds
+                   << "\t" << contextStats.fireSamples
+                   << "\t" << moleculeMeanPerFire
+                   << "\t" << moleculeP50
+                   << "\t" << moleculeP90
+                   << "\t" << moleculeP99
+                   << "\t" << contextStats.moleculeMaximum
+                   << "\t" << edgeMeanPerFire
+                   << "\t" << edgeP50
+                   << "\t" << edgeP90
+                   << "\t" << edgeP99
+                   << "\t" << contextStats.edgeMaximum << "\n";
+        }
     }
 }
 

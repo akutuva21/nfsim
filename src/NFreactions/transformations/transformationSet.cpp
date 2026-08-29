@@ -579,6 +579,8 @@ string TransformationSet::transform(MappingSet **mappingSets, bool tracking)
 			reactants[0]->getMoleculeType() != 0)
 		profileSystem = reactants[0]->getMoleculeType()->getSystem();
 	bool profile = profileSystem != 0 && profileSystem->isProfileReactionActive();
+	ProfileConnectivityScope profileConnectivityScope(
+		profileSystem, PROFILE_CONNECTIVITY_TRANSFORMATION);
 	ProfileTime profileStart = profile ? profileNow() : ProfileTime();
 
 	/*
@@ -791,6 +793,8 @@ bool TransformationSet::getListOfProducts(MappingSet **mappingSets, list <Molecu
 			reactants[0]->getMoleculeType() != 0)
 		profileSystem = reactants[0]->getMoleculeType()->getSystem();
 	bool profile = profileSystem != 0 && profileSystem->isProfileReactionActive();
+	ProfileConnectivityScope profileConnectivityScope(
+		profileSystem, PROFILE_CONNECTIVITY_PRODUCT_PREPARATION);
 	unsigned long long productsBefore = profile
 		? static_cast<unsigned long long>(products.size()) : 0;
 	ProfileTime profileStart = profile ? profileNow() : ProfileTime();

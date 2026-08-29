@@ -499,7 +499,19 @@ namespace NFcore
 			void recordProfileConnectivity(double elapsed,
 					unsigned long long moleculesVisited,
 					unsigned long long edgeVisits) {
-				profiler.recordConnectivity(elapsed, moleculesVisited, edgeVisits);
+				profiler.recordConnectivity(elapsed, moleculesVisited, edgeVisits,
+						profiler.getConnectivityContext());
+			}
+			ProfileConnectivityContext beginProfileConnectivityContext(
+					ProfileConnectivityContext context) {
+				return profiler.beginConnectivityContext(context);
+			}
+			void endProfileConnectivityContext(
+					ProfileConnectivityContext previous) {
+				profiler.endConnectivityContext(previous);
+			}
+			ProfileConnectivityContext getProfileConnectivityContext() const {
+				return profiler.getConnectivityContext();
 			}
 			void recordProfileBind(double elapsed) {
 				profiler.recordBind(elapsed);
@@ -798,7 +810,24 @@ namespace NFcore
 			vector <GlobalFunction *>::iterator functionIter; /* to iterate over Global Functions */
 	};
 
+	class ProfileConnectivityScope
+	{
+		System *system;
+		ProfileConnectivityContext previous;
+		bool enabled;
 
+	public:
+		ProfileConnectivityScope(System *s, ProfileConnectivityContext context)
+			: system(s), previous(PROFILE_CONNECTIVITY_OTHER), enabled(false) {
+			enabled = system != 0 && system->isProfileReactionActive();
+			if (enabled)
+				previous = system->beginProfileConnectivityContext(context);
+		}
+		~ProfileConnectivityScope() {
+			if (enabled)
+				system->endProfileConnectivityContext(previous);
+		}
+	};
 
 	//!  Keeps track of the types of molecules that can exist.
 	/*!
