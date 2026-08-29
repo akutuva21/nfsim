@@ -28,6 +28,94 @@ void EnergyFunction::addEnergyPattern(const EnergyPatternInfo &ep) {
     patterns.push_back(ep);
 }
 
+bool EnergyFunction::getBindingContext(
+    const string &molType1, const string &bindSite1,
+    const string &molType2, const string &bindSite2,
+    EnergyBindingContext &context
+) const {
+    context.baseEnergy = 0.0;
+    context.conditions.clear();
+    context.conditionalTerms.clear();
+
+    vector<int> relevant;
+    findRelevantPatternsForBinding(
+        molType1, bindSite1, molType2, bindSite2, relevant);
+    if (relevant.empty()) return false;
+
+    vector<int> alwaysPatterns;
+    vector<int> conditionalPatterns;
+
+    for (int ri = 0; ri < (int)relevant.size(); ri++) {
+        int pi = relevant[ri];
+        const EnergyPatternInfo &ep = patterns[pi];
+        bool hasExtraContext = false;
+        int weightedMoleculeCount = 0;
+
+        for (const auto &mol : ep.molecules) {
+            if (mol.typeName == molType1) weightedMoleculeCount++;
+        }
+        for (const auto &mol : ep.molecules) {
+            bool isReactantType = (mol.typeName == molType1 || mol.typeName == molType2);
+            if (!isReactantType) {
+                hasExtraContext = true;
+                break;
+            }
+            for (const auto &comp : mol.components) {
+                if (mol.typeName == molType1 && comp.name == bindSite1) continue;
+                if (mol.typeName == molType2 && comp.name == bindSite2) continue;
+                if (comp.isBound || !comp.stateConstraint.empty()) {
+                    hasExtraContext = true;
+                    break;
+                }
+            }
+            if (hasExtraContext) break;
+        }
+
+        /* The compact evaluator receives one selected reaction-center
+         * molecule.  A second molecule of that same type could contribute a
+         * context match that is not a property of the selected molecule, so
+         * retain the materialized expansion for that topology.  Additional
+         * molecules of the partner type are allowed here because their
+         * relevant contribution is represented by the bound predicate on the
+         * weighted molecule, matching the existing NFsim expansion. */
+        if (weightedMoleculeCount != 1) return false;
+
+        if (hasExtraContext) conditionalPatterns.push_back(pi);
+        else alwaysPatterns.push_back(pi);
+    }
+
+    for (int pi : alwaysPatterns) context.baseEnergy += patterns[pi].energyValue;
+
+    context.conditions = extractContextConditions(
+        conditionalPatterns, molType1, bindSite1, molType2, bindSite2);
+
+    /* The existing expanded representation uses a signed int bit mask.  Do
+     * not create a compact descriptor that cannot be represented by the
+     * same mask width; the caller will use the legacy path instead. */
+    if (context.conditions.empty() || context.conditions.size() >= 31) return false;
+
+    for (int pi : conditionalPatterns) {
+        unsigned int conditionMask = 0;
+        for (unsigned int ci = 0; ci < context.conditions.size(); ci++) {
+            const vector<int> &gated = context.conditions[ci].gatedPatternIndices;
+            if (find(gated.begin(), gated.end(), pi) != gated.end()) {
+                conditionMask |= (1u << ci);
+            }
+        }
+
+        /* A conditional pattern with no representable reactant-side
+         * condition is not safe to execute incrementally. */
+        if (conditionMask == 0) return false;
+
+        EnergyPatternTerm term;
+        term.energyValue = patterns[pi].energyValue;
+        term.conditionMask = conditionMask;
+        context.conditionalTerms.push_back(term);
+    }
+
+    return !context.conditionalTerms.empty();
+}
+
 /*
  * Find energy patterns relevant to a binding rule.
  *

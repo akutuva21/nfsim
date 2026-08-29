@@ -158,6 +158,49 @@ DORRxnClass::DORRxnClass(
 	cf->addTypeIMoleculeDependency( reactantTemplates[DORreactantIndex]->getMoleculeType() );
 
 }
+
+DORRxnClass::DORRxnClass(
+		string name,
+		double baseRate,
+		string baseRateName,
+		TransformationSet *transformationSet,
+		int dorReactantIndex,
+		System *s) :
+	ReactionClass(name,baseRate,baseRateName,transformationSet,s),
+	cf(0),
+	DORreactantIndex(dorReactantIndex),
+	n_argMolecules(0),
+	argIndexIntoMappingSet(0),
+	argMappedMolecule(0),
+	argScope(0)
+{
+	/* This constructor is deliberately limited to the same single weighted
+	 * reactant model used by ordinary DOR reactions.  EnergyRxnClass uses it
+	 * only for two-reactant binding rules (and one-reactant reverse rules). */
+	if (dorReactantIndex < 0 || dorReactantIndex >= (int)n_reactants) {
+		cerr << "Invalid weighted reactant index when creating DOR reaction: "
+		     << name << endl;
+		exit(1);
+	}
+	if (transformationSet->getTemplateMolecule((unsigned)dorReactantIndex)
+			->getMoleculeType()->isPopulationType()) {
+		cerr << "A weighted DOR reactant cannot be a population type: "
+		     << name << endl;
+		exit(1);
+	}
+
+	this->reactionType = ReactionClass::DOR_RXN;
+	this->reactantTree = new ReactantTree(this->DORreactantIndex,
+			transformationSet,32);
+	this->msPairBuffer = new MappingSet *[n_reactants > 2 ? n_reactants : 2];
+	this->reactantLists = new ReactantList *[n_reactants];
+	for (unsigned int r=0; r<n_reactants; r++) {
+		if ((int)r != this->DORreactantIndex)
+			this->reactantLists[r] = new ReactantList(r,transformationSet,25);
+	}
+	this->a = 0;
+}
+
 DORRxnClass::~DORRxnClass() {
 
 	for(unsigned int r=0; r<n_reactants; r++) {
@@ -755,6 +798,176 @@ void DORRxnClass::printDetails() const
 
 
 
+
+
+EnergyRxnClass::EnergyRxnClass(
+		string name,
+		double baseRate,
+		string baseRateName,
+		TransformationSet *transformationSet,
+		int dorReactantIndex,
+		const EnergyBindingContext &context,
+		double phi,
+		double RT,
+		bool isForward,
+		System *s) :
+	DORRxnClass(name,baseRate,baseRateName,transformationSet,dorReactantIndex,s),
+	conditionalTerms(context.conditionalTerms),
+	baseEnergy(context.baseEnergy),
+	phi(phi),
+	RT(RT),
+	isForward(isForward)
+{
+	/* The compact input path currently supplies contexts on the first
+	 * reaction-center molecule.  Its mapping is the first mapping in both the
+	 * forward two-reactant rule and the reverse connected rule. */
+	if (dorReactantIndex != 0 || context.conditions.empty()) {
+		cerr << "Invalid compact energy reaction context for " << name << endl;
+		exit(1);
+	}
+
+	MoleculeType *weightedType = reactantTemplates[dorReactantIndex]->getMoleculeType();
+	if (!context.conditions.empty() &&
+			weightedType->getName() != context.conditions.front().molType) {
+		cerr << "Compact energy reaction weighted template does not match its "
+			 << "context molecule type for " << name << endl;
+		exit(1);
+	}
+	for (const auto &condition : context.conditions) {
+		if (condition.reactantIdx != 0) {
+			cerr << "Compact energy reaction context is not on reactant 0 for "
+			     << name << endl;
+			exit(1);
+		}
+		conditionComponentIndices.push_back(
+			weightedType->getCompIndexFromName(condition.compName));
+	}
+}
+
+double EnergyRxnClass::evaluateLocalFunctions(MappingSet *ms)
+{
+	if (ms == 0 || ms->getNumOfMappings() == 0 || ms->get(0) == 0 ||
+			ms->get(0)->getMolecule() == 0) {
+		return 0.0;
+	}
+
+	Molecule *weightedMolecule = ms->get(0)->getMolecule();
+	unsigned int conditionMask = 0;
+	for (unsigned int ci=0; ci<conditionComponentIndices.size(); ci++) {
+		if (weightedMolecule->isBindingSiteBonded(conditionComponentIndices[ci]))
+			conditionMask |= (1u << ci);
+	}
+
+	double deltaG = baseEnergy;
+	for (const auto &term : conditionalTerms) {
+		if ((conditionMask & term.conditionMask) == term.conditionMask)
+			deltaG += term.energyValue;
+	}
+
+	/* DOR's base rate carries exp(-Ea0/RT); this factor carries only the
+	 * context-dependent Arrhenius contribution. */
+	double energyCoefficient = isForward ? phi : (phi - 1.0);
+	return exp(-(energyCoefficient * deltaG) / RT);
+}
+
+double EnergyRxnClass::exactRuleMonkey_a()
+{
+	/* Keep the same total-rate convention as DORRxnClass.  The compact path
+	 * is otherwise a two-reactant microscopic rule with the first reactant
+	 * weighted by its context-dependent energy factor. */
+	if (totalRateFlag) {
+		double exact_a = baseRate;
+		for (unsigned int i = 0; i < n_reactants; i++) {
+			if (getCorrectedReactantCount(i) == 0) exact_a = 0.0;
+		}
+		return exact_a;
+	}
+
+	if (n_reactants != 2 || DORreactantIndex != 0) {
+		return DORRxnClass::exactRuleMonkey_a();
+	}
+
+	/* The inherited DOR implementation expects a ReactantList at index 0,
+	 * but the compact reaction stores the weighted first reactant in its
+	 * ReactantTree.  Enumerate the same valid pairs directly, retaining the
+	 * tree's rate factor for each first-reactant mapping.  The context list is
+	 * intentionally not collapsed here: this matches the counting semantics
+	 * of the base branch on which this reaction class is compiled. */
+	static thread_local vector<MappingSet *> contextRepresentatives;
+	contextRepresentatives.clear();
+	for (int i = 0; i < reactantLists[1]->size(); ++i) {
+		MappingSet *ms = reactantLists[1]->getMappingSetByIndex(i);
+		if (ms != 0) contextRepresentatives.push_back(ms);
+	}
+
+	double validPropensity = 0.0;
+	for (int i = 0; i < reactantTree->size(); ++i) {
+		msPairBuffer[0] = reactantTree->getMappingSetByIndex(i);
+		for (size_t j = 0; j < contextRepresentatives.size(); ++j) {
+			msPairBuffer[1] = contextRepresentatives[j];
+			if (transformationSet->checkMolecularity(msPairBuffer)) {
+				validPropensity += baseRate * reactantTree->getRateFactor(i);
+			}
+		}
+	}
+
+	return validPropensity;
+}
+
+void EnergyRxnClass::pickRuleMonkeyMappingSets(double random_A_number) const
+{
+	if (n_reactants != 2 || DORreactantIndex != 0) {
+		DORRxnClass::pickRuleMonkeyMappingSets(random_A_number);
+		return;
+	}
+
+	static thread_local vector<MappingSet *> contextRepresentatives;
+	contextRepresentatives.clear();
+	for (int i = 0; i < reactantLists[1]->size(); ++i) {
+		MappingSet *ms = reactantLists[1]->getMappingSetByIndex(i);
+		if (ms != 0) contextRepresentatives.push_back(ms);
+	}
+	if (contextRepresentatives.empty() || reactantTree->size() == 0)
+		return;
+
+	/* Enumerate valid pairs in RuleMonkey mode.  The normal compact selector
+	 * can use the product of the tree sum and context count, but RuleMonkey
+	 * promises to remove null molecularity events exactly.  Keeping this
+	 * path explicit also handles models that disallow binding within one
+	 * existing complex. */
+	validPairsBuffer.clear();
+	validWeightsBuffer.clear();
+	double totalWeight = 0.0;
+	for (int i = 0; i < reactantTree->size(); ++i) {
+		msPairBuffer[0] = reactantTree->getMappingSetByIndex(i);
+		for (size_t j = 0; j < contextRepresentatives.size(); ++j) {
+			msPairBuffer[1] = contextRepresentatives[j];
+			if (!transformationSet->checkMolecularity(msPairBuffer)) continue;
+
+			validPairsBuffer.push_back(make_pair(i, (int)j));
+			double weight = reactantTree->getRateFactor(i);
+			validWeightsBuffer.push_back(weight);
+			totalWeight += weight;
+		}
+	}
+
+	if (validPairsBuffer.empty() || totalWeight <= 0.0) return;
+
+	double randNum = system->getRNG().random(totalWeight);
+	double cumulative = 0.0;
+	size_t selectedIndex = validPairsBuffer.size() - 1;
+	for (size_t k = 0; k < validPairsBuffer.size(); ++k) {
+		cumulative += validWeightsBuffer[k];
+		if (randNum <= cumulative) {
+			selectedIndex = k;
+			break;
+		}
+	}
+
+	const pair<int, int> selected = validPairsBuffer[selectedIndex];
+	mappingSet[0] = reactantTree->getMappingSetByIndex(selected.first);
+	mappingSet[1] = contextRepresentatives[selected.second];
+}
 
 
 /*

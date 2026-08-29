@@ -104,6 +104,13 @@ namespace NFcore
 			 */
 			virtual MappingSet * getMappingSet(unsigned int mappingSetId) const;
 
+			/*
+				Returns the live MappingSet at the given flat array index.  The
+				index is aligned with getRateFactor() and is used by compact
+				weighted reaction selectors.
+			 */
+			virtual MappingSet * getMappingSetByIndex(unsigned int index) const { return mappingSets[index]; }
+
 
 
 			/*!

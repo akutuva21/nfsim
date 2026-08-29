@@ -97,6 +97,15 @@ namespace NFcore
 					CompositeFunction *function,
 					vector <string> &lfArgumentPointerNameList,
 					System *s);
+			/* Internal constructor for reactions whose rate factor is supplied by
+			 * another mapping-local evaluator rather than a BNGL local function. */
+			DORRxnClass(
+					string name,
+					double baseRate,
+					string baseRateName,
+					TransformationSet *transformationSet,
+					int dorReactantIndex,
+					System *s);
 			virtual ~DORRxnClass();
 
 			virtual void init();
@@ -153,6 +162,42 @@ namespace NFcore
 			Molecule ** argMappedMolecule;
 			int * argScope;
 
+	};
+
+	/*
+	 * Compact Arrhenius energy reaction.  This uses the DOR mapping tree to
+	 * select a reaction-center molecule with its context-dependent rate factor,
+	 * but does not create one BasicRxnClass for every boolean context state.
+	 * The input path only selects this class for factorized binding contexts
+	 * whose conditional terms each depend on one site on the same reactant.
+	 */
+	class EnergyRxnClass : public DORRxnClass {
+		public:
+			EnergyRxnClass(
+					string name,
+					double baseRate,
+					string baseRateName,
+					TransformationSet *transformationSet,
+					int dorReactantIndex,
+					const EnergyBindingContext &context,
+					double phi,
+					double RT,
+					bool isForward,
+					System *s);
+			virtual ~EnergyRxnClass() {}
+
+		protected:
+			virtual double evaluateLocalFunctions(MappingSet *ms);
+			virtual void pickRuleMonkeyMappingSets(double randNumber) const;
+			virtual double exactRuleMonkey_a();
+
+		private:
+			vector<EnergyPatternTerm> conditionalTerms;
+			vector<int> conditionComponentIndices;
+			double baseEnergy;
+			double phi;
+			double RT;
+			bool isForward;
 	};
 
 	/* A reaction class with DOR calculations on two reactants.

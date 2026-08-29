@@ -29,8 +29,8 @@ namespace NFinput {
         bool verbose);
 
     /*
-     * Create expanded BasicRxnClass instances for a binding energy rule.
-     * Call this from initReactionRules() when rateLawType=="Arrhenius".
+     * Create compact or materialized reaction classes for a binding energy
+     * rule. Call this from initReactionRules() when rateLawType=="Arrhenius".
      */
     bool createExpandedBindingReactions(
         const std::string &rxnName,
