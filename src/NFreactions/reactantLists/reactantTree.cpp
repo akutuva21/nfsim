@@ -15,12 +15,14 @@ using namespace NFcore;
 ReactantTree::ReactantTree(
 		unsigned int reactantIndex,
 		TransformationSet *ts,
-		unsigned int init_capacity)
+		unsigned int init_capacity,
+		System *system)
 {
 
 	//First set basic properties of the tree
 	this->reactantIndex=reactantIndex;
 	this->ts=ts;
+	this->system=system;
 
 	//set the initial size of the tree
 	if(init_capacity<4) maxElementCount=4;
@@ -99,6 +101,10 @@ ReactantTree::~ReactantTree()
 
 void ReactantTree::expandTree(int newCapacity)
 {
+	bool profile = system != 0 && system->isProfileReactionActive();
+	int oldCapacity = maxElementCount;
+	ProfileTime profileStart = profile ? profileNow() : ProfileTime();
+
 	//////////////////////////////////////////////////////////////////////////////////////////
 	//Step 1: reallocate new arrays to store the tree, which is the exact same procedure
 	//as creating the tree to begin with.  I name everything with the xx_ prefix to make
@@ -201,6 +207,11 @@ void ReactantTree::expandTree(int newCapacity)
 	this->n_mappingSets=xx_n_mappingSets;
 	this->firstMappingTreeIndex = xx_firstMappingTreeIndex;
 
+	if (profile)
+		system->recordProfileReactantTreeExpansion(
+				static_cast<unsigned long long>(this->maxElementCount - oldCapacity),
+				profileElapsedSeconds(profileStart));
+
 }
 
 
@@ -209,6 +220,9 @@ void ReactantTree::expandTree(int newCapacity)
 
 MappingSet * ReactantTree::pushNextAvailableMappingSet()
 {
+	bool profile = system != 0 && system->isProfileReactionActive();
+	if (profile) system->recordProfileMappingPush();
+
 	//Check that we didn't go over the max - if we did we have to expand our tree...
 	if(n_mappingSets >= maxElementCount) {
 		expandTree(maxElementCount*2);
@@ -221,6 +235,8 @@ MappingSet * ReactantTree::pushNextAvailableMappingSet()
 
 void ReactantTree::confirmPush(int mappingSetId, double rateFactor)
 {
+	if (system != 0 && system->isProfileReactionActive())
+		system->recordProfileMappingConfirm();
 
 	//Here we have to check that we didn't already put this guy into the tree
 	//somewhere.  A mappingset can get into a tree, if something is pushed, then
@@ -261,6 +277,8 @@ void ReactantTree::popLastMappingSet() {
 		cerr<<"Trying to pop an empty ReactantTree!!"<<endl;
 		exit(1);
 	}
+	if (system != 0 && system->isProfileReactionActive())
+		system->recordProfileMappingPop();
 
 	//We check here if the mappingSet that we tried to push was in fact confirmed (by seeing
 	//if it had a place in the tree).  If it did have a place in the tree, the MappingSet can
@@ -327,6 +345,8 @@ void ReactantTree::removeMappingSet(unsigned int mappingSetId)
 		cerr<<"Trying to remove from an empty ReactantTree!!"<<endl;
 		exit(1);
 	}
+	if (system != 0 && system->isProfileReactionActive())
+		system->recordProfileMappingRemove();
 
 	//first get the position of this mappingSet in the tree
 	int msTreeArrayPosition = msTreePositionMap[mappingSetId];
