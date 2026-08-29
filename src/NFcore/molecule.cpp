@@ -154,7 +154,7 @@ LocalFunction * Molecule::getLocalFunction(int localFunctionIndex) {
 void Molecule::updateRxnMembership(ReactionClass * r, bool useConnectivity)
 {
 	System *profileSystem = parentMoleculeType->getSystem();
-	if (r != 0 && profileSystem != 0 && profileSystem->isProfilingEnabled())
+	if (r != 0 && profileSystem != 0 && profileSystem->isProfileReactionActive())
 		profileSystem->recordProfileMembershipUpdate();
 
 	if (useConnectivity) {
@@ -449,6 +449,11 @@ int Molecule::getBondedMoleculeBindingSiteIndex(int cIndex) const
 
 void Molecule::bind(Molecule *m1, int cIndex1, Molecule *m2, int cIndex2)
 {
+	System *profileSystem = m1 != 0 && m1->getMoleculeType() != 0
+		? m1->getMoleculeType()->getSystem() : 0;
+	bool profile = profileSystem != 0 && profileSystem->isProfileReactionActive();
+	ProfileTime profileStart = profile ? profileNow() : ProfileTime();
+
 	if(m1->bond[cIndex1]!=nullptr || m2->bond[cIndex2]!=nullptr) {
 		cerr<<endl<<endl<<"!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"<<endl;
 		cerr<<"Your universal traversal limit was probably set too low, so some updates were not correct!\n\n";
@@ -485,6 +490,9 @@ void Molecule::bind(Molecule *m1, int cIndex1, Molecule *m2, int cIndex2)
 			m1->getComplex()->setSpeciesObsDirty();
 		}
 	}
+
+	if (profile)
+		profileSystem->recordProfileBind(profileElapsedSeconds(profileStart));
 }
 
 void Molecule::bind(Molecule *m1, string compName1, Molecule *m2, string compName2)
@@ -498,6 +506,11 @@ void Molecule::bind(Molecule *m1, string compName1, Molecule *m2, string compNam
 // selected for the unbinding for tracking purposes
 vector<int> Molecule::unbind(Molecule *m1, int cIndex)
 {
+	System *profileSystem = m1 != 0 && m1->getMoleculeType() != 0
+		? m1->getMoleculeType()->getSystem() : 0;
+	bool profile = profileSystem != 0 && profileSystem->isProfileReactionActive();
+	ProfileTime profileStart = profile ? profileNow() : ProfileTime();
+
 	//get the other molecule bound to this site
 	//cout<<"I am here. "<<bSiteIndex<<endl;
 	Molecule *m2 = m1->bond[cIndex];
@@ -537,6 +550,8 @@ vector<int> Molecule::unbind(Molecule *m1, int cIndex)
 	vector<int> tpl;
 	tpl.push_back(m2->getUniqueID());
 	tpl.push_back(cIndex2);
+	if (profile)
+		profileSystem->recordProfileUnbind(profileElapsedSeconds(profileStart));
 	return tpl;
 }
 
@@ -561,6 +576,12 @@ void Molecule::breadthFirstSearch(list <Molecule *> &members, Molecule *m, int d
 	static queue <Molecule *> q;
 	static queue <int> d;
 	static list <Molecule *>::iterator molIter;
+	System *profileSystem = m != 0 && m->getMoleculeType() != 0
+		? m->getMoleculeType()->getSystem() : 0;
+	bool profile = profileSystem != 0 && profileSystem->isProfileReactionActive();
+	ProfileTime profileStart = profile ? profileNow() : ProfileTime();
+	unsigned long long moleculesVisited = 0;
+	unsigned long long edgeVisits = 0;
 
 	// Reset queues to be safe (though they should be empty)
 	while(!q.empty()) q.pop();
@@ -595,6 +616,7 @@ void Molecule::breadthFirstSearch(list <Molecule *> &members, Molecule *m, int d
 		currentDepth = d.front();
 		q.pop();
 		d.pop();
+		++moleculesVisited;
 
 		//Make sure the depth does not exceed the limit we want to search
 		if((depth!=ReactionClass::NO_LIMIT) && (currentDepth>=depth)) continue;
@@ -606,6 +628,7 @@ void Molecule::breadthFirstSearch(list <Molecule *> &members, Molecule *m, int d
 			//cM->getComp
 			if(cM->isBindingSiteBonded(c))
 			{
+				++edgeVisits;
 				Molecule *neighbor = cM->getBondedMolecule(c);
 				//cout<<"looking at neighbor: "<<endl;
 				//neighbor->printDetails();
@@ -625,6 +648,9 @@ void Molecule::breadthFirstSearch(list <Molecule *> &members, Molecule *m, int d
 	//clear the has visitedMolecule values
 	for( molIter = members.begin(); molIter != members.end(); molIter++ )
   		(*molIter)->hasVisitedMolecule=false;
+	if (profile)
+		profileSystem->recordProfileConnectivity(profileElapsedSeconds(profileStart),
+				moleculesVisited, edgeVisits);
 }
 
 // AS2023 - alternative call sig for logging that includes a log string
@@ -633,6 +659,12 @@ void Molecule::breadthFirstSearch(list <Molecule *> &members, Molecule *m, int d
 	static queue <Molecule *> q;
 	static queue <int> d;
 	static list <Molecule *>::iterator molIter;
+	System *profileSystem = m != 0 && m->getMoleculeType() != 0
+		? m->getMoleculeType()->getSystem() : 0;
+	bool profile = profileSystem != 0 && profileSystem->isProfileReactionActive();
+	ProfileTime profileStart = profile ? profileNow() : ProfileTime();
+	unsigned long long moleculesVisited = 0;
+	unsigned long long edgeVisits = 0;
 
 	// Reset queues to be safe
 	while(!q.empty()) q.pop();
@@ -667,6 +699,7 @@ void Molecule::breadthFirstSearch(list <Molecule *> &members, Molecule *m, int d
 		currentDepth = d.front();
 		q.pop();
 		d.pop();
+		++moleculesVisited;
 
 		if (!logstr.empty()) {
 			logstr += "          [\"Delete\"," + to_string(cM->getUniqueID()) + "],\n";
@@ -682,6 +715,7 @@ void Molecule::breadthFirstSearch(list <Molecule *> &members, Molecule *m, int d
 			//cM->getComp
 			if(cM->isBindingSiteBonded(c))
 			{
+				++edgeVisits;
 				Molecule *neighbor = cM->getBondedMolecule(c);
 				//cout<<"looking at neighbor: "<<endl;
 				//neighbor->printDetails();
@@ -701,6 +735,9 @@ void Molecule::breadthFirstSearch(list <Molecule *> &members, Molecule *m, int d
 	//clear the has visitedMolecule values
 	for( molIter = members.begin(); molIter != members.end(); molIter++ )
   		(*molIter)->hasVisitedMolecule=false;
+	if (profile)
+		profileSystem->recordProfileConnectivity(profileElapsedSeconds(profileStart),
+				moleculesVisited, edgeVisits);
 }
 
 
@@ -766,6 +803,3 @@ void Molecule::printMoleculeList(list <Molecule *> &members)
 		cout<<"_u"<<(*molIter)->getUniqueID()<<endl;
 	}
 }
-
-
-
