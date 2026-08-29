@@ -35,6 +35,17 @@ inline double profileElapsedSeconds(const ProfileTime &start)
 
 const char *profileConnectivityContextName(ProfileConnectivityContext context);
 
+struct ProfileConnectivityKey {
+    unsigned long long topologyGeneration;
+    unsigned long long moleculeCount;
+    unsigned long long edgeCount;
+    unsigned long long minimumMoleculeId;
+    unsigned long long maximumMoleculeId;
+    unsigned long long componentSignature;
+
+    bool operator<(const ProfileConnectivityKey &other) const;
+};
+
 struct ProfileConnectivityStats {
     ProfileConnectivityStats();
 
@@ -47,6 +58,16 @@ struct ProfileConnectivityStats {
     unsigned long long edgeMaximum;
     unsigned long long moleculeHistogram[PROFILE_HISTOGRAM_BUCKETS];
     unsigned long long edgeHistogram[PROFILE_HISTOGRAM_BUCKETS];
+    unsigned long long traversalMaximum;
+    unsigned long long traversalHistogram[PROFILE_HISTOGRAM_BUCKETS];
+    unsigned long long componentMoleculeMaximum;
+    unsigned long long componentMoleculeHistogram[PROFILE_HISTOGRAM_BUCKETS];
+    unsigned long long topologyChangedBeforeCalls;
+    unsigned long long topologyChangedBeforeFireSamples;
+    unsigned long long membershipUpdatesBeforeCalls;
+    unsigned long long membershipUpdatesBeforeFireSamples;
+    unsigned long long equivalentPriorContextCalls[
+        PROFILE_CONNECTIVITY_CONTEXT_COUNT];
 };
 
 struct ProfileReactionStats {
@@ -86,6 +107,8 @@ struct ProfileReactionStats {
     unsigned long long productCollectionMolecules;
     unsigned long long observableRemovalMolecules;
     unsigned long long observableAdditionMolecules;
+    unsigned long long localFunctionComponentCandidates;
+    unsigned long long localFunctionComponentReuses;
     double fireCpuSeconds;
     double membershipUpdateCpuSeconds;
     double templateCompareCpuSeconds;
@@ -124,6 +147,7 @@ public:
     void recordMembershipUpdate() {
         if (!enabled || !activeReaction || activeStats == 0) return;
         ++activeStats->membershipUpdates;
+        ++activeMembershipUpdates;
     }
     void recordMembershipPhase(double elapsed);
     bool isReactionActive() const {
@@ -148,6 +172,23 @@ public:
                             unsigned long long moleculesVisited,
                             unsigned long long edgeVisits,
                             ProfileConnectivityContext context);
+    void recordConnectivity(double elapsed,
+                            unsigned long long moleculesVisited,
+                            unsigned long long edgeVisits,
+                            ProfileConnectivityContext context,
+                            unsigned long long minimumMoleculeId,
+                            unsigned long long maximumMoleculeId,
+                            unsigned long long componentSignature);
+    void recordTopologyMutation() {
+        if (!isReactionActive()) return;
+        ++activeTopologyMutationCalls;
+    }
+    void recordLocalFunctionComponentCandidate(bool alreadyCovered) {
+        if (!isReactionActive()) return;
+        ++activeStats->localFunctionComponentCandidates;
+        if (alreadyCovered)
+            ++activeStats->localFunctionComponentReuses;
+    }
     ProfileConnectivityContext beginConnectivityContext(
         ProfileConnectivityContext context) {
         ProfileConnectivityContext previous = connectivityContext;
@@ -224,7 +265,25 @@ private:
         PROFILE_CONNECTIVITY_CONTEXT_COUNT];
     unsigned long long activeConnectivityEdges[
         PROFILE_CONNECTIVITY_CONTEXT_COUNT];
+    unsigned long long activeConnectivityCalls[
+        PROFILE_CONNECTIVITY_CONTEXT_COUNT];
+    bool activeConnectivityTopologyChanged[
+        PROFILE_CONNECTIVITY_CONTEXT_COUNT];
+    bool activeConnectivityMembershipObserved[
+        PROFILE_CONNECTIVITY_CONTEXT_COUNT];
+    unsigned long long activeTopologyMutationCalls;
+    unsigned long long activeMembershipUpdates;
+    std::map<ProfileConnectivityKey, unsigned int> connectivityHistory;
 
+    void recordConnectivityInternal(
+        double elapsed,
+        unsigned long long moleculesVisited,
+        unsigned long long edgeVisits,
+        ProfileConnectivityContext context,
+        unsigned long long minimumMoleculeId,
+        unsigned long long maximumMoleculeId,
+        unsigned long long componentSignature,
+        bool hasComponentMetadata);
     void recordConnectivityFireSamples(ProfileReactionStats &stats);
 };
 

@@ -1,11 +1,25 @@
 #include <iostream>
 #include "NFcore.hh"
 #include "compartment.hh"
+#include <limits>
 #include <queue>
 
 
 using namespace std;
 using namespace NFcore;
+
+namespace {
+
+unsigned long long profileMoleculeSignature(int id)
+{
+	unsigned long long value = static_cast<unsigned long long>(id);
+	value += 0x9e3779b97f4a7c15ULL;
+	value = (value ^ (value >> 30)) * 0xbf58476d1ce4e5b9ULL;
+	value = (value ^ (value >> 27)) * 0x94d049bb133111ebULL;
+	return value ^ (value >> 31);
+}
+
+}
 
 int Molecule::uniqueIdCount = 0;
 
@@ -474,6 +488,8 @@ void Molecule::bind(Molecule *m1, int cIndex1, Molecule *m2, int cIndex2)
 
 	m1->indexOfBond[cIndex1] = cIndex2;
 	m2->indexOfBond[cIndex2] = cIndex1;
+	if (profile)
+		profileSystem->recordProfileTopologyMutation();
 
 	//Handle Complexes
 	if(m1->useComplex)
@@ -535,6 +551,8 @@ vector<int> Molecule::unbind(Molecule *m1, int cIndex)
 
 	m1->indexOfBond[cIndex] = NOINDEX;
 	m2->indexOfBond[cIndex2] = NOINDEX;
+	if (profile)
+		profileSystem->recordProfileTopologyMutation();
 
 	//Handle Complexes
 	if(m1->useComplex)
@@ -582,6 +600,10 @@ void Molecule::breadthFirstSearch(list <Molecule *> &members, Molecule *m, int d
 	ProfileTime profileStart = profile ? profileNow() : ProfileTime();
 	unsigned long long moleculesVisited = 0;
 	unsigned long long edgeVisits = 0;
+	unsigned long long componentMinimumMoleculeId =
+		std::numeric_limits<unsigned long long>::max();
+	unsigned long long componentMaximumMoleculeId = 0;
+	unsigned long long componentSignature = 0;
 
 	// Reset queues to be safe (though they should be empty)
 	while(!q.empty()) q.pop();
@@ -617,6 +639,15 @@ void Molecule::breadthFirstSearch(list <Molecule *> &members, Molecule *m, int d
 		q.pop();
 		d.pop();
 		++moleculesVisited;
+		if (profile) {
+			unsigned long long moleculeId =
+				static_cast<unsigned long long>(cM->getUniqueID());
+			if (moleculeId < componentMinimumMoleculeId)
+				componentMinimumMoleculeId = moleculeId;
+			if (moleculeId > componentMaximumMoleculeId)
+				componentMaximumMoleculeId = moleculeId;
+			componentSignature ^= profileMoleculeSignature(cM->getUniqueID());
+		}
 
 		//Make sure the depth does not exceed the limit we want to search
 		if((depth!=ReactionClass::NO_LIMIT) && (currentDepth>=depth)) continue;
@@ -650,7 +681,8 @@ void Molecule::breadthFirstSearch(list <Molecule *> &members, Molecule *m, int d
   		(*molIter)->hasVisitedMolecule=false;
 	if (profile)
 		profileSystem->recordProfileConnectivity(profileElapsedSeconds(profileStart),
-				moleculesVisited, edgeVisits);
+				moleculesVisited, edgeVisits, componentMinimumMoleculeId,
+				componentMaximumMoleculeId, componentSignature);
 }
 
 // AS2023 - alternative call sig for logging that includes a log string
@@ -665,6 +697,10 @@ void Molecule::breadthFirstSearch(list <Molecule *> &members, Molecule *m, int d
 	ProfileTime profileStart = profile ? profileNow() : ProfileTime();
 	unsigned long long moleculesVisited = 0;
 	unsigned long long edgeVisits = 0;
+	unsigned long long componentMinimumMoleculeId =
+		std::numeric_limits<unsigned long long>::max();
+	unsigned long long componentMaximumMoleculeId = 0;
+	unsigned long long componentSignature = 0;
 
 	// Reset queues to be safe
 	while(!q.empty()) q.pop();
@@ -700,6 +736,15 @@ void Molecule::breadthFirstSearch(list <Molecule *> &members, Molecule *m, int d
 		q.pop();
 		d.pop();
 		++moleculesVisited;
+		if (profile) {
+			unsigned long long moleculeId =
+				static_cast<unsigned long long>(cM->getUniqueID());
+			if (moleculeId < componentMinimumMoleculeId)
+				componentMinimumMoleculeId = moleculeId;
+			if (moleculeId > componentMaximumMoleculeId)
+				componentMaximumMoleculeId = moleculeId;
+			componentSignature ^= profileMoleculeSignature(cM->getUniqueID());
+		}
 
 		if (!logstr.empty()) {
 			logstr += "          [\"Delete\"," + to_string(cM->getUniqueID()) + "],\n";
@@ -737,7 +782,8 @@ void Molecule::breadthFirstSearch(list <Molecule *> &members, Molecule *m, int d
   		(*molIter)->hasVisitedMolecule=false;
 	if (profile)
 		profileSystem->recordProfileConnectivity(profileElapsedSeconds(profileStart),
-				moleculesVisited, edgeVisits);
+				moleculesVisited, edgeVisits, componentMinimumMoleculeId,
+				componentMaximumMoleculeId, componentSignature);
 }
 
 
