@@ -31,6 +31,7 @@
 #include "templateMolecule.hh"
 #include "observable.hh"
 #include "energyPattern.hh"
+#include "profile.hh"
 
 #define DEBUG 0   			// Set to 1 to display all debug messages
 #define BASIC_MESSAGE 0		// Set to 1 to display basic messages (eg runtime)
@@ -463,6 +464,28 @@ namespace NFcore
 			void seedRNG(unsigned long seed) { rng_.seed(seed); }
 			NfsimRNG& getRNG() { return rng_; }
 
+			// Opt-in instrumentation for profiling irregular reaction work.
+			void enableProfiling(const string &outputPath) { profiler.enable(outputPath); }
+			bool isProfilingEnabled() const { return profiler.isEnabled(); }
+			void resetProfiling() { profiler.reset(); }
+			void recordProfilePhase(const string &phase, clock_t elapsed) {
+				profiler.recordPhase(phase, elapsed);
+			}
+			void beginProfileReactionFire(int rxnId, const string &rxnName) {
+				profiler.beginReactionFire(rxnId, rxnName);
+			}
+			void recordProfileReactionFire(int rxnId, const string &rxnName,
+					clock_t elapsed, bool nullEvent) {
+				profiler.recordReactionFire(rxnId, rxnName, elapsed, nullEvent);
+			}
+			void recordProfileMatchCandidate() {
+				profiler.recordMatchCandidate();
+			}
+			void recordProfileMembershipUpdate() {
+				profiler.recordMembershipUpdate();
+			}
+			bool writeProfile() const { return profiler.write(); }
+
 	        NFstream& getOutputFileStream();
 	        NFstream& getReactionFileStream();
 	        NFstream& getConnectedRxnFileStream();
@@ -676,6 +699,8 @@ namespace NFcore
 
 			// Per-instance random number generator for thread safety
 			NfsimRNG rng_;
+
+			NFsimProfile profiler;
 
 			// AS2023 - sets the default log buffer size to 10000 firings.
 			int log_buffer_size = 10000;

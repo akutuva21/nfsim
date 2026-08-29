@@ -447,6 +447,9 @@ int BasicRxnClass::checkForEquality(Molecule *m, MappingSet* ms, int rxnIndex, R
  */
 bool BasicRxnClass::tryToAdd(Molecule *m, unsigned int reactantPos)
 {
+	if (system != 0 && system->isProfilingEnabled())
+		system->recordProfileMatchCandidate();
+
 	//First a bit of error checking, that you should skip unless we are debugging...
 	//	if(reactantPos<0 || reactantPos>=n_reactants || m==NULL)
 	//	{
@@ -769,6 +772,4 @@ void BasicRxnClass::pickMappingSets(double random_A_number) const
 		}
 	}
 }
-
-
 
