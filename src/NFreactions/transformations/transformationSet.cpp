@@ -906,6 +906,11 @@ bool TransformationSet::getListOfAddedMolecules(MappingSet **mappingSets, list <
 	unsigned long long productsBefore = profile
 		? static_cast<unsigned long long>(products.size()) : 0;
 	ProfileTime profileStart = profile ? profileNow() : ProfileTime();
+	if (addMoleculeTransformations.empty()) {
+		if (profile)
+			profileSystem->recordProfileProductCollection(0.0, 0);
+		return true;
+	}
 	std::unordered_set<Molecule*> product_set(products.begin(), products.end());
 
 	// Add new molecules (particle type) to the list of products

@@ -1376,6 +1376,10 @@ namespace NFcore
 			int nReactions;
 
 		private:
+			template <bool PROFILE, bool TRACKING, bool TRACK_TRUNCATION>
+			static bool breadthFirstSearchImpl(
+					list <Molecule *> &members, Molecule *m, int depth,
+					string *logstr, System *profileSystem);
 
 			static queue <Molecule *> q;
 			static queue <int> d;

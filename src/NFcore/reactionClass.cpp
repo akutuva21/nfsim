@@ -514,25 +514,31 @@ string ReactionClass::fire(double random_A_number, bool track) {
 	// through bonded-neighborhood traversal must use the full updater to preserve
 	// the same membership mutation order as the non-connectivity path.
 	std::unordered_set<Molecule*> directProductSet;
-	for (unsigned int msIndex=0; msIndex<n_mappingsets; msIndex++) {
-		MappingSet *ms = mappingSet[msIndex];
-		if (ms==0) continue;
-		for (unsigned int mapIndex=0; mapIndex<ms->getNumOfMappings(); mapIndex++) {
-			Mapping *mapping = ms->get(mapIndex);
-			if (mapping==0) continue;
-			Molecule *directMol = mapping->getMolecule();
-			if (directMol!=0) directProductSet.insert(directMol);
-		}
-	}
 	bool hasIndirectProducts = false;
-	for (molIter = products.begin(); molIter != products.end(); molIter++) {
-		Molecule *mol = *molIter;
-		if (!mol->isAlive()) continue;
-		if (directProductSet.find(mol)==directProductSet.end()) {
-			hasIndirectProducts = true;
-			break;
+	if (useConnectivity) {
+		for (unsigned int msIndex=0; msIndex<n_mappingsets; msIndex++) {
+			MappingSet *ms = mappingSet[msIndex];
+			if (ms==0) continue;
+			for (unsigned int mapIndex=0; mapIndex<ms->getNumOfMappings(); mapIndex++) {
+				Mapping *mapping = ms->get(mapIndex);
+				if (mapping==0) continue;
+				Molecule *directMol = mapping->getMolecule();
+				if (directMol!=0) directProductSet.insert(directMol);
+			}
+		}
+		for (molIter = products.begin(); molIter != products.end(); molIter++) {
+			Molecule *mol = *molIter;
+			if (!mol->isAlive()) continue;
+			if (directProductSet.find(mol)==directProductSet.end()) {
+				hasIndirectProducts = true;
+				break;
+			}
 		}
 	}
+
+	// One flag controls all per-fire profiler work below. Without -profile,
+	// hot product and local-function loops never enter profiler wrappers.
+	bool profileReaction = system->isProfileReactionActive();
 
 	// if complex bookkeeping is on, find all product complexes
 	// (this is useful for updating Species Observables and TypeII functions, so keep the info handy).
@@ -549,7 +555,7 @@ string ReactionClass::fire(double random_A_number, bool track) {
 			if ( productComplexSet.insert(complex).second )
 				productComplexes.push_back(complex);
 		}
-		if (system->isProfileReactionActive()) {
+		if (profileReaction) {
 			unsigned long long productComplexMolecules = 0;
 			for (std::unordered_set<Complex*>::const_iterator it = productComplexSet.begin();
 					it != productComplexSet.end(); ++it) {
@@ -565,7 +571,7 @@ string ReactionClass::fire(double random_A_number, bool track) {
 
 	// If we're handling observables on the fly, tell each molecule to add itself to observables.
 	if (onTheFlyObservables) {
-		bool profileObservables = system->isProfileReactionActive();
+		bool profileObservables = profileReaction;
 		ProfileTime profileObservablesStart = profileObservables
 			? profileNow() : ProfileTime();
 		unsigned long long profileObservableMolecules = profileObservables
@@ -606,7 +612,7 @@ string ReactionClass::fire(double random_A_number, bool track) {
 	//  also, gather a list of typeII dependencies that will require updating
 	typeII_products.clear();
 	std::unordered_set<MoleculeType*> typeIIProductSet;
-	bool profileMembership = system->isProfileReactionActive();
+	bool profileMembership = profileReaction;
 	ProfileTime profileMembershipStart = profileMembership
 		? profileNow() : ProfileTime();
 	for ( molIter = products.begin(); molIter != products.end(); molIter++ ) {
@@ -679,7 +685,8 @@ string ReactionClass::fire(double random_A_number, bool track) {
 					for (unsigned int i = 0; i < *componentSize; ++i) {
 						connectedMols.push_back(*componentMolecule);
 						++componentMolecule;
-						system->recordProfileLocalFunctionComponentCandidate(i != 0);
+						if (profileReaction)
+							system->recordProfileLocalFunctionComponentCandidate(i != 0);
 					}
 
 					for ( typeII_iter = typeII_products.begin(); typeII_iter != typeII_products.end(); ++typeII_iter ) {
@@ -697,7 +704,8 @@ string ReactionClass::fire(double random_A_number, bool track) {
 				for ( molIter = products.begin(); molIter != products.end(); molIter++ ) {
 					mol = *molIter;
 					bool isNewComponent = allMols.insert(mol).second;
-					system->recordProfileLocalFunctionComponentCandidate(!isNewComponent);
+					if (profileReaction)
+						system->recordProfileLocalFunctionComponentCandidate(!isNewComponent);
 					if ( isNewComponent ) {
 						// remember everything connected to this molecule so we don't
 						// evaluate this connected set multiple times.
