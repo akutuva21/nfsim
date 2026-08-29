@@ -502,6 +502,16 @@ namespace NFcore
 				profiler.recordConnectivity(elapsed, moleculesVisited, edgeVisits,
 						profiler.getConnectivityContext());
 			}
+			void recordProfileConnectivity(double elapsed,
+					unsigned long long moleculesVisited,
+					unsigned long long edgeVisits,
+					unsigned long long minimumMoleculeId,
+					unsigned long long maximumMoleculeId,
+					unsigned long long componentSignature) {
+				profiler.recordConnectivity(elapsed, moleculesVisited, edgeVisits,
+						profiler.getConnectivityContext(), minimumMoleculeId,
+						maximumMoleculeId, componentSignature);
+			}
 			ProfileConnectivityContext beginProfileConnectivityContext(
 					ProfileConnectivityContext context) {
 				return profiler.beginConnectivityContext(context);
@@ -512,6 +522,13 @@ namespace NFcore
 			}
 			ProfileConnectivityContext getProfileConnectivityContext() const {
 				return profiler.getConnectivityContext();
+			}
+			void recordProfileTopologyMutation() {
+				profiler.recordTopologyMutation();
+			}
+			void recordProfileLocalFunctionComponentCandidate(
+					bool alreadyCovered) {
+				profiler.recordLocalFunctionComponentCandidate(alreadyCovered);
 			}
 			void recordProfileBind(double elapsed) {
 				profiler.recordBind(elapsed);

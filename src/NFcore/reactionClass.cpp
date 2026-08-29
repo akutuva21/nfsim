@@ -652,7 +652,9 @@ string ReactionClass::fire(double random_A_number, bool track) {
 		Molecule * mol;
 		for ( molIter = products.begin(); molIter != products.end(); molIter++ ) {
 			mol = *molIter;
-			if ( allMols.insert(mol).second ) {
+			bool isNewComponent = allMols.insert(mol).second;
+			system->recordProfileLocalFunctionComponentCandidate(!isNewComponent);
+			if ( isNewComponent ) {
 				// remember everything connected to this molecule so we don't
 				// evaluate this connected set multiple times.
 				list<Molecule*> connectedMols;
