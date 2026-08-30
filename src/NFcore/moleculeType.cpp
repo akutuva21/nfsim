@@ -587,7 +587,7 @@ void MoleculeType::updateRxnMembership(Molecule * m,
 {
 	const vector<unsigned char> *cachedDecisions = 0;
 	if (directProduct && firedReaction != 0 &&
-			firedReaction->usesIncrementalMembership()) {
+		firedReaction->usesIncrementalMembership()) {
 		unordered_map<ReactionClass *, bool>::iterator safe =
 				directMembershipDecisionCacheSafe.find(firedReaction);
 		if (safe == directMembershipDecisionCacheSafe.end()) {
@@ -602,19 +602,48 @@ void MoleculeType::updateRxnMembership(Molecule * m,
 					firedReaction, typeInvariant).first;
 		}
 		if (safe->second) {
-			unordered_map<ReactionClass *, vector<unsigned char>>::iterator cached =
+			unordered_map<ReactionClass *,
+					DirectMembershipDecisionCacheEntry>::iterator cached =
 					directMembershipDecisionCache.find(firedReaction);
 			if (cached == directMembershipDecisionCache.end()) {
-				vector<unsigned char> decisions;
-				decisions.reserve(reactions.size());
-				for (unsigned int r = 0; r < reactions.size(); ++r) {
-					decisions.push_back(reactions[r]->shouldUpdateMembership(
-							m, firedReaction, true));
-				}
 				cached = directMembershipDecisionCache.emplace(
-						firedReaction, decisions).first;
+						firedReaction, DirectMembershipDecisionCacheEntry()).first;
+				DirectMembershipDecisionCacheEntry &entry = cached->second;
+				entry.decisions.reserve(reactions.size());
+				for (unsigned int r = 0; r < reactions.size(); ++r) {
+					entry.decisions.push_back(
+							reactions[r]->shouldUpdateMembership(
+									m, firedReaction, true));
+				}
+				std::size_t affectedReactionCount = 0;
+				for (unsigned int r = 0; r < entry.decisions.size(); ++r) {
+					if (entry.decisions[r]) ++affectedReactionCount;
+				}
+				if (affectedReactionCount * 2 < entry.decisions.size()) {
+					entry.reactionIndices.reserve(affectedReactionCount);
+					for (unsigned int r = 0; r < entry.decisions.size(); ++r) {
+						if (entry.decisions[r])
+							entry.reactionIndices.push_back(r);
+					}
+					vector<unsigned char>().swap(entry.decisions);
+					entry.useReactionIndices = true;
+				}
 			}
-			cachedDecisions = &cached->second;
+			const DirectMembershipDecisionCacheEntry &entry = cached->second;
+			if (entry.useReactionIndices) {
+				for (vector<unsigned int>::const_iterator it =
+						entry.reactionIndices.begin();
+						it != entry.reactionIndices.end(); ++it) {
+					unsigned int r = *it;
+					ReactionClass *rxn = reactions.at(r);
+					double oldA = rxn->get_a();
+					rxn->tryToAdd(m, reactionPositions.at(r));
+					double newA = rxn->update_a();
+					this->system->update_A_tot(rxn, oldA, newA);
+				}
+				return;
+			}
+			cachedDecisions = &entry.decisions;
 		}
 	}
 

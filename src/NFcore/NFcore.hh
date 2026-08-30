@@ -1136,8 +1136,15 @@ namespace NFcore
 			ReactionClass *rxn; /*used so we don't need to redeclare this at every call to updateRxnMembership */
 
 			/* Cached direct-product membership decisions for compact EnergyPattern
-			 * updates.  The vector follows reactions/reactionPositions order. */
-			std::unordered_map<ReactionClass *, std::vector<unsigned char>>
+			 * updates.  Dense decisions use one byte per reaction; sparse decisions
+			 * use an ordered index list so the refresh loop skips unaffected rules. */
+			struct DirectMembershipDecisionCacheEntry {
+				DirectMembershipDecisionCacheEntry() : useReactionIndices(false) {}
+				std::vector<unsigned char> decisions;
+				std::vector<unsigned int> reactionIndices;
+				bool useReactionIndices;
+			};
+			std::unordered_map<ReactionClass *, DirectMembershipDecisionCacheEntry>
 				directMembershipDecisionCache;
 			/* Cache the conservative type-invariance check as well.  A false entry
 			 * keeps generic reaction lists on the existing per-molecule path. */
