@@ -135,14 +135,14 @@ DORRxnClass::DORRxnClass(
 
 	//Set up the reactant tree
 	//reactantTree = new ReactantTree(this->DORreactantIndex,transformationSet,4);
-	reactantTree = new ReactantTree(this->DORreactantIndex,transformationSet,32);
+	reactantTree = new ReactantTree(this->DORreactantIndex,transformationSet,32,this->system);
 	msPairBuffer = new MappingSet*[2];
 
 	//Set up the reactantLists
 	reactantLists = new ReactantList *[n_reactants];
 	for(unsigned int r=0; r<n_reactants; r++) {
 		if((signed)r!=this->DORreactantIndex)
-			reactantLists[r]=(new ReactantList(r,transformationSet,25));
+			reactantLists[r]=(new ReactantList(r,transformationSet,25,this->system));
 	}
 
 	//Initialize a to zero
@@ -225,6 +225,9 @@ int DORRxnClass::checkForCollision(Molecule *m, MappingSet* ms, int rxnIndex){
 }
 
 bool DORRxnClass::tryToAdd(Molecule *m, unsigned int reactantPos) {
+	if (system != 0 && system->isProfilingEnabled())
+		system->recordProfileMatchCandidate();
+
 	// see BasicRxnClass::tryToAdd()
 	if (contextCountsPerComplex[reactantPos] && reactantPos == (unsigned)DORreactantIndex) {
 		reactantTree->noteMappedComplexSize(m->getComplex()->getComplexSize());
@@ -981,15 +984,15 @@ DOR2RxnClass::DOR2RxnClass(
 	this->reactionType = ReactionClass::DOR2_RXN;
 
 	//Set up the reactant trees
-	reactantTree1 = new ReactantTree(this->DORreactantIndex1,transformationSet,32);
-	reactantTree2 = new ReactantTree(this->DORreactantIndex2,transformationSet,32);
+	reactantTree1 = new ReactantTree(this->DORreactantIndex1,transformationSet,32,this->system);
+	reactantTree2 = new ReactantTree(this->DORreactantIndex2,transformationSet,32,this->system);
 	msPairBuffer = new MappingSet*[2];
 
 	//Set up the reactantLists
 	reactantLists = new ReactantList *[n_reactants];
 	for (unsigned int r=0; r<n_reactants; r++) {
 		if( (signed)r!=this->DORreactantIndex1  &&  (signed)r!=this->DORreactantIndex2 )
-			reactantLists[r]=(new ReactantList(r,transformationSet,25));
+			reactantLists[r]=(new ReactantList(r,transformationSet,25,this->system));
 	}
 
 	//Initialize a to zero
@@ -1074,6 +1077,8 @@ void DOR2RxnClass::remove(Molecule *m, unsigned int reactantPos)
 
 
 bool DOR2RxnClass::tryToAdd(Molecule *m, unsigned int reactantPos) {
+	if (system != 0 && system->isProfilingEnabled())
+		system->recordProfileMatchCandidate();
 
 	// adding molecule to DOR2RxnClass
 	if (reactantPos==(unsigned)this->DORreactantIndex1) {
@@ -1560,5 +1565,3 @@ void DOR2RxnClass::printDetails() const
 	if (n_reactants==0)
 		cout << "      >No Reactants: so this rule either creates new species or does nothing."<<endl;
 }
-
-

@@ -297,59 +297,8 @@ double LocalFunction::evaluateOn(Molecule *m, int scope) {
 		}
 
 		molList.clear();
-
-		//cout<<"from local function"<<endl;
 		m->traverseBondedNeighborhood(molList,ReactionClass::NO_LIMIT);
-
-
-		//First, clear out all the observables
-		for(unsigned int i=0; i<n_varRefs; i++) {
-			if(varLocalObservables[i]!=0) {
-				varLocalObservables[i]->clear();
-			}
-		}
-
-		//recompute the observables
-		int matches = 0;
-		for(molIter=molList.begin(); molIter!=molList.end(); molIter++) {
-
-			//Loop over each observable
-			for(unsigned int i=0; i<n_varRefs; i++) {
-				if(varLocalObservables[i]!=0) {   //If it is local
-
-					//If the observable is of type MOLECULES
-					if(varLocalObservables[i]->getType()==Observable::MOLECULES) {
-						matches = varLocalObservables[i]->isObservable((*molIter));
-						varLocalObservables[i]->straightAdd(matches);
-					}
-					//If the observables is of a different type
-					else {
-						cerr<<"Error in LocalFunction::evaluateOn()! cannot handle Species observable when"<<endl;
-						cerr<<"evaluating on a single molecule."<<endl;
-						exit(1);
-					}
-				}
-			}
-
-		}
-
-		//evaluate the function
-		double newValue = FuncFactory::Eval(p);
-
-
-		//Here we have to notify the type I molecules that this function has changed
-		//Update the molecules (Type I) that needed this function evaluated...
-		for(molIter=molList.begin(); molIter!=molList.end(); molIter++) {
-			for(int ti=0; ti<n_typeImolecules; ti++) {
-				if((*molIter)->getMoleculeType()==typeI_mol[ti]) {
-					(*molIter)->setLocalFunctionValue(newValue,this->typeI_localFunctionIndex[ti]);
-					(*molIter)->updateDORRxnValues();
-				}
-			}
-		}
-
-		//cout<<"*"<<this->name<<" "<<newValue<<"\n";
-		return newValue;
+		return this->evaluateOn(m, molList);
 
 	} else if(scope==LocalFunction::MOLECULE) {
 		//cout<<"evaluating on Molecule scope."<<endl;
@@ -397,6 +346,65 @@ double LocalFunction::evaluateOn(Molecule *m, int scope) {
 	}
 
 	return -1;
+}
+
+double LocalFunction::evaluateOn(Molecule *m, list <Molecule *> &members) {
+	if(!isEverEvaluatedOnSpeciesScope) {
+		return this->evaluateOn(m, LocalFunction::MOLECULE);
+	}
+
+	if(!system->getEvaluateComplexScopedLocalFunctions()) {
+		return 0;
+	}
+
+	//First, clear out all the observables
+	for(unsigned int i=0; i<n_varRefs; i++) {
+		if(varLocalObservables[i]!=0) {
+			varLocalObservables[i]->clear();
+		}
+	}
+
+	//recompute the observables
+	int matches = 0;
+	for(molIter=members.begin(); molIter!=members.end(); molIter++) {
+
+		//Loop over each observable
+		for(unsigned int i=0; i<n_varRefs; i++) {
+			if(varLocalObservables[i]!=0) {   //If it is local
+
+				//If the observable is of type MOLECULES
+				if(varLocalObservables[i]->getType()==Observable::MOLECULES) {
+					matches = varLocalObservables[i]->isObservable((*molIter));
+					varLocalObservables[i]->straightAdd(matches);
+				}
+				//If the observables is of a different type
+				else {
+					cerr<<"Error in LocalFunction::evaluateOn()! cannot handle this observable type when"<<endl;
+					cerr<<"evaluating on a connected component."<<endl;
+					exit(1);
+				}
+			}
+		}
+
+	}
+
+	//evaluate the function
+	double newValue = FuncFactory::Eval(p);
+
+
+	//Here we have to notify the type I molecules that this function has changed
+	//Update the molecules (Type I) that needed this function evaluated...
+	for(molIter=members.begin(); molIter!=members.end(); molIter++) {
+		for(int ti=0; ti<n_typeImolecules; ti++) {
+			if((*molIter)->getMoleculeType()==typeI_mol[ti]) {
+				(*molIter)->setLocalFunctionValue(newValue,this->typeI_localFunctionIndex[ti]);
+				(*molIter)->updateDORRxnValues();
+			}
+		}
+	}
+
+	//cout<<"*"<<this->name<<" "<<newValue<<"\n";
+	return newValue;
 }
 
 //This version accepts a complex and evaluates the LocalFunction with SPECIES scope.

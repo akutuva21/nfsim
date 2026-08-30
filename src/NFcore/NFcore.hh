@@ -31,6 +31,7 @@
 #include "templateMolecule.hh"
 #include "observable.hh"
 #include "energyPattern.hh"
+#include "profile.hh"
 
 #define DEBUG 0   			// Set to 1 to display all debug messages
 #define BASIC_MESSAGE 0		// Set to 1 to display basic messages (eg runtime)
@@ -315,7 +316,7 @@ namespace NFcore
 			void printAllFunctions();
 
 			bool saveSpecies() { return saveSpecies(string(name+"_nf.species")); };
-			bool saveSpecies(string filename);
+			bool saveSpecies(const string& filename);
 
 			// AS2023 - this gets set up by rxnlog argument and enables the logging
 			// of each firing in the system 
@@ -337,17 +338,17 @@ namespace NFcore
 
 			/* tell the system where to ouptut results*/
 			void setOutputToBinary();
-			void registerOutputFileLocation(string filename);
+			void registerOutputFileLocation(const string& filename);
 			/* reaction firings are output to this file
 			 * if any reaction has tag flag set to 1 */
-			void registerReactionFileLocation(string filename);
+			void registerReactionFileLocation(const string& filename);
 			/* Connected reactions upon each reaction firing are written to this location */
-			void registerConnectedRxnFileLocation(string filename);
+			void registerConnectedRxnFileLocation(const string& filename);
 			/* Connected reactions for each reaction as calculated are written to this location */
-			void registerListOfConnectedRxnFileLocation(string filename);
+			void registerListOfConnectedRxnFileLocation(const string& filename);
 			/* list of molecule types and reaction firing counts are stored in these files */
-			void registerMoleculeTypeFileLocation(string filename);
-			void registerRxnListFileLocation(string filename);
+			void registerMoleculeTypeFileLocation(const string& filename);
+			void registerRxnListFileLocation(const string& filename);
 
 
 			void setDumpOutputter(DumpSystem *ds);
@@ -462,6 +463,133 @@ namespace NFcore
 			// RNG management for thread-safe, deterministic simulations
 			void seedRNG(unsigned long seed) { rng_.seed(seed); }
 			NfsimRNG& getRNG() { return rng_; }
+
+			// Opt-in instrumentation for profiling irregular reaction work.
+			void enableProfiling(const string &outputPath) { profiler.enable(outputPath); }
+			bool isProfilingEnabled() const { return profiler.isEnabled(); }
+			void resetProfiling() { profiler.reset(); }
+			void recordProfilePhase(const string &phase, clock_t elapsed) {
+				profiler.recordPhase(phase, elapsed);
+			}
+			void beginProfileReactionFire(int rxnId, const string &rxnName) {
+				profiler.beginReactionFire(rxnId, rxnName);
+			}
+			void recordProfileReactionFire(int rxnId, const string &rxnName,
+					clock_t elapsed, bool nullEvent) {
+				profiler.recordReactionFire(rxnId, rxnName, elapsed, nullEvent);
+			}
+			void recordProfileMatchCandidate() {
+				profiler.recordMatchCandidate();
+			}
+			void recordProfileMembershipUpdate() {
+				profiler.recordMembershipUpdate();
+			}
+			void recordProfileMembershipPhase(double elapsed) {
+				profiler.recordMembershipPhase(elapsed);
+			}
+			bool isProfileReactionActive() const {
+				return profiler.isReactionActive();
+			}
+			void beginProfileTemplateCompare() {
+				profiler.beginTemplateCompare();
+			}
+			void endProfileTemplateCompare() {
+				profiler.endTemplateCompare();
+			}
+			void recordProfileConnectivity(double elapsed,
+					unsigned long long moleculesVisited,
+					unsigned long long edgeVisits) {
+				profiler.recordConnectivity(elapsed, moleculesVisited, edgeVisits,
+						profiler.getConnectivityContext());
+			}
+			void recordProfileConnectivity(double elapsed,
+					unsigned long long moleculesVisited,
+					unsigned long long edgeVisits,
+					unsigned long long minimumMoleculeId,
+					unsigned long long maximumMoleculeId,
+					unsigned long long componentSignature) {
+				profiler.recordConnectivity(elapsed, moleculesVisited, edgeVisits,
+						profiler.getConnectivityContext(), minimumMoleculeId,
+						maximumMoleculeId, componentSignature);
+			}
+			ProfileConnectivityContext beginProfileConnectivityContext(
+					ProfileConnectivityContext context) {
+				return profiler.beginConnectivityContext(context);
+			}
+			void endProfileConnectivityContext(
+					ProfileConnectivityContext previous) {
+				profiler.endConnectivityContext(previous);
+			}
+			ProfileConnectivityContext getProfileConnectivityContext() const {
+				return profiler.getConnectivityContext();
+			}
+			void recordProfileTopologyMutation() {
+				profiler.recordTopologyMutation();
+			}
+			void recordProfileLocalFunctionComponentCandidate(
+					bool alreadyCovered) {
+				profiler.recordLocalFunctionComponentCandidate(alreadyCovered);
+			}
+			void recordProfileBind(double elapsed) {
+				profiler.recordBind(elapsed);
+			}
+			void recordProfileUnbind(double elapsed) {
+				profiler.recordUnbind(elapsed);
+			}
+			void recordProfileComplexMaintenance(double elapsed,
+					unsigned long long moleculesTouched) {
+				profiler.recordComplexMaintenance(elapsed, moleculesTouched);
+			}
+			void recordProfileAffectedComplexes(unsigned long long complexes,
+					unsigned long long molecules) {
+				profiler.recordAffectedComplexes(complexes, molecules);
+			}
+			void recordProfileCanonicalLabel(double elapsed,
+					unsigned long long nodes,
+					unsigned long long edges,
+					bool nautyCalled) {
+				profiler.recordCanonicalLabel(elapsed, nodes, edges, nautyCalled);
+			}
+			void recordProfileMappingPush() {
+				profiler.recordMappingPush();
+			}
+			void recordProfileMappingPop() {
+				profiler.recordMappingPop();
+			}
+			void recordProfileMappingRemove() {
+				profiler.recordMappingRemove();
+			}
+			void recordProfileMappingConfirm() {
+				profiler.recordMappingConfirm();
+			}
+			void recordProfileReactantListExpansion(unsigned long long expandedSlots,
+					double elapsed) {
+				profiler.recordReactantListExpansion(expandedSlots, elapsed);
+			}
+			void recordProfileReactantTreeExpansion(unsigned long long expandedSlots,
+					double elapsed) {
+				profiler.recordReactantTreeExpansion(expandedSlots, elapsed);
+			}
+			void recordProfileTransformation(double elapsed) {
+				profiler.recordTransformation(elapsed);
+			}
+			void recordProfileProductPreparation(double elapsed,
+					unsigned long long moleculesPrepared) {
+				profiler.recordProductPreparation(elapsed, moleculesPrepared);
+			}
+			void recordProfileProductCollection(double elapsed,
+					unsigned long long moleculesAdded) {
+				profiler.recordProductCollection(elapsed, moleculesAdded);
+			}
+			void recordProfileObservableRemoval(double elapsed,
+					unsigned long long molecules) {
+				profiler.recordObservableRemoval(elapsed, molecules);
+			}
+			void recordProfileObservableAddition(double elapsed,
+					unsigned long long molecules) {
+				profiler.recordObservableAddition(elapsed, molecules);
+			}
+			bool writeProfile() const { return profiler.write(); }
 
 	        NFstream& getOutputFileStream();
 	        NFstream& getReactionFileStream();
@@ -677,6 +805,8 @@ namespace NFcore
 			// Per-instance random number generator for thread safety
 			NfsimRNG rng_;
 
+			NFsimProfile profiler;
+
 			// AS2023 - sets the default log buffer size to 10000 firings.
 			int log_buffer_size = 10000;
 
@@ -697,7 +827,24 @@ namespace NFcore
 			vector <GlobalFunction *>::iterator functionIter; /* to iterate over Global Functions */
 	};
 
+	class ProfileConnectivityScope
+	{
+		System *system;
+		ProfileConnectivityContext previous;
+		bool enabled;
 
+	public:
+		ProfileConnectivityScope(System *s, ProfileConnectivityContext context)
+			: system(s), previous(PROFILE_CONNECTIVITY_OTHER), enabled(false) {
+			enabled = system != 0 && system->isProfileReactionActive();
+			if (enabled)
+				previous = system->beginProfileConnectivityContext(context);
+		}
+		~ProfileConnectivityScope() {
+			if (enabled)
+				system->endProfileConnectivityContext(previous);
+		}
+	};
 
 	//!  Keeps track of the types of molecules that can exist.
 	/*!
@@ -1117,10 +1264,11 @@ namespace NFcore
 
 			/* functions needed to traverse a complex and get all components
 			 * which is important when we want to update reactions and complexes */
-			void traverseBondedNeighborhood(list <Molecule *> &members, int traversalLimit);
+			/* returns true when a finite traversal limit excluded a bonded neighbor */
+			bool traverseBondedNeighborhood(list <Molecule *> &members, int traversalLimit);
 			// AS2023 - additional call sig to use with reaction firing logging
 			void traverseBondedNeighborhood(list <Molecule *> &members, int traversalLimit, string &logstr);
-			static void breadthFirstSearch(list <Molecule *> &members, Molecule *m, int depth);
+			static bool breadthFirstSearch(list <Molecule *> &members, Molecule *m, int depth);
 			// AS2023 - additional call sig to use with reaction firing logging
 			static void breadthFirstSearch(list <Molecule *> &members, Molecule *m, int depth, string &logstr);
 			void depthFirstSearch(list <Molecule *> &members);
@@ -1228,6 +1376,10 @@ namespace NFcore
 			int nReactions;
 
 		private:
+			template <bool PROFILE, bool TRACKING, bool TRACK_TRUNCATION>
+			static bool breadthFirstSearchImpl(
+					list <Molecule *> &members, Molecule *m, int depth,
+					string *logstr, System *profileSystem);
 
 			static queue <Molecule *> q;
 			static queue <int> d;
@@ -1435,6 +1587,8 @@ namespace NFcore
 
 			list <Molecule *> products;
 			list <Molecule *>::iterator molIter;
+			vector <unsigned int> productComponentSizes;
+			bool productComponentsTruncated;
 
 			// remember the molecule type of each product molecule a with typeII dependencies
 			list <MoleculeType *> typeII_products;
