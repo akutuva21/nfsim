@@ -142,7 +142,8 @@ System::~System()
 
 	//Delete the rxnIndexMap array
 	if(rxnIndexMap!=NULL) {
-		for(unsigned int r=0; r<allReactions.size(); r++)
+		unsigned int n_rxns = allReactions.size();
+		for(unsigned int r=0; r<n_rxns; r++)
 			if(rxnIndexMap[r]!=NULL) { delete [] rxnIndexMap[r]; }
 		delete [] rxnIndexMap;
 	}
@@ -297,7 +298,7 @@ Observable * System::getSpeciesObs(int index) const
 }
 
 
-void System::registerOutputFileLocation(string filename)
+void System::registerOutputFileLocation(const string& filename)
 {
 	if(outputFileStream.is_open()) { outputFileStream.close(); }
 	if(useBinaryOutput) {
@@ -355,7 +356,7 @@ void System::registerOutputFileLocation(string filename)
  * Note reactions can be tagged in BioNetGen or PySB or from the command line using the rtag flag
  * @author: Rasi Subramaniam
  */
-void System::registerReactionFileLocation(string filename)
+void System::registerReactionFileLocation(const string& filename)
 {
 	if (reactionOutputFileStream.is_open()) { reactionOutputFileStream.close(); }
 	reactionOutputFileStream.open(filename.c_str());
@@ -372,7 +373,7 @@ void System::registerReactionFileLocation(string filename)
 	setReactionTrackingStatus(true);
 }
 
-void System::registerMoleculeTypeFileLocation(string filename) {
+void System::registerMoleculeTypeFileLocation(const string& filename) {
 	if (moleculeTypeFileStream.is_open()) { moleculeTypeFileStream.close(); }
 	moleculeTypeFileStream.open(filename.c_str());
 
@@ -385,10 +386,10 @@ void System::registerMoleculeTypeFileLocation(string filename) {
 	moleculeTypeFileStream.setf(ios::dec);
 	moleculeTypeFileStream.precision(2);
 	// print header for file
-	moleculeTypeFileStream << "mol_type_id" << "\t" << "mol_type" << endl;
+	moleculeTypeFileStream << "mol_type_id" << "\t" << "mol_type" << '\n';
 }
 
-void System::registerRxnListFileLocation(string filename) {
+void System::registerRxnListFileLocation(const string& filename) {
 	if (rxnListFileStream.is_open()) { rxnListFileStream.close(); }
 	rxnListFileStream.open(filename.c_str());
 
@@ -407,7 +408,7 @@ void System::registerRxnListFileLocation(string filename) {
 			"name" << endl;
 }
 
-void System::registerConnectedRxnFileLocation(string filename)
+void System::registerConnectedRxnFileLocation(const string& filename)
 {
 	if (connectedRxnFileStream.is_open()) { connectedRxnFileStream.close(); }
 	connectedRxnFileStream.open(filename.c_str());
@@ -432,7 +433,7 @@ void System::registerConnectedRxnFileLocation(string filename)
 			endl;
 }
 
-void System::registerListOfConnectedRxnFileLocation(string filename)
+void System::registerListOfConnectedRxnFileLocation(const string& filename)
 {
 	if (connectedRxnListFileStream.is_open()) { connectedRxnListFileStream.close(); }
 	connectedRxnListFileStream.open(filename.c_str());
@@ -647,7 +648,8 @@ void System::prepareForSimulation()
 		selector = 0;
 	}
 	if (rxnIndexMap != NULL) {
-		for (unsigned int r = 0; r < allReactions.size(); r++) {
+		unsigned int n_rxns = allReactions.size();
+		for (unsigned int r = 0; r < n_rxns; r++) {
 			if (rxnIndexMap[r] != NULL) { delete [] rxnIndexMap[r]; }
 		}
 		delete [] rxnIndexMap;
@@ -666,20 +668,23 @@ void System::prepareForSimulation()
 
   	//cout<<"here 1..."<<endl;
 
-  	for(unsigned int f=0; f<localFunctions.size(); f++)
+	unsigned int n_lfuncs = localFunctions.size();
+	for(unsigned int f=0; f<n_lfuncs; f++)
   		localFunctions.at(f)->prepareForSimulation(this);
 
   	//cout<<"here 2..."<<endl;
 
-  	for(unsigned int f=0; f<compositeFunctions.size(); f++)
+	unsigned int n_cfuncs = compositeFunctions.size();
+	for(unsigned int f=0; f<n_cfuncs; f++)
   		compositeFunctions.at(f)->prepareForSimulation(this);
 
   	//cout<<"here 3..."<<endl;
     //this->printAllFunctions();
 
   	// now we prepare all reactions
-	rxnIndexMap = new int * [allReactions.size()];
-  	for(unsigned int r=0; r<allReactions.size(); r++)
+	unsigned int n_rxns = allReactions.size();
+	rxnIndexMap = new int * [n_rxns];
+	for(unsigned int r=0; r<n_rxns; r++)
   	{
 
 		rxnIndexMap[r] = new int[allReactions.at(r)->getNumOfReactants()];
@@ -690,9 +695,9 @@ void System::prepareForSimulation()
   	// Arvind Rasi Subramaniam
   	if (connectivityFlag) {
 		// resize connected reactions map and intialize to false
-		 connectedReactions = vector <vector <bool> > (allReactions.size(),
-				vector <bool> (allReactions.size(), false));
-		  for(unsigned int r=0; r<allReactions.size(); r++)
+		 connectedReactions = vector <vector <bool> > (n_rxns,
+				vector <bool> (n_rxns, false));
+		  for(unsigned int r=0; r<n_rxns; r++)
 		  {
 			// Arvind Rasi Subramaniam
 			allReactions.at(r)->identifyConnectedReactions();
@@ -815,22 +820,22 @@ void System::prepareForSimulation()
 	if (this->getReactionTrackingStatus()) {
 		// start the JSON and write some info about the simulation
 		this->getReactionFileStream() <<
-		  "{" << endl <<
-		  "  \"simulation\": {" << endl <<
-		  "    \"info\": {" << endl <<
-		  "      \"name\": \"" << this->getName() << "\"," << endl <<
-		  "      \"global_molecule_limit\": " << to_string(this->getGlobalMoleculeLimit()) << "," << endl <<
-		//   "      \"obs_count\": \"" << to_string(this->getMolObsCount()) << "\"," << endl <<
-		  "      \"number_of_molecule_types\": " << to_string(this->getNumOfMoleculeTypes()) << "," << endl <<
-		  "      \"number_of_molecules\": " << to_string(this->getNumOfMolecules()) << endl <<
-		  "    }," << endl <<
-		  "    \"molecule_types\": [" << endl;
+		  "{\n" <<
+		  "  \"simulation\": {\n" <<
+		  "    \"info\": {\n" <<
+		  "      \"name\": \"" << this->getName() << "\",\n" <<
+		  "      \"global_molecule_limit\": " << to_string(this->getGlobalMoleculeLimit()) << ",\n" <<
+		//   "      \"obs_count\": \"" << to_string(this->getMolObsCount()) << "\",\n" <<
+		  "      \"number_of_molecule_types\": " << to_string(this->getNumOfMoleculeTypes()) << ",\n" <<
+		  "      \"number_of_molecules\": " << to_string(this->getNumOfMolecules()) << "\n" <<
+		  "    },\n" <<
+		  "    \"molecule_types\": [\n";
 		
 		// prepare all molecule types
 		for(unsigned int mt=0; mt<allMoleculeTypes.size(); mt++) {
 		    this->getReactionFileStream() <<
-				"      {" << endl <<
-				"        \"name\": \"" + allMoleculeTypes.at(mt)->getName() + "\"," << endl <<
+				"      {\n" <<
+				"        \"name\": \"" + allMoleculeTypes.at(mt)->getName() + "\",\n" <<
 				"        \"typeID\": " + to_string(allMoleculeTypes.at(mt)->getTypeID()) + ",\n" <<
 				"        \"components\": [";
 			//deal with components
@@ -877,13 +882,13 @@ void System::prepareForSimulation()
 		}
 		// close molecule types
 		this->getReactionFileStream() <<
-		  	"    ]," << endl;
+			"    ],\n";
 		
 		this->getReactionFileStream() << this->getSpeciesLog();
 		
 		// close initial state and open firings for later
 		this->getReactionFileStream() <<
-		  "    \"firings\": [" << endl;
+		  "    \"firings\": [\n";
 	}
 }
 
@@ -897,7 +902,11 @@ void System::update_A_tot(ReactionClass *r, double old_a, double new_a)
 
 double System::recompute_A_tot()
 {
+	clock_t profileStart = 0;
+	if (isProfilingEnabled()) profileStart = clock();
 	a_tot = selector->refactorPropensities();
+	if (isProfilingEnabled())
+		recordProfilePhase("propensity_refactor", clock() - profileStart);
 	return a_tot;
 
 }
@@ -911,11 +920,15 @@ double System::recompute_A_tot()
 double System::getNextRxn()
 {
 	nextReaction = 0;
+	clock_t profileStart = 0;
+	if (isProfilingEnabled()) profileStart = clock();
 	double x = selector->getNextReactionClass(nextReaction);
 	if((int)x==-1) {
 		this->printAllReactions();
 		exit(1);
 	}
+	if (isProfilingEnabled())
+		recordProfilePhase("reaction_selection", clock() - profileStart);
 	return x;
 
 
@@ -933,6 +946,7 @@ double System::sim(double duration, long int sampleTimes)
 double System::sim(double duration, long int sampleTimes, bool verbose)
 {
 	invalidateStepToCache();
+	if (isProfilingEnabled()) resetProfiling();
 	System::NULL_EVENT_COUNTER=0;
 	cout.setf(ios::scientific);
 	cout<<"simulating system for: "<<duration<<" second(s)."<<endl;
@@ -991,7 +1005,8 @@ double System::sim(double duration, long int sampleTimes, bool verbose)
 				if(curSampleTime>end_time) break;
 					// Re-evaluate global functions depending on time so that they are accurate
 					// for the output log
-					for (unsigned int i=0; i<globalFunctions.size(); i++) {
+					unsigned int n_gfuncs = globalFunctions.size();
+					for (unsigned int i=0; i<n_gfuncs; i++) {
 						if (globalFunctions.at(i)->getCtrType() == "System") {
 							FuncFactory::Eval(globalFunctions.at(i)->p);
 						}
@@ -1054,7 +1069,8 @@ double System::sim(double duration, long int sampleTimes, bool verbose)
 
 		// Recompute all propensities at each step to ensure time-dependent functions are updated correctly
 		if (hasTimeDependentFunctions) {
-			for(unsigned int r=0; r<allReactions.size(); r++) {
+			unsigned int n_rxns = allReactions.size();
+			for(unsigned int r=0; r<n_rxns; r++) {
 				allReactions.at(r)->update_a();
 			}
 			recompute_A_tot();
@@ -1106,7 +1122,8 @@ double System::sim(double duration, long int sampleTimes, bool verbose)
 	}
 	if(curSampleTime-dSampleTime<(end_time-0.5*dSampleTime)) {
 			// Re-evaluate global functions depending on time so that they are accurate
-			for (unsigned int i=0; i<globalFunctions.size(); i++) {
+			unsigned int n_gfuncs = globalFunctions.size();
+			for (unsigned int i=0; i<n_gfuncs; i++) {
 				if (globalFunctions.at(i)->getCtrType() == "System") {
 					FuncFactory::Eval(globalFunctions.at(i)->p);
 				}
@@ -1140,9 +1157,9 @@ double System::sim(double duration, long int sampleTimes, bool verbose)
 	// level and finally the top level
 	if (this->getReactionTrackingStatus()) {
 		this->getReactionFileStream() <<
-		"\n    ]" << endl <<
-        "  }" << endl <<
-		"}" << endl;
+		"\n    ]\n" <<
+        "  }\n" <<
+		"}\n";
 	}
 	cout.unsetf(ios::scientific);
 	return current_time;
@@ -1189,7 +1206,8 @@ double System::stepTo(double stoppingTime)
 
 		// Recompute all propensities at each step to ensure time-dependent functions are updated correctly
 		if (hasTimeDependentFunctions) {
-			for(unsigned int r=0; r<allReactions.size(); r++) {
+			unsigned int n_rxns = allReactions.size();
+			for(unsigned int r=0; r<n_rxns; r++) {
 				allReactions.at(r)->update_a();
 			}
 			recompute_A_tot();
@@ -1692,7 +1710,7 @@ void System::printAllComplexes()
 */
 
 
-bool System::saveSpecies(string filename)
+bool System::saveSpecies(const string& filename)
 {
 	bool debugOut = false;
 
@@ -1851,11 +1869,11 @@ void System::outputAllMoleculeTypes() {
 	for(molTypeIter = allMoleculeTypes.begin(); molTypeIter != allMoleculeTypes.end(); molTypeIter++ )
 	{
 		moleculeTypeFileStream <<
-		(*molTypeIter)->getTypeID() << "\t" << (*molTypeIter)->getName() << endl;
+		(*molTypeIter)->getTypeID() << "\t" << (*molTypeIter)->getName() << '\n';
 	}
-	moleculeTypeFileStream << this->getLastRxnTime() << "\tlast_rxn_firing_time" << endl;
-	moleculeTypeFileStream << this->current_time << "\tsimulated_time" << endl;
-	moleculeTypeFileStream << this->current_cpu_time << "\tcpu_time" << endl;
+	moleculeTypeFileStream << this->getLastRxnTime() << "\tlast_rxn_firing_time" << '\n';
+	moleculeTypeFileStream << this->current_time << "\tsimulated_time" << '\n';
+	moleculeTypeFileStream << this->current_cpu_time << "\tcpu_time" << '\n';
 	moleculeTypeFileStream.close();
 }
 
@@ -1864,7 +1882,7 @@ void System::outputAllRxnFiringCounts() {
 	{
 		rxnListFileStream <<
 		(*rxnIter)->getRxnId() << "\t" <<
-			(*rxnIter)->getFireCounter() << "\t" << (*rxnIter)->getName() << endl;
+			(*rxnIter)->getFireCounter() << "\t" << (*rxnIter)->getName() << '\n';
 	}
 	rxnListFileStream.close();
 }
@@ -1992,7 +2010,8 @@ void System::evaluateAllLocalFunctions() {
 				mol->traverseBondedNeighborhood(molList,ReactionClass::NO_LIMIT);
 
 				//Evaluate all local functions on this complex
-				for(unsigned int l=0; l<localFunctions.size(); l++) {
+				unsigned int n_lfuncs = localFunctions.size();
+				for(unsigned int l=0; l<n_lfuncs; l++) {
 						//cout<<"--------------Evaluating local function on species..."<<endl;
 						localFunctions.at(l)->evaluateOn(mol,LocalFunction::SPECIES);
 						//cout<<"     value of function: "<<val<<endl;
@@ -2036,7 +2055,8 @@ GlobalFunction * System::getGlobalFunctionByName(string fName) {
 
 CompositeFunction * System::getCompositeFunctionByName(string fName)
 {
-	for( int i=0; i<(int)compositeFunctions.size(); i++) {
+	int n_cfuncs = (int)compositeFunctions.size();
+	for( int i=0; i<n_cfuncs; i++) {
 		if(compositeFunctions.at(i)->getName()==fName) {
 			return compositeFunctions.at(i);
 		}
@@ -2048,7 +2068,8 @@ CompositeFunction * System::getCompositeFunctionByName(string fName)
 
 void System::finalizeCompositeFunctions()
 {
-	for( int i=0; i<(int)compositeFunctions.size(); i++) {
+	int n_cfuncs = (int)compositeFunctions.size();
+	for( int i=0; i<n_cfuncs; i++) {
 		compositeFunctions.at(i)->finalizeInitialization(this);
 	}
 }
@@ -2056,7 +2077,8 @@ void System::finalizeCompositeFunctions()
 
 LocalFunction * System::getLocalFunctionByName(string fName)
 {
-	for( int i=0; i<(int)localFunctions.size(); i++) {
+	int n_lfuncs = (int)localFunctions.size();
+	for( int i=0; i<n_lfuncs; i++) {
 		if(localFunctions.at(i)->getName()==fName) {
 			return localFunctions.at(i);
 		}
@@ -2117,17 +2139,20 @@ void System::updateSystemWithNewParameters() {
 	invalidateStepToCache();
 
 	//Update all global functions
-	for(unsigned int i=0; i<this->globalFunctions.size(); i++) {
+	unsigned int n_gfuncs = this->globalFunctions.size();
+	for(unsigned int i=0; i<n_gfuncs; i++) {
 		globalFunctions.at(i)->updateParameters(this);
 	}
 
 	//Update all local functions
-	for(unsigned int i=0; i<this->localFunctions.size(); i++) {
+	unsigned int n_lfuncs = this->localFunctions.size();
+	for(unsigned int i=0; i<n_lfuncs; i++) {
 		localFunctions.at(i)->updateParameters(this);
 	}
 
 	//Update all composite functions
-	for(unsigned int i=0; i<this->compositeFunctions.size(); i++) {
+	unsigned int n_cfuncs = this->compositeFunctions.size();
+	for(unsigned int i=0; i<n_cfuncs; i++) {
 		compositeFunctions.at(i)->updateParameters(this);
 	}
 
@@ -2135,7 +2160,8 @@ void System::updateSystemWithNewParameters() {
 
 
 	//Update all reactions
-	for(unsigned int r=0; r<allReactions.size(); r++) {
+	unsigned int n_rxns = allReactions.size();
+	for(unsigned int r=0; r<n_rxns; r++) {
 		allReactions.at(r)->resetBaseRateFromSystemParamter();
 	}
 
@@ -2155,17 +2181,20 @@ void System::printAllParameters() {
 
 void System::printAllFunctions() {
 	cout<<"System Global Functions: "<<endl;
-	for(unsigned int i=0; i<this->globalFunctions.size(); i++) {
+	unsigned int n_gfuncs = this->globalFunctions.size();
+	for(unsigned int i=0; i<n_gfuncs; i++) {
 		globalFunctions.at(i)->printDetails(this);
 	}
 
 	cout<<"\nSystem Composite Functions: "<<endl;
-	for(unsigned int i=0; i<this->compositeFunctions.size(); i++) {
+	unsigned int n_cfuncs = this->compositeFunctions.size();
+	for(unsigned int i=0; i<n_cfuncs; i++) {
 		compositeFunctions.at(i)->printDetails(this);
 	}
 
 	cout<<"\nSystem Local Functions: "<<endl;
-	for(unsigned int i=0; i<this->localFunctions.size(); i++) {
+	unsigned int n_lfuncs = this->localFunctions.size();
+	for(unsigned int i=0; i<n_lfuncs; i++) {
 		localFunctions.at(i)->printDetails(this);
 	}
 }
@@ -2185,7 +2214,8 @@ void System::outputAllPropensities(double time, int rxnFired)
 		}
 
 		propensityDumpStream<<"time rxn";
-		for(unsigned int r=0; r<allReactions.size(); r++) {
+		unsigned int n_rxns = allReactions.size();
+		for(unsigned int r=0; r<n_rxns; r++) {
 			propensityDumpStream<<" ";
 			propensityDumpStream<<allReactions[r]->getName();
 			for(int rl=0; rl<allReactions[r]->getNumOfReactants(); rl++) {
@@ -2196,7 +2226,8 @@ void System::outputAllPropensities(double time, int rxnFired)
 	}
 
 	propensityDumpStream<<time<<" "<<allReactions.at(rxnFired)->getName();
-	for(unsigned int r=0; r<allReactions.size(); r++) {
+	unsigned int n_rxns = allReactions.size();
+	for(unsigned int r=0; r<n_rxns; r++) {
 		propensityDumpStream<<" ";
 			propensityDumpStream<<allReactions[r]->get_a();
 			for(int rl=0; rl<allReactions[r]->getNumOfReactants(); rl++) {
@@ -2226,15 +2257,3 @@ NFstream& System::getOutputFileStream()
 {
     return outputFileStream;
 }
-
-// // friend functions
-// template<class T>
-// NFstream& operator<<(NFstream& nfstream, const T& value)
-// {
-//     if (nfstream.useFile_)
-// 	nfstream.file_ << value;
-//     else
-// 	nfstream.str_ << value;
-
-//     return nfstream;
-// }

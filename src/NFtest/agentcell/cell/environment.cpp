@@ -11,8 +11,7 @@ Environment::Environment()
 
 double Environment::getLigConc(double xPos, double yPos, double zPos, double time)
 {
-//	if(xPos<=0) return 0;
-	return 0;//xPos*10e-8;
+	return 0;
 }
 
 void Environment::getStartPosition(int cellNumber, double pos[3])

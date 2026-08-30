@@ -282,6 +282,7 @@ namespace NFcore
 				@author Michael Sneddon
 			*/
 			bool hasSymUnbindingTransform() const { return hasSymUnbinding; };
+			bool hasTopologyChangingTransform() const { return topologyChanging; };
 
 			/*!
 				Called by reaction class to determine if the rate of a rule must be adjusted to

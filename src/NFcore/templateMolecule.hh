@@ -64,12 +64,12 @@ namespace NFcore
 		int getN_connectedTo() const { return n_connectedTo; };
 
 		/* functions that allow you to set constraints */
-		void addEmptyComponent(string cName);
-		void addBoundComponent(string cName);
-		void addComponentConstraint(string cName, string stateName);
-		void addComponentConstraint(string cName, int stateValue);
-		void addComponentExclusion(string cName, string stateName);
-		void addComponentExclusion(string cName, int stateValue);
+		void addEmptyComponent(const string& cName);
+		void addBoundComponent(const string& cName);
+		void addComponentConstraint(const string& cName, const string& stateName);
+		void addComponentConstraint(const string& cName, int stateValue);
+		void addComponentExclusion(const string& cName, const string& stateName);
+		void addComponentExclusion(const string& cName, int stateValue);
 		void addBond(string thisBsiteName,TemplateMolecule *t2, string bSiteName2);
 
 		/* Methods for adding a disjoint component to a template pattern
