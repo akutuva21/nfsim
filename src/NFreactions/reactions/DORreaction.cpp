@@ -8,6 +8,27 @@
 using namespace std;
 using namespace NFcore;
 
+namespace {
+
+/* Species are loaded before reaction rules, so compact EnergyPattern rules
+ * can size their ordinary partner lists from the current molecule pool.  A
+ * later synthesis or an unusual multi-mapping rule still expands normally. */
+unsigned int compactReactantListInitialCapacity(
+		TransformationSet *transformationSet, int dorReactantIndex)
+{
+	unsigned int capacity = 1;
+	for (unsigned int r = 0; r < transformationSet->getNreactants(); ++r) {
+		if ((int)r == dorReactantIndex) continue;
+		int moleculeCount = transformationSet->getTemplateMolecule(r)
+				->getMoleculeType()->getMoleculeCount();
+		if (moleculeCount > (int)capacity)
+			capacity = (unsigned int)moleculeCount;
+	}
+	return capacity;
+}
+
+}
+
 
 //should also accept list of local functions and list of PointerNames for each of the functions...
 DORRxnClass::DORRxnClass(
@@ -831,12 +852,13 @@ EnergyRxnClass::EnergyRxnClass(
 		double RT,
 		bool isForward,
 		System *s) :
-	/* A compact partner list typically tracks many simple molecules; use a
-	 * smaller starting capacity so doubling stops at 1024 rather than 1600 for
-	 * a 1,000-molecule workload.  The weighted tree normally contains one
-	 * promoter mapping, so use the minimum tree capacity and let it expand for
-	 * unusual multi-mapping contexts. */
-	DORRxnClass(name,baseRate,baseRateName,transformationSet,dorReactantIndex,s,16,4),
+	/* Compact forward EnergyPattern rules track a single weighted promoter
+	 * mapping against an ordinary partner pool.  Size that pool from the
+	 * species already loaded by NFinput so common monomer pools do not pay
+	 * geometric list growth; reverse rules have no ordinary partner list.  The
+	 * weighted tree stays deliberately small and expands for unusual contexts. */
+	DORRxnClass(name,baseRate,baseRateName,transformationSet,dorReactantIndex,s,
+			compactReactantListInitialCapacity(transformationSet, dorReactantIndex), 4),
 	conditionalTerms(context.conditionalTerms),
 	componentMaskFastPath(true),
 	baseEnergy(context.baseEnergy),
