@@ -16,6 +16,7 @@ ReactionClass::ReactionClass(string name, double baseRate, string baseRateParame
 	this->tagged = false;
 	this->useRuleMonkey = false;
 	this->useConnectivity = false;
+	this->directProductMolecules = 0;
 
 	totalRateFlag=false;
 	isDimerStyle=false;
@@ -287,6 +288,7 @@ ReactionClass::~ReactionClass()
 	delete [] isPopulationType;
 	delete [] matchOncePerReactant;
 	delete [] identicalPopCountCorrection;
+	delete directProductMolecules;
 	connectedReactions.clear();
 }
 
@@ -342,6 +344,17 @@ void ReactionClass::resetBaseRateFromSystemParamter() {
 MoleculeType *ReactionClass::getMoleculeTypeOfReactantTemplate(int pos) const {
 	// return reactantTemplates.at(pos)->getMoleculeType();
 	return reactantTemplates[pos]->getMoleculeType();
+}
+
+bool ReactionClass::isDirectProductMolecule(Molecule *molecule,
+		bool compactDirectProducts) const
+{
+	if (compactDirectProducts)
+		return std::find(directProductMoleculeList.begin(),
+				directProductMoleculeList.end(), molecule) !=
+			directProductMoleculeList.end();
+	return directProductMolecules != 0 &&
+		directProductMolecules->find(molecule) != directProductMolecules->end();
 }
 
 
@@ -436,7 +449,7 @@ string ReactionClass::fire(double random_A_number, bool track) {
 	if (this->canUseDirectProductList()) {
 		ProfileTime directProductStart = system->isProfileReactionActive()
 			? profileNow() : ProfileTime();
-		directProductMolecules.clear();
+		directProductMoleculeList.clear();
 		for (unsigned int msIndex = 0; msIndex < n_mappingsets; ++msIndex) {
 			MappingSet *ms = mappingSet[msIndex];
 			if (ms == 0) continue;
@@ -445,8 +458,13 @@ string ReactionClass::fire(double random_A_number, bool track) {
 				Mapping *mapping = ms->get(mapIndex);
 				if (mapping == 0 || mapping->getMolecule() == 0) continue;
 				Molecule *molecule = mapping->getMolecule();
-				if (directProductMolecules.insert(molecule).second)
+				if (std::find(directProductMoleculeList.begin(),
+						directProductMoleculeList.end(), molecule) ==
+						directProductMoleculeList.end())
+				{
+					directProductMoleculeList.push_back(molecule);
 					products.push_back(molecule);
+				}
 			}
 		}
 		directProductsPrepared = true;
@@ -547,7 +565,9 @@ string ReactionClass::fire(double random_A_number, bool track) {
 	if (trackDirectProducts) {
 		indirectMembershipDecisions.clear();
 		if (!directProductsPrepared) {
-			directProductMolecules.clear();
+			if (directProductMolecules == 0)
+				directProductMolecules = new unordered_set<Molecule *>();
+			directProductMolecules->clear();
 			for (unsigned int msIndex=0; msIndex<n_mappingsets; msIndex++) {
 				MappingSet *ms = mappingSet[msIndex];
 				if (ms==0) continue;
@@ -555,7 +575,7 @@ string ReactionClass::fire(double random_A_number, bool track) {
 					Mapping *mapping = ms->get(mapIndex);
 					if (mapping==0) continue;
 					Molecule *directMol = mapping->getMolecule();
-					if (directMol!=0) directProductMolecules.insert(directMol);
+					if (directMol!=0) directProductMolecules->insert(directMol);
 				}
 			}
 		}
@@ -563,7 +583,7 @@ string ReactionClass::fire(double random_A_number, bool track) {
 			for (molIter = products.begin(); molIter != products.end(); ++molIter) {
 				Molecule *mol = *molIter;
 				if (!mol->isAlive() ||
-						directProductMolecules.find(mol) != directProductMolecules.end())
+						isDirectProductMolecule(mol, directProductsPrepared))
 					continue;
 				MoleculeType *mt = mol->getMoleculeType();
 				if (indirectMembershipDecisions.find(mt) ==
@@ -577,7 +597,7 @@ string ReactionClass::fire(double random_A_number, bool track) {
 			for (molIter = products.begin(); molIter != products.end(); molIter++) {
 				Molecule *mol = *molIter;
 				if (!mol->isAlive()) continue;
-				if (directProductMolecules.find(mol)==directProductMolecules.end()) {
+				if (!isDirectProductMolecule(mol, directProductsPrepared)) {
 					hasIndirectProducts = true;
 					break;
 				}
@@ -686,11 +706,11 @@ string ReactionClass::fire(double random_A_number, bool track) {
 		//   (typeI relationship) will be updated as long as UTL is set appropriately.
 		if ( mol->isAlive() ) {
 			bool useConnectedUpdate =
-				useConnectivity &&
-				!hasIndirectProducts &&
-				directProductMolecules.find(mol)!=directProductMolecules.end();
+					useConnectivity &&
+					!hasIndirectProducts &&
+					isDirectProductMolecule(mol, directProductsPrepared);
 			bool directProduct = !trackDirectProducts ||
-				directProductMolecules.find(mol)!=directProductMolecules.end();
+					isDirectProductMolecule(mol, directProductsPrepared);
 			if (!directProduct) {
 				auto decision = indirectMembershipDecisions.find(mt);
 				if (decision != indirectMembershipDecisions.end() &&

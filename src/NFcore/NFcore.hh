@@ -1775,6 +1775,8 @@ namespace NFcore
 			// Called from within Transformation Set to check connectivity
 			bool areMoleculeTypeAndComponentPresent(MoleculeType * mt, int cIndex);
 			bool isTemplateCompatible(TemplateMolecule * t);
+			bool isDirectProductMolecule(Molecule *molecule,
+					bool compactDirectProducts) const;
 
 		protected:
 			virtual void pickMappingSets(double randNumber) const=0;
@@ -1855,10 +1857,13 @@ namespace NFcore
 			*/
 			vector<MappingSet*> symmetricMappingSet;
 			bool comparisonResult;
+			/* Compact EnergyPattern reactions have a tiny endpoint set; keep that
+			 * set contiguous and retain the hash set for large connected products. */
+			vector<Molecule *> directProductMoleculeList;
 			/* Reused only when connectivity-aware membership updates are enabled.
-			 * Keeping this per reaction avoids allocating the same product set on
-			 * every firing while leaving the normal path free of this bookkeeping. */
-			unordered_set<Molecule *> directProductMolecules;
+			 * Allocate it lazily so compact EnergyPattern reactions do not carry a
+			 * hash table that they never use. */
+			unordered_set<Molecule *> *directProductMolecules;
 			/* Cached per-molecule-type decisions for indirect products of a compact
 			 * energy firing. */
 			unordered_map<MoleculeType *, bool> indirectMembershipDecisions;
