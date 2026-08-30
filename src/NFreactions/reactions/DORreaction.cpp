@@ -165,7 +165,8 @@ DORRxnClass::DORRxnClass(
 		string baseRateName,
 		TransformationSet *transformationSet,
 		int dorReactantIndex,
-		System *s) :
+		System *s,
+		unsigned int reactantListInitialCapacity) :
 	ReactionClass(name,baseRate,baseRateName,transformationSet,s),
 	cf(0),
 	DORreactantIndex(dorReactantIndex),
@@ -196,7 +197,8 @@ DORRxnClass::DORRxnClass(
 	this->reactantLists = new ReactantList *[n_reactants];
 	for (unsigned int r=0; r<n_reactants; r++) {
 		if ((int)r != this->DORreactantIndex)
-			this->reactantLists[r] = new ReactantList(r,transformationSet,25);
+			this->reactantLists[r] = new ReactantList(
+					r, transformationSet, reactantListInitialCapacity);
 	}
 	this->a = 0;
 }
@@ -811,7 +813,10 @@ EnergyRxnClass::EnergyRxnClass(
 		double RT,
 		bool isForward,
 		System *s) :
-	DORRxnClass(name,baseRate,baseRateName,transformationSet,dorReactantIndex,s),
+	/* A compact partner list typically tracks many simple molecules; use a
+	 * smaller starting capacity so doubling stops at 1024 rather than 1600 for
+	 * a 1,000-molecule workload. */
+	DORRxnClass(name,baseRate,baseRateName,transformationSet,dorReactantIndex,s,16),
 	conditionalTerms(context.conditionalTerms),
 	componentMaskFastPath(true),
 	baseEnergy(context.baseEnergy),

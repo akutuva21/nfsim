@@ -106,7 +106,8 @@ namespace NFcore
 					string baseRateName,
 					TransformationSet *transformationSet,
 					int dorReactantIndex,
-					System *s);
+					System *s,
+					unsigned int reactantListInitialCapacity = 25);
 			virtual ~DORRxnClass();
 
 			virtual void init();
