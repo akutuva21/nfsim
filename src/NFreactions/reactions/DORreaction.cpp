@@ -212,8 +212,8 @@ void DORRxnClass::remove(Molecule *m, unsigned int reactantPos)
 
 int DORRxnClass::checkForCollision(Molecule *m, MappingSet* ms, int rxnIndex){
 	
-	set<int> tempSet = m->getRxnListMappingSet(rxnIndex);
-	for(set<int>::iterator it= tempSet.begin();it!= tempSet.end(); ++it){
+	const set<int>& tempSet = m->getRxnListMappingSet(rxnIndex);
+	for(set<int>::const_iterator it= tempSet.begin();it!= tempSet.end(); ++it){
 		MappingSet* ms2 = reactantTree->getMappingSet(*it);
 		if(MappingSet::checkForEquality(ms,ms2)){
 			return *it;
@@ -225,6 +225,9 @@ int DORRxnClass::checkForCollision(Molecule *m, MappingSet* ms, int rxnIndex){
 }
 
 bool DORRxnClass::tryToAdd(Molecule *m, unsigned int reactantPos) {
+	if (system != 0 && system->isProfilingEnabled())
+		system->recordProfileMatchCandidate();
+
 	// see BasicRxnClass::tryToAdd()
 	if (contextCountsPerComplex[reactantPos] && reactantPos == (unsigned)DORreactantIndex) {
 		reactantTree->noteMappedComplexSize(m->getComplex()->getComplexSize());

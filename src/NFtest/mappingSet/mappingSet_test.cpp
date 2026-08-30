@@ -107,7 +107,7 @@ void NFtest_mappingSet::run()
     delete msClone;
 
     // Clean up transformations
-    for (auto t : transformations) {
+    for (const auto& t : transformations) {
         delete t;
     }
 

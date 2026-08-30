@@ -27,6 +27,7 @@ ReactionClass::ReactionClass(string name, double baseRate, string baseRateParame
 	this->volumeConversionFactor = 1.0;
 	this->traversalLimit = ReactionClass::NO_LIMIT;
 	this->transformationSet = transformationSet;
+	this->productComponentsTruncated = false;
 
 
 	//Set up the template molecules from the transformationSet
@@ -44,7 +45,7 @@ ReactionClass::ReactionClass(string name, double baseRate, string baseRateParame
 		TemplateMolecule::traverse(curTemplate,tmList,TemplateMolecule::FIND_ALL);
 
 		//First, single out all the templates that have at least one map generator
-		for(unsigned int i=0; i<tmList.size(); i++) {
+		for(unsigned int i=0, n=tmList.size(); i<n; i++) {
 
 			if(tmList.at(i)->getN_mapGenerators()>0) {
 				hasMapGenerator.push_back(i);
@@ -53,7 +54,7 @@ ReactionClass::ReactionClass(string name, double baseRate, string baseRateParame
 
 		//Find the one with the least sym comp bonds...
 		int minSymSites = 999999;
-		for(unsigned int k=0; k<hasMapGenerator.size(); k++) {
+		for(unsigned int k=0, n=hasMapGenerator.size(); k<n; k++) {
 			if(tmList.at(hasMapGenerator.at(k))->getN_symCompBonds()<minSymSites) {
 				curTemplate = tmList.at(hasMapGenerator.at(k));
 				minSymSites = curTemplate->getN_symCompBonds();
@@ -101,7 +102,7 @@ ReactionClass::ReactionClass(string name, double baseRate, string baseRateParame
 		for(int s=0; s<setCount; s++) { numMapGenerators.push_back(0); }
 
 		int curTemplateSetId = -1;
-		for(unsigned int t=0;t<tmList.size();t++) {
+		for(unsigned int t=0, n=tmList.size(); t<n; t++) {
 			if(tmList.at(t)==curTemplate) {
 				curTemplateSetId = uniqueSetId.at(t);
 			}
@@ -115,14 +116,14 @@ ReactionClass::ReactionClass(string name, double baseRate, string baseRateParame
 		//connected to all other molecules.  This will better suit our needs.
 
 		// first, clear out the old connections
-		for(unsigned int i=0; i<tmList.size(); i++) {
+		for(unsigned int i=0, n=tmList.size(); i<n; i++) {
 			tmList.at(i)->clearConnectedTo();
 		}
 
 		// add back the connections, but always through the head template
 		int rxnCenterSets = 1;
 		int curSet=0;
-		for(unsigned int i=0; i<uniqueSetId.size(); i++) {
+		for(unsigned int i=0, n=uniqueSetId.size(); i<n; i++) {
 			if(uniqueSetId.at(i)==curTemplateSetId) {
 				if(curSet==curTemplateSetId) curSet++;
 				continue;
@@ -157,7 +158,7 @@ ReactionClass::ReactionClass(string name, double baseRate, string baseRateParame
 
 
 		//Finally, clear out the data structures.
-		for(unsigned int i=0; i<sets.size(); i++) sets.at(i).clear();
+		for(unsigned int i=0, n=sets.size(); i<n; i++) sets.at(i).clear();
 		sets.clear(); uniqueSetId.clear();
 		numMapGenerators.clear();
 	}
@@ -290,14 +291,14 @@ bool ReactionClass::isReactionConnected(ReactionClass * rxn) {
 
 	// Full membership refresh revisits every explicit reactant template in the
 	// fired rule, not only templates that carry direct transformations.
-	for (unsigned int i=0; i<allReactantTemplates.size(); i++) {
+	for (unsigned int i=0, n=allReactantTemplates.size(); i<n; i++) {
 		if (rxn->isTemplateCompatible(allReactantTemplates[i])) return true;
 	}
 
 	// Product templates can also create new compatible mappings, but avoid
 	// broadening pure-synthesis rules where this over-connects add-only paths.
 	if (n_reactants > 0) {
-		for (unsigned int i=0; i<allProductTemplates.size(); i++) {
+		for (unsigned int i=0, n=allProductTemplates.size(); i<n; i++) {
 			if (rxn->isTemplateCompatible(allProductTemplates[i])) return true;
 		}
 	}
@@ -377,15 +378,6 @@ MoleculeType *ReactionClass::getMoleculeTypeOfReactantTemplate(int pos) const {
 
 
 void ReactionClass::printDetails() const {
-	cout<< name <<"  (id="<<this->rxnId<<", baseRate="<<baseRate<<",  a="<<a<<", fired="<<fireCounter<<" times )"<<endl;
-	// added by rasi to look at only nonzero mapping reactions
-	int n_mappings = 0;
-	for(unsigned int r=0; r<n_reactants; r++)
-	{
-		n_mappings += this->getReactantCount(r);
-	}
-//	if (n_mappings == 0) return;
-
 	cout << name << "  (id=" << this->rxnId << ", baseRate=" << baseRate
 			<< ",  a=" << a << ", fired=" << fireCounter << " times )" << endl;
 	for (unsigned int r = 0; r < n_reactants; r++) {
@@ -434,6 +426,8 @@ string ReactionClass::fire(double random_A_number, bool track) {
 		}
 	} profileScope(system, rxnId, name);
 
+	productComponentSizes.clear();
+	productComponentsTruncated = false;
 
 	// First randomly pick the reactants to fire by selecting the MappingSets
 	this->pickMappingSets(random_A_number);
@@ -467,7 +461,9 @@ string ReactionClass::fire(double random_A_number, bool track) {
 
 	// Generate the set of possible products that we need to update
 	// (excluding new molecules, we'll get those later --Justin)
-	this->transformationSet->getListOfProducts(mappingSet,products,traversalLimit);
+	this->transformationSet->getListOfProducts(
+			mappingSet, products, traversalLimit, &productComponentSizes,
+			&productComponentsTruncated);
 
 	// Check product-side filters (include_products / exclude_products).
 	// If the resulting products don't pass the filter, treat this as a null event.
@@ -551,25 +547,31 @@ string ReactionClass::fire(double random_A_number, bool track) {
 	// through bonded-neighborhood traversal must use the full updater to preserve
 	// the same membership mutation order as the non-connectivity path.
 	std::unordered_set<Molecule*> directProductSet;
-	for (unsigned int msIndex=0; msIndex<n_mappingsets; msIndex++) {
-		MappingSet *ms = mappingSet[msIndex];
-		if (ms==0) continue;
-		for (unsigned int mapIndex=0; mapIndex<ms->getNumOfMappings(); mapIndex++) {
-			Mapping *mapping = ms->get(mapIndex);
-			if (mapping==0) continue;
-			Molecule *directMol = mapping->getMolecule();
-			if (directMol!=0) directProductSet.insert(directMol);
-		}
-	}
 	bool hasIndirectProducts = false;
-	for (molIter = products.begin(); molIter != products.end(); molIter++) {
-		Molecule *mol = *molIter;
-		if (!mol->isAlive()) continue;
-		if (directProductSet.find(mol)==directProductSet.end()) {
-			hasIndirectProducts = true;
-			break;
+	if (useConnectivity) {
+		for (unsigned int msIndex=0; msIndex<n_mappingsets; msIndex++) {
+			MappingSet *ms = mappingSet[msIndex];
+			if (ms==0) continue;
+			for (unsigned int mapIndex=0; mapIndex<ms->getNumOfMappings(); mapIndex++) {
+				Mapping *mapping = ms->get(mapIndex);
+				if (mapping==0) continue;
+				Molecule *directMol = mapping->getMolecule();
+				if (directMol!=0) directProductSet.insert(directMol);
+			}
+		}
+		for (molIter = products.begin(); molIter != products.end(); molIter++) {
+			Molecule *mol = *molIter;
+			if (!mol->isAlive()) continue;
+			if (directProductSet.find(mol)==directProductSet.end()) {
+				hasIndirectProducts = true;
+				break;
+			}
 		}
 	}
+
+	// One flag controls all per-fire profiler work below. Without -profile,
+	// hot product and local-function loops never enter profiler wrappers.
+	bool profileReaction = system->isProfileReactionActive();
 
 	// if complex bookkeeping is on, find all product complexes
 	// (this is useful for updating Species Observables and TypeII functions, so keep the info handy).
@@ -586,7 +588,7 @@ string ReactionClass::fire(double random_A_number, bool track) {
 			if ( productComplexSet.insert(complex).second )
 				productComplexes.push_back(complex);
 		}
-		if (system->isProfileReactionActive()) {
+		if (profileReaction) {
 			unsigned long long productComplexMolecules = 0;
 			for (std::unordered_set<Complex*>::const_iterator it = productComplexSet.begin();
 					it != productComplexSet.end(); ++it) {
@@ -602,7 +604,7 @@ string ReactionClass::fire(double random_A_number, bool track) {
 
 	// If we're handling observables on the fly, tell each molecule to add itself to observables.
 	if (onTheFlyObservables) {
-		bool profileObservables = system->isProfileReactionActive();
+		bool profileObservables = profileReaction;
 		ProfileTime profileObservablesStart = profileObservables
 			? profileNow() : ProfileTime();
 		unsigned long long profileObservableMolecules = profileObservables
@@ -643,7 +645,7 @@ string ReactionClass::fire(double random_A_number, bool track) {
 	//  also, gather a list of typeII dependencies that will require updating
 	typeII_products.clear();
 	std::unordered_set<MoleculeType*> typeIIProductSet;
-	bool profileMembership = system->isProfileReactionActive();
+	bool profileMembership = profileReaction;
 	ProfileTime profileMembershipStart = profileMembership
 		? profileNow() : ProfileTime();
 	for ( molIter = products.begin(); molIter != products.end(); molIter++ ) {
@@ -675,43 +677,85 @@ string ReactionClass::fire(double random_A_number, bool track) {
 
 	// update complex-scoped local functions for typeII dependencies
 	// NOTE: as a side-effect, dependent DOR reactions (via typeI molecule dependencies) will be updated
-	
-	// for each typeII product molecule, update all dependent local functions
-	if (system->isUsingComplex()) {
-		// this is the easy way: update all typeI molecules on each complex
-		for ( typeII_iter = typeII_products.begin(); typeII_iter != typeII_products.end(); ++typeII_iter ) {
-			MoleculeType * mt = *typeII_iter;
-			for (int i=0; i < mt->getNumOfTypeIIFunctions(); i++) {
-				for ( complexIter = productComplexes.begin(); complexIter != productComplexes.end(); ++complexIter )
-					mt->getTypeIILocalFunction(i)->evaluateOn( *complexIter );
+
+	unsigned long long productComponentMoleculeCount = 0;
+	bool productComponentSizesValid = !productComponentSizes.empty();
+	for (vector<unsigned int>::iterator componentSize = productComponentSizes.begin();
+			componentSize != productComponentSizes.end(); ++componentSize) {
+		if (*componentSize == 0)
+			productComponentSizesValid = false;
+		productComponentMoleculeCount += *componentSize;
+	}
+	bool canReuseProductComponents =
+			!transformationSet->hasTopologyChangingTransform() &&
+			!productComponentsTruncated &&
+			productComponentSizesValid &&
+			productComponentMoleculeCount == products.size();
+
+	// No Type-II local function depends on these products: avoid traversing
+	// connected components solely to execute an empty update loop.
+	if (!typeII_products.empty()) {
+		// for each typeII product molecule, update all dependent local functions
+		if (system->isUsingComplex()) {
+			// this is the easy way: update all typeI molecules on each complex
+			for ( typeII_iter = typeII_products.begin(); typeII_iter != typeII_products.end(); ++typeII_iter ) {
+				MoleculeType * mt = *typeII_iter;
+				for (int i=0; i < mt->getNumOfTypeIIFunctions(); i++) {
+					for ( complexIter = productComplexes.begin(); complexIter != productComplexes.end(); ++complexIter )
+						mt->getTypeIILocalFunction(i)->evaluateOn( *complexIter );
+				}
 			}
 		}
-	}
-	else {
-		// this is the hard way: find a representative molecule from each connected set
-		//  and evaluate TypeII functions on that representative.
-		std::unordered_set<Molecule*> allMols;
-		Molecule * mol;
-		for ( molIter = products.begin(); molIter != products.end(); molIter++ ) {
-			mol = *molIter;
-			bool isNewComponent = allMols.insert(mol).second;
-			if (system->isProfileReactionActive())
-				system->recordProfileLocalFunctionComponentCandidate(!isNewComponent);
-			if ( isNewComponent ) {
-				// remember everything connected to this molecule so we don't
-				// evaluate this connected set multiple times.
-				list<Molecule*> connectedMols;
-				ProfileConnectivityScope profileConnectivityScope(
-					system, PROFILE_CONNECTIVITY_LOCAL_FUNCTION);
-				mol->traverseBondedNeighborhood( connectedMols, ReactionClass::NO_LIMIT );
-				for ( list<Molecule*>::iterator cm = connectedMols.begin(); cm != connectedMols.end(); ++cm )
-					allMols.insert(*cm);
+		else {
+			if (canReuseProductComponents) {
+				// State-only rules leave the product components unchanged. Reuse the
+				// component boundaries collected during product preparation.
+				list<Molecule*>::iterator componentMolecule = products.begin();
+				for (vector<unsigned int>::iterator componentSize = productComponentSizes.begin();
+						componentSize != productComponentSizes.end(); ++componentSize) {
+					list<Molecule*> connectedMols;
+					Molecule *mol = *componentMolecule;
+					for (unsigned int i = 0; i < *componentSize; ++i) {
+						connectedMols.push_back(*componentMolecule);
+						++componentMolecule;
+						if (profileReaction)
+							system->recordProfileLocalFunctionComponentCandidate(i != 0);
+					}
 
-				// evaluate typeII local functions on this connected set
-				for ( typeII_iter = typeII_products.begin(); typeII_iter != typeII_products.end(); ++typeII_iter ) {
-					MoleculeType * mt = *typeII_iter;
-					for (int i=0; i<mt->getNumOfTypeIIFunctions(); i++)
-						mt->getTypeIILocalFunction(i)->evaluateOn( mol, LocalFunction::SPECIES );
+					for ( typeII_iter = typeII_products.begin(); typeII_iter != typeII_products.end(); ++typeII_iter ) {
+						MoleculeType * mt = *typeII_iter;
+						for (int i=0; i<mt->getNumOfTypeIIFunctions(); i++)
+							mt->getTypeIILocalFunction(i)->evaluateOn( mol, connectedMols );
+					}
+				}
+			}
+			else {
+				// this is the hard way: find a representative molecule from each connected set
+				//  and evaluate TypeII functions on that representative.
+				std::unordered_set<Molecule*> allMols;
+				Molecule * mol;
+				for ( molIter = products.begin(); molIter != products.end(); molIter++ ) {
+					mol = *molIter;
+					bool isNewComponent = allMols.insert(mol).second;
+					if (profileReaction)
+						system->recordProfileLocalFunctionComponentCandidate(!isNewComponent);
+					if ( isNewComponent ) {
+						// remember everything connected to this molecule so we don't
+						// evaluate this connected set multiple times.
+						list<Molecule*> connectedMols;
+						ProfileConnectivityScope profileConnectivityScope(
+							system, PROFILE_CONNECTIVITY_LOCAL_FUNCTION);
+						mol->traverseBondedNeighborhood( connectedMols, ReactionClass::NO_LIMIT );
+						for ( list<Molecule*>::iterator cm = connectedMols.begin(); cm != connectedMols.end(); ++cm )
+							allMols.insert(*cm);
+
+						// evaluate typeII local functions on this connected set
+						for ( typeII_iter = typeII_products.begin(); typeII_iter != typeII_products.end(); ++typeII_iter ) {
+							MoleculeType * mt = *typeII_iter;
+							for (int i=0; i<mt->getNumOfTypeIIFunctions(); i++)
+								mt->getTypeIILocalFunction(i)->evaluateOn( mol, connectedMols );
+						}
+					}
 				}
 			}
 		}
@@ -765,7 +809,7 @@ void ReactionClass::identifyConnectedReactions() {
 	ReactionClass * rxn;
 	vector <ReactionClass *> allReactions;
 	allReactions = system->getAllReactions();
-	for (unsigned int r=0; r < allReactions.size(); r++) {
+	for (unsigned int r=0, n=allReactions.size(); r<n; r++) {
 		rxn = allReactions.at(r);
 		if (this->isReactionConnected(rxn)) this->appendConnectedRxn(rxn);
 	}
@@ -773,7 +817,7 @@ void ReactionClass::identifyConnectedReactions() {
 
 bool ReactionClass::areMoleculeTypeAndComponentPresent(MoleculeType * mt, int cIndex) {
 	TemplateMolecule * t2;
-	for (unsigned int i=0; i<allReactantTemplates.size(); i++) {
+	for (unsigned int i=0, n=allReactantTemplates.size(); i<n; i++) {
 		t2 = allReactantTemplates[i];
 		if (t2->isMoleculeTypeAndComponentPresent(mt, cIndex)) return true;
 	}
@@ -783,7 +827,7 @@ bool ReactionClass::areMoleculeTypeAndComponentPresent(MoleculeType * mt, int cI
 
 bool ReactionClass::isTemplateCompatible(TemplateMolecule * t) {
 	TemplateMolecule * t2;
-	for (unsigned int i=0; i<allReactantTemplates.size(); i++) {
+	for (unsigned int i=0, n=allReactantTemplates.size(); i<n; i++) {
 		t2 = allReactantTemplates[i];
 		if (t->isTemplateCompatible(t2)) return true;
 	}

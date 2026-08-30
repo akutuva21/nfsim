@@ -316,7 +316,7 @@ namespace NFcore
 			void printAllFunctions();
 
 			bool saveSpecies() { return saveSpecies(string(name+"_nf.species")); };
-			bool saveSpecies(string filename);
+			bool saveSpecies(const string& filename);
 
 			// AS2023 - this gets set up by rxnlog argument and enables the logging
 			// of each firing in the system 
@@ -338,17 +338,17 @@ namespace NFcore
 
 			/* tell the system where to ouptut results*/
 			void setOutputToBinary();
-			void registerOutputFileLocation(string filename);
+			void registerOutputFileLocation(const string& filename);
 			/* reaction firings are output to this file
 			 * if any reaction has tag flag set to 1 */
-			void registerReactionFileLocation(string filename);
+			void registerReactionFileLocation(const string& filename);
 			/* Connected reactions upon each reaction firing are written to this location */
-			void registerConnectedRxnFileLocation(string filename);
+			void registerConnectedRxnFileLocation(const string& filename);
 			/* Connected reactions for each reaction as calculated are written to this location */
-			void registerListOfConnectedRxnFileLocation(string filename);
+			void registerListOfConnectedRxnFileLocation(const string& filename);
 			/* list of molecule types and reaction firing counts are stored in these files */
-			void registerMoleculeTypeFileLocation(string filename);
-			void registerRxnListFileLocation(string filename);
+			void registerMoleculeTypeFileLocation(const string& filename);
+			void registerRxnListFileLocation(const string& filename);
 
 
 			void setDumpOutputter(DumpSystem *ds);
@@ -1223,7 +1223,7 @@ namespace NFcore
 				return (rxnListMappingId2[rxnIndex].size() > 0) ? *rxnListMappingId2[rxnIndex].begin() : -1;  //JJT: changing to handle multiple mappings per reaction
 			};
 
-			set<int> getRxnListMappingSet(int rxnIndex){
+			const set<int>& getRxnListMappingSet(int rxnIndex) const {
 
 				return rxnListMappingId2[rxnIndex];
 			}
@@ -1264,10 +1264,11 @@ namespace NFcore
 
 			/* functions needed to traverse a complex and get all components
 			 * which is important when we want to update reactions and complexes */
-			void traverseBondedNeighborhood(list <Molecule *> &members, int traversalLimit);
+			/* returns true when a finite traversal limit excluded a bonded neighbor */
+			bool traverseBondedNeighborhood(list <Molecule *> &members, int traversalLimit);
 			// AS2023 - additional call sig to use with reaction firing logging
 			void traverseBondedNeighborhood(list <Molecule *> &members, int traversalLimit, string &logstr);
-			static void breadthFirstSearch(list <Molecule *> &members, Molecule *m, int depth);
+			static bool breadthFirstSearch(list <Molecule *> &members, Molecule *m, int depth);
 			// AS2023 - additional call sig to use with reaction firing logging
 			static void breadthFirstSearch(list <Molecule *> &members, Molecule *m, int depth, string &logstr);
 			void depthFirstSearch(list <Molecule *> &members);
@@ -1375,6 +1376,10 @@ namespace NFcore
 			int nReactions;
 
 		private:
+			template <bool PROFILE, bool TRACKING, bool TRACK_TRUNCATION>
+			static bool breadthFirstSearchImpl(
+					list <Molecule *> &members, Molecule *m, int depth,
+					string *logstr, System *profileSystem);
 
 			static queue <Molecule *> q;
 			static queue <int> d;
@@ -1582,6 +1587,8 @@ namespace NFcore
 
 			list <Molecule *> products;
 			list <Molecule *>::iterator molIter;
+			vector <unsigned int> productComponentSizes;
+			bool productComponentsTruncated;
 
 			// remember the molecule type of each product molecule a with typeII dependencies
 			list <MoleculeType *> typeII_products;
