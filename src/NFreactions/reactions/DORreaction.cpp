@@ -1035,7 +1035,7 @@ bool EnergyRxnClass::dependsOnEndpoint(
 bool EnergyRxnClass::shouldUpdateMembership(
 		Molecule *m, ReactionClass *firedReaction, bool directProduct) const
 {
-	if (!simpleMembership || !directProduct || firedReaction == 0 ||
+	if (!simpleMembership || firedReaction == 0 ||
 			!firedReaction->usesIncrementalMembership())
 		return true;
 
@@ -1043,6 +1043,13 @@ bool EnergyRxnClass::shouldUpdateMembership(
 		dynamic_cast<const EnergyRxnClass *>(firedReaction);
 	if (firedEnergy == 0 || !firedEnergy->simpleMembership)
 		return true;
+
+	/* A compact binding/unbinding rule changes only the molecules explicitly
+	 * mapped by that rule.  The product list may also contain the rest of the
+	 * connected complex, but those indirect molecules have no changed local
+	 * endpoint that can affect another compact energy membership list. */
+	if (!directProduct)
+		return false;
 
 	MoleculeType *targetMoleculeType = m->getMoleculeType();
 	if (dependsOnEndpoint(targetMoleculeType,
