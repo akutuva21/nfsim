@@ -132,7 +132,8 @@ namespace NFcore
 					TransformationSet *transformationSet,
 					int dorReactantIndex,
 					System *s,
-					unsigned int reactantListInitialCapacity = 25);
+					unsigned int reactantListInitialCapacity = 25,
+					unsigned int reactantTreeInitialCapacity = 32);
 			virtual ~DORRxnClass();
 
 			virtual void init();

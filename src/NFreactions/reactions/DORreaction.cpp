@@ -166,7 +166,8 @@ DORRxnClass::DORRxnClass(
 		TransformationSet *transformationSet,
 		int dorReactantIndex,
 		System *s,
-		unsigned int reactantListInitialCapacity) :
+		unsigned int reactantListInitialCapacity,
+		unsigned int reactantTreeInitialCapacity) :
 	ReactionClass(name,baseRate,baseRateName,transformationSet,s),
 	cf(0),
 	DORreactantIndex(dorReactantIndex),
@@ -192,7 +193,7 @@ DORRxnClass::DORRxnClass(
 
 	this->reactionType = ReactionClass::DOR_RXN;
 	this->reactantTree = new ReactantTree(this->DORreactantIndex,
-			transformationSet,32);
+			transformationSet,reactantTreeInitialCapacity);
 	this->msPairBuffer = new MappingSet *[n_reactants > 2 ? n_reactants : 2];
 	this->reactantLists = new ReactantList *[n_reactants];
 	for (unsigned int r=0; r<n_reactants; r++) {
@@ -832,8 +833,10 @@ EnergyRxnClass::EnergyRxnClass(
 		System *s) :
 	/* A compact partner list typically tracks many simple molecules; use a
 	 * smaller starting capacity so doubling stops at 1024 rather than 1600 for
-	 * a 1,000-molecule workload. */
-	DORRxnClass(name,baseRate,baseRateName,transformationSet,dorReactantIndex,s,16),
+	 * a 1,000-molecule workload.  The weighted tree normally contains one
+	 * promoter mapping, so use the minimum tree capacity and let it expand for
+	 * unusual multi-mapping contexts. */
+	DORRxnClass(name,baseRate,baseRateName,transformationSet,dorReactantIndex,s,16,4),
 	conditionalTerms(context.conditionalTerms),
 	componentMaskFastPath(true),
 	baseEnergy(context.baseEnergy),

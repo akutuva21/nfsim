@@ -126,6 +126,30 @@ void NFtest_reactantTree::run()
 
     tree.removeMappingSet(firstId);
 
+    ReactantTree expansionTree(0, &ts, 4);
+    vector<unsigned int> expansionIds;
+    double expansionRateSum = 0.0;
+    for (unsigned int i = 0; i < 5; ++i) {
+        MappingSet *mapping = expansionTree.pushNextAvailableMappingSet();
+        expansionIds.push_back(mapping->getId());
+        double rate = static_cast<double>(i + 1);
+        expansionRateSum += rate;
+        expansionTree.confirmPush(mapping->getId(), rate);
+    }
+    if (expansionTree.size() != 5 ||
+            expansionTree.getRateFactorSum() != expansionRateSum) {
+        cout << "    Failure: tree expansion did not preserve rate factors." << endl;
+        failCount++;
+    }
+    for (vector<unsigned int>::const_iterator it = expansionIds.begin();
+            it != expansionIds.end(); ++it) {
+        expansionTree.removeMappingSet(*it);
+    }
+    if (expansionTree.size() != 0 || expansionTree.getRateFactorSum() != 0.0) {
+        cout << "    Failure: expanded tree cleanup is incorrect." << endl;
+        failCount++;
+    }
+
     if (failCount == 0) {
         cout << "All ReactantTree tests passed successfully!" << endl;
     } else {
