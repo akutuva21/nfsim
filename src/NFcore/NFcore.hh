@@ -1701,6 +1701,15 @@ namespace NFcore
 			virtual void init() = 0; //called when the reaction is added to the system
 			virtual void prepareForSimulation() = 0; //called once everything is added to the system
 			virtual bool tryToAdd(Molecule *m, unsigned int reactantPos) = 0;
+			/* Membership refresh callers already walk a MoleculeType's reaction
+			 * vector, so the local reaction-list index is available without the
+			 * system-wide rxnId/position lookup.  The default preserves the
+			 * existing behavior for reaction classes that do not use it. */
+			virtual bool tryToAddWithIndex(Molecule *m, unsigned int reactantPos,
+					int rxnIndex) {
+				(void)rxnIndex;
+				return tryToAdd(m, reactantPos);
+			}
 			/* Same membership update as tryToAdd(), with a conservative indication
 			 * of whether the reaction's propensity may have changed.  The default
 			 * keeps the legacy behavior for reaction classes whose membership
@@ -1709,6 +1718,11 @@ namespace NFcore
 					Molecule *m, unsigned int reactantPos) {
 				tryToAdd(m, reactantPos);
 				return true;
+			}
+			virtual bool tryToAddAndReportChangeWithIndex(
+					Molecule *m, unsigned int reactantPos, int rxnIndex) {
+				(void)rxnIndex;
+				return tryToAddAndReportChange(m, reactantPos);
 			}
 			virtual void remove(Molecule *m, unsigned int reactantPos) = 0;
 

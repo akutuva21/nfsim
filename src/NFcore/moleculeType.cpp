@@ -581,7 +581,11 @@ void MoleculeType::prepareForSimulation()
   		//Check each reaction and add this molecule as a reactant if we have to
 		for(rxnIter = reactions.begin(), r=0; rxnIter != reactions.end(); rxnIter++, r++ )
 		{
-			(*rxnIter)->tryToAdd(mol, reactionPositions.at(r));
+			if ((*rxnIter)->usesIncrementalMembership())
+				(*rxnIter)->tryToAddWithIndex(
+						mol, reactionPositions.at(r), r);
+			else
+				(*rxnIter)->tryToAdd(mol, reactionPositions.at(r));
   		}
 	}
 }
@@ -670,14 +674,25 @@ void MoleculeType::updateRxnMembership(Molecule * m,
 							!rxn->shouldUpdateMembershipForChange(
 									m, membershipChange))
 						continue;
-					bool defer = this->system->isDeferringMembershipPropensityUpdates() &&
+					bool useIndexedMembership =
 						rxn->supportsDeferredMembershipUpdate();
+					bool defer = this->system->isDeferringMembershipPropensityUpdates() &&
+						useIndexedMembership;
 					if (defer) {
-						if (rxn->tryToAddAndReportChange(m, reactionPositions.at(r)))
+						bool changed = useIndexedMembership
+							? rxn->tryToAddAndReportChangeWithIndex(
+									m, reactionPositions.at(r), r)
+							: rxn->tryToAddAndReportChange(
+									m, reactionPositions.at(r));
+						if (changed)
 							this->system->deferMembershipPropensityUpdate(rxn);
 					} else {
 						double oldA = rxn->get_a();
-						rxn->tryToAdd(m, reactionPositions.at(r));
+						if (useIndexedMembership)
+							rxn->tryToAddWithIndex(
+									m, reactionPositions.at(r), r);
+						else
+							rxn->tryToAdd(m, reactionPositions.at(r));
 						double newA = rxn->update_a();
 						this->system->update_A_tot(rxn, oldA, newA);
 					}
@@ -699,14 +714,25 @@ void MoleculeType::updateRxnMembership(Molecule * m,
 		if (refineMembershipChange &&
 				!rxn->shouldUpdateMembershipForChange(m, membershipChange))
 			continue;
-		bool defer = this->system->isDeferringMembershipPropensityUpdates() &&
+		bool useIndexedMembership =
 			rxn->supportsDeferredMembershipUpdate();
+		bool defer = this->system->isDeferringMembershipPropensityUpdates() &&
+			useIndexedMembership;
 		if (defer) {
-			if (rxn->tryToAddAndReportChange(m, reactionPositions.at(r)))
+			bool changed = useIndexedMembership
+				? rxn->tryToAddAndReportChangeWithIndex(
+						m, reactionPositions.at(r), r)
+				: rxn->tryToAddAndReportChange(
+						m, reactionPositions.at(r));
+			if (changed)
 				this->system->deferMembershipPropensityUpdate(rxn);
 		} else {
 			double oldA = rxn->get_a();
-			rxn->tryToAdd(m, reactionPositions.at(r));
+			if (useIndexedMembership)
+				rxn->tryToAddWithIndex(
+						m, reactionPositions.at(r), r);
+			else
+				rxn->tryToAdd(m, reactionPositions.at(r));
 			double newA = rxn->update_a();
 			this->system->update_A_tot(rxn,oldA,newA);
 		}
@@ -731,7 +757,10 @@ void MoleculeType::updateConnectedRxnMembership(Molecule * m,
 		int pos = reactionPositions.at(r);
 		double oldA = rxn->get_a();
 		double oldAwithTotal = rxn->update_a();
-		rxn->tryToAdd(m, pos);
+		if (rxn->usesIncrementalMembership())
+			rxn->tryToAddWithIndex(m, pos, r);
+		else
+			rxn->tryToAdd(m, pos);
 		double newA = rxn->update_a();
 		this->system->update_A_tot(rxn,oldA,newA);
 		// Used for debugging to see which reaction rates changed

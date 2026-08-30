@@ -1006,8 +1006,26 @@ bool EnergyRxnClass::tryToAddAndReportChange(
 	return tryToAddCompact(m, reactantPos);
 }
 
+bool EnergyRxnClass::tryToAddWithIndex(
+		Molecule *m, unsigned int reactantPos, int rxnIndex)
+{
+	if (!simpleMembership)
+		return DORRxnClass::tryToAdd(m, reactantPos);
+	return tryToAddCompact(m, reactantPos, rxnIndex);
+}
+
+bool EnergyRxnClass::tryToAddAndReportChangeWithIndex(
+		Molecule *m, unsigned int reactantPos, int rxnIndex)
+{
+	if (!simpleMembership) {
+		tryToAdd(m, reactantPos);
+		return true;
+	}
+	return tryToAddCompact(m, reactantPos, rxnIndex);
+}
+
 bool EnergyRxnClass::tryToAddCompact(
-		Molecule *m, unsigned int reactantPos)
+		Molecule *m, unsigned int reactantPos, int rxnIndex)
 {
 
 	ReactantList *partnerList = 0;
@@ -1026,7 +1044,8 @@ bool EnergyRxnClass::tryToAddCompact(
 	if (isForward && reactantPos == 1) {
 		ReactantList *rl = partnerList;
 
-		int rxnIndex = m->getMoleculeType()->getRxnIndex(this, reactantPos);
+		if (rxnIndex < 0)
+			rxnIndex = m->getMoleculeType()->getRxnIndex(this, reactantPos);
 		bool matches = m->isBindingSiteOpen(partnerComponentIndex);
 		if (!matches) {
 			bool changed = m->getRxnListMappingId(rxnIndex) >= 0;
@@ -1050,7 +1069,8 @@ bool EnergyRxnClass::tryToAddCompact(
 		return true;
 	}
 
-	int rxnIndex = m->getMoleculeType()->getRxnIndex(this, reactantPos);
+	if (rxnIndex < 0)
+		rxnIndex = m->getMoleculeType()->getRxnIndex(this, reactantPos);
 	Molecule *partnerMolecule = 0;
 	bool matches = false;
 	if (isForward) {

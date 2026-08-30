@@ -227,6 +227,10 @@ namespace NFcore
 			}
 			virtual bool tryToAddAndReportChange(
 					Molecule *m, unsigned int reactantPos);
+			virtual bool tryToAddWithIndex(
+					Molecule *m, unsigned int reactantPos, int rxnIndex);
+			virtual bool tryToAddAndReportChangeWithIndex(
+					Molecule *m, unsigned int reactantPos, int rxnIndex);
 			virtual bool canUseDirectProductList() const;
 			virtual bool canSkipIndirectMembership(
 					ReactionClass *firedReaction) const;
@@ -261,7 +265,8 @@ namespace NFcore
 			mutable bool directProductListDecisionKnown;
 			mutable bool directProductListSafe;
 
-			bool tryToAddCompact(Molecule *m, unsigned int reactantPos);
+			bool tryToAddCompact(Molecule *m, unsigned int reactantPos,
+					int rxnIndex = -1);
 
 			bool dependsOnEndpoint(MoleculeType *targetMoleculeType,
 					MoleculeType *changedMoleculeType,
