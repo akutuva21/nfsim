@@ -813,6 +813,7 @@ EnergyRxnClass::EnergyRxnClass(
 		System *s) :
 	DORRxnClass(name,baseRate,baseRateName,transformationSet,dorReactantIndex,s),
 	conditionalTerms(context.conditionalTerms),
+	componentMaskFastPath(true),
 	baseEnergy(context.baseEnergy),
 	phi(phi),
 	RT(RT),
@@ -847,6 +848,22 @@ EnergyRxnClass::EnergyRxnClass(
 		}
 		conditionComponentIndices.push_back(
 			weightedType->getCompIndexFromName(condition.compName));
+	}
+	for (unsigned int ti=0; ti<conditionalTerms.size(); ti++) {
+		std::uint64_t componentMask = 0;
+		for (unsigned int ci=0; ci<conditionComponentIndices.size(); ci++) {
+			if ((conditionalTerms[ti].conditionMask &
+					(std::uint64_t(1) << ci)) == 0)
+				continue;
+			int componentIndex = conditionComponentIndices[ci];
+			if (componentIndex < 0 || componentIndex >= 64) {
+				componentMaskFastPath = false;
+				break;
+			}
+			componentMask |=
+					(std::uint64_t(1) << componentIndex);
+		}
+		conditionalComponentMasks.push_back(componentMask);
 	}
 
 	/* Compact input creates only a reaction-center constraint on the weighted
@@ -1047,16 +1064,24 @@ double EnergyRxnClass::evaluateLocalFunctions(MappingSet *ms)
 	}
 
 	Molecule *weightedMolecule = ms->get(0)->getMolecule();
-	std::uint64_t conditionMask = 0;
-	for (unsigned int ci=0; ci<conditionComponentIndices.size(); ci++) {
-		if (weightedMolecule->isBindingSiteBonded(conditionComponentIndices[ci]))
-			conditionMask |= (std::uint64_t(1) << ci);
-	}
-
 	double deltaG = baseEnergy;
-	for (const auto &term : conditionalTerms) {
-		if ((conditionMask & term.conditionMask) == term.conditionMask)
-			deltaG += term.energyValue;
+	if (componentMaskFastPath) {
+		std::uint64_t boundMask = weightedMolecule->getBoundComponentMask();
+		for (unsigned int ti=0; ti<conditionalTerms.size(); ti++) {
+			std::uint64_t requiredMask = conditionalComponentMasks[ti];
+			if ((boundMask & requiredMask) == requiredMask)
+				deltaG += conditionalTerms[ti].energyValue;
+		}
+	} else {
+		std::uint64_t conditionMask = 0;
+		for (unsigned int ci=0; ci<conditionComponentIndices.size(); ci++) {
+			if (weightedMolecule->isBindingSiteBonded(conditionComponentIndices[ci]))
+				conditionMask |= (std::uint64_t(1) << ci);
+		}
+		for (const auto &term : conditionalTerms) {
+			if ((conditionMask & term.conditionMask) == term.conditionMask)
+				deltaG += term.energyValue;
+		}
 	}
 
 	/* DOR's base rate carries exp(-Ea0/RT); this factor carries only the

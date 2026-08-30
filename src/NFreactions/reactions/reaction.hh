@@ -200,6 +200,8 @@ namespace NFcore
 		private:
 			vector<EnergyPatternTerm> conditionalTerms;
 			vector<int> conditionComponentIndices;
+			vector<std::uint64_t> conditionalComponentMasks;
+			bool componentMaskFastPath;
 			double baseEnergy;
 			double phi;
 			double RT;

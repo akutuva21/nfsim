@@ -18,6 +18,7 @@
 #include <unordered_set>
 #include <algorithm>
 #include <set>
+#include <cstdint>
 // Include various NFsim classes from other files
 #include "../NFscheduler/NFstream.h"
 #include "../NFutil/NFutil.hh"
@@ -1204,6 +1205,7 @@ namespace NFcore
 			///////////////////////////////////////////////////////////////////////
 			int getComponentState(int cIndex) const { return component[cIndex]; };
 			int getComponentIndexOfBond(int cIndex) const { return indexOfBond[cIndex]; };
+			std::uint64_t getBoundComponentMask() const { return boundComponentMask; };
 			void setComponentState(int cIndex, int newValue);
 			void setComponentState(string cName, int newValue);
 
@@ -1365,6 +1367,7 @@ namespace NFcore
 			int numOfComponents;
 			Molecule **bond;
 			int *indexOfBond; /* gives the index of the component that is bonded to this molecule */
+			std::uint64_t boundComponentMask;
 
 
 			//////////// keep track of local function values
