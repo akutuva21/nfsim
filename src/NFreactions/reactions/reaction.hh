@@ -216,6 +216,9 @@ namespace NFcore
 			MoleculeType *partnerMoleculeType;
 			std::uint64_t weightedDependencyMask;
 			bool dependencyMaskValid;
+			bool singleConditionalTermFastPath;
+			double baseEnergyRateFactor;
+			double conditionedEnergyRateFactor;
 			mutable bool directProductListDecisionKnown;
 			mutable bool directProductListSafe;
 

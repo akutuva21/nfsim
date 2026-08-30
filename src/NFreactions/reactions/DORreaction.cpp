@@ -829,6 +829,9 @@ EnergyRxnClass::EnergyRxnClass(
 	partnerMoleculeType(0),
 	weightedDependencyMask(0),
 	dependencyMaskValid(true),
+	singleConditionalTermFastPath(false),
+	baseEnergyRateFactor(0.0),
+	conditionedEnergyRateFactor(0.0),
 	directProductListDecisionKnown(false),
 	directProductListSafe(false)
 {
@@ -926,6 +929,20 @@ EnergyRxnClass::EnergyRxnClass(
 						(std::uint64_t(1) << componentIndex);
 			}
 		}
+	}
+
+	/* Most generated promoter rules have one conditional energy term.  Its
+	 * occupancy test still changes per refresh, but the two Arrhenius factors
+	 * do not.  Cache those factors so the hot membership path only performs the
+	 * mask test; multi-term contexts retain the general evaluator below. */
+	if (componentMaskFastPath && conditionalTerms.size() == 1) {
+		double energyCoefficient = isForward ? phi : (phi - 1.0);
+		baseEnergyRateFactor =
+			exp(-(energyCoefficient * baseEnergy) / RT);
+		conditionedEnergyRateFactor =
+			exp(-(energyCoefficient *
+				(baseEnergy + conditionalTerms[0].energyValue)) / RT);
+		singleConditionalTermFastPath = true;
 	}
 }
 
@@ -1127,6 +1144,13 @@ double EnergyRxnClass::evaluateLocalFunctions(MappingSet *ms)
 	}
 
 	Molecule *weightedMolecule = ms->get(0)->getMolecule();
+	if (singleConditionalTermFastPath) {
+		std::uint64_t boundMask = weightedMolecule->getBoundComponentMask();
+		return (boundMask & conditionalComponentMasks[0]) ==
+				conditionalComponentMasks[0]
+			? conditionedEnergyRateFactor : baseEnergyRateFactor;
+	}
+
 	double deltaG = baseEnergy;
 	if (componentMaskFastPath) {
 		std::uint64_t boundMask = weightedMolecule->getBoundComponentMask();
