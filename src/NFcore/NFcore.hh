@@ -1135,6 +1135,15 @@ namespace NFcore
 
 			ReactionClass *rxn; /*used so we don't need to redeclare this at every call to updateRxnMembership */
 
+			/* Cached direct-product membership decisions for compact EnergyPattern
+			 * updates.  The vector follows reactions/reactionPositions order. */
+			std::unordered_map<ReactionClass *, std::vector<unsigned char>>
+				directMembershipDecisionCache;
+			/* Cache the conservative type-invariance check as well.  A false entry
+			 * keeps generic reaction lists on the existing per-molecule path. */
+			std::unordered_map<ReactionClass *, bool>
+				directMembershipDecisionCacheSafe;
+
 
 
 		private:
@@ -1500,6 +1509,10 @@ namespace NFcore
 			 * when that molecule is only an indirect product of this firing. */
 			virtual bool canSkipIndirectMembership(
 					ReactionClass *firedReaction) const { return false; }
+			/* Whether shouldUpdateMembership() depends only on the molecule type.
+			 * This permits one decision vector to be reused for all molecules of a
+			 * type during a compact EnergyPattern firing. */
+			virtual bool membershipDecisionIsTypeInvariant() const { return false; }
 			/* Return false when the supplied product cannot affect this reaction's
 			 * membership or mapping-local rate factors. */
 			virtual bool shouldUpdateMembership(Molecule *m,

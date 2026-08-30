@@ -485,6 +485,10 @@ int MoleculeType::getStateValueFromName(int cIndex, string stateName) const
 
 void MoleculeType::addReactionClass(ReactionClass * r, int rPosition)
 {
+	/* The decision vectors follow the reaction list, so invalidate them if a
+	 * reaction is registered after the cache has been populated. */
+	directMembershipDecisionCache.clear();
+	directMembershipDecisionCacheSafe.clear();
 	this->reactions.push_back(r);
 	this->reactionPositions.push_back(rPosition);
 
@@ -581,10 +585,46 @@ void MoleculeType::prepareForSimulation()
 void MoleculeType::updateRxnMembership(Molecule * m,
 		ReactionClass * firedReaction, bool directProduct)
 {
+	const vector<unsigned char> *cachedDecisions = 0;
+	if (directProduct && firedReaction != 0 &&
+			firedReaction->usesIncrementalMembership()) {
+		unordered_map<ReactionClass *, bool>::iterator safe =
+				directMembershipDecisionCacheSafe.find(firedReaction);
+		if (safe == directMembershipDecisionCacheSafe.end()) {
+			bool typeInvariant = true;
+			for (unsigned int r = 0; r < reactions.size(); ++r) {
+				if (!reactions[r]->membershipDecisionIsTypeInvariant()) {
+					typeInvariant = false;
+					break;
+				}
+			}
+			safe = directMembershipDecisionCacheSafe.emplace(
+					firedReaction, typeInvariant).first;
+		}
+		if (safe->second) {
+			unordered_map<ReactionClass *, vector<unsigned char>>::iterator cached =
+					directMembershipDecisionCache.find(firedReaction);
+			if (cached == directMembershipDecisionCache.end()) {
+				vector<unsigned char> decisions;
+				decisions.reserve(reactions.size());
+				for (unsigned int r = 0; r < reactions.size(); ++r) {
+					decisions.push_back(reactions[r]->shouldUpdateMembership(
+							m, firedReaction, true));
+				}
+				cached = directMembershipDecisionCache.emplace(
+						firedReaction, decisions).first;
+			}
+			cachedDecisions = &cached->second;
+		}
+	}
+
 	for( unsigned int r=0; r<reactions.size(); r++ )
 	{
 		ReactionClass * rxn=reactions.at(r);
-		if (!rxn->shouldUpdateMembership(m, firedReaction, directProduct))
+		if (cachedDecisions != 0) {
+			if (!(*cachedDecisions)[r]) continue;
+		}
+		else if (!rxn->shouldUpdateMembership(m, firedReaction, directProduct))
 			continue;
 		double oldA = rxn->get_a();
 		rxn->tryToAdd(m, reactionPositions.at(r));
@@ -838,4 +878,3 @@ void MoleculeType::printDetails() const
 //	cout<<"        of which "<< indexOfDORrxns.size() <<" are DOR rxns. "<<endl;
 	cout<<"   -has "<< molObs.size() <<" molecules observables " <<endl;
 }
-

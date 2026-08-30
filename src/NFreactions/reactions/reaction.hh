@@ -188,6 +188,9 @@ namespace NFcore
 					System *s);
 			virtual ~EnergyRxnClass() {}
 			virtual bool usesIncrementalMembership() const { return simpleMembership; }
+			virtual bool membershipDecisionIsTypeInvariant() const {
+				return simpleMembership;
+			}
 			virtual bool canUseDirectProductList() const;
 			virtual bool canSkipIndirectMembership(
 					ReactionClass *firedReaction) const;
