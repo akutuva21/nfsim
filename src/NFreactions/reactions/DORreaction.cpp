@@ -828,7 +828,9 @@ EnergyRxnClass::EnergyRxnClass(
 	partnerComponentIndex(-1),
 	partnerMoleculeType(0),
 	weightedDependencyMask(0),
-	dependencyMaskValid(true)
+	dependencyMaskValid(true),
+	directProductListDecisionKnown(false),
+	directProductListSafe(false)
 {
 	/* The compact input path currently supplies contexts on the first
 	 * reaction-center molecule.  Its mapping is the first mapping in both the
@@ -1078,6 +1080,43 @@ bool EnergyRxnClass::canSkipIndirectMembership(
 	const EnergyRxnClass *firedEnergy =
 			dynamic_cast<const EnergyRxnClass *>(firedReaction);
 	return firedEnergy != 0 && firedEnergy->simpleMembership;
+}
+
+bool EnergyRxnClass::canUseDirectProductList() const
+{
+	if (directProductListDecisionKnown)
+		return directProductListSafe;
+
+	bool safe = simpleMembership && system != 0 &&
+			/* On-the-fly observables need the complete affected complex; with
+			 * -notf they are rebuilt at output time instead. */
+			(!system->getOnTheFlyObservables() ||
+			 system->getNumOfObsForOutput() == 0) &&
+			/* The compact constructor never creates added molecules. */
+			transformationSet->getNumOfAddMoleculeTransforms() == 0 &&
+			/* Product filters inspect the complete post-transform complexes. */
+			!transformationSet->hasProductFilters();
+
+	if (safe) {
+		/* The direct list omits every indirect molecule.  Require both that no
+		 * Type-II function needs those molecules and that every reaction
+		 * registered on every molecule type agrees that an indirect refresh can
+		 * be skipped.  This is intentionally conservative because the product
+		 * complex is not traversed on this path. */
+		for (int i = 0; i < system->getNumOfMoleculeTypes(); ++i) {
+			MoleculeType *mt = system->getMoleculeType(i);
+			if (mt->getNumOfTypeIIFunctions() > 0 ||
+					!mt->canSkipIndirectMembership(
+						const_cast<EnergyRxnClass *>(this))) {
+				safe = false;
+				break;
+			}
+		}
+	}
+
+	directProductListSafe = safe;
+	directProductListDecisionKnown = true;
+	return safe;
 }
 
 double EnergyRxnClass::evaluateLocalFunctions(MappingSet *ms)

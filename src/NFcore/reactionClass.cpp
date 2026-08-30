@@ -428,10 +428,37 @@ string ReactionClass::fire(double random_A_number, bool track) {
 
 
 	// Generate the set of possible products that we need to update
-	// (excluding new molecules, we'll get those later --Justin)
-	this->transformationSet->getListOfProducts(
-			mappingSet, products, traversalLimit, &productComponentSizes,
-			&productComponentsTruncated);
+	// (excluding new molecules, we'll get those later --Justin).  A compact
+	// energy rule can use only its explicitly mapped endpoints when it has
+	// already proven that no observable, Type-II function, or indirect
+	// membership dependency needs the rest of the bonded complex.
+	bool directProductsPrepared = false;
+	if (this->canUseDirectProductList()) {
+		ProfileTime directProductStart = system->isProfileReactionActive()
+			? profileNow() : ProfileTime();
+		directProductMolecules.clear();
+		for (unsigned int msIndex = 0; msIndex < n_mappingsets; ++msIndex) {
+			MappingSet *ms = mappingSet[msIndex];
+			if (ms == 0) continue;
+			for (unsigned int mapIndex = 0;
+					mapIndex < ms->getNumOfMappings(); ++mapIndex) {
+				Mapping *mapping = ms->get(mapIndex);
+				if (mapping == 0 || mapping->getMolecule() == 0) continue;
+				Molecule *molecule = mapping->getMolecule();
+				if (directProductMolecules.insert(molecule).second)
+					products.push_back(molecule);
+			}
+		}
+		directProductsPrepared = true;
+		if (system->isProfileReactionActive())
+			system->recordProfileProductPreparation(
+					profileElapsedSeconds(directProductStart),
+					static_cast<unsigned long long>(products.size()));
+	} else {
+		this->transformationSet->getListOfProducts(
+				mappingSet, products, traversalLimit, &productComponentSizes,
+				&productComponentsTruncated);
+	}
 
 	// Check product-side filters (include_products / exclude_products).
 	// If the resulting products don't pass the filter, treat this as a null event.
@@ -518,16 +545,18 @@ string ReactionClass::fire(double random_A_number, bool track) {
 	bool hasIndirectProducts = false;
 	bool trackDirectProducts = useConnectivity || this->usesIncrementalMembership();
 	if (trackDirectProducts) {
-		directProductMolecules.clear();
 		indirectMembershipDecisions.clear();
-		for (unsigned int msIndex=0; msIndex<n_mappingsets; msIndex++) {
-			MappingSet *ms = mappingSet[msIndex];
-			if (ms==0) continue;
-			for (unsigned int mapIndex=0; mapIndex<ms->getNumOfMappings(); mapIndex++) {
-				Mapping *mapping = ms->get(mapIndex);
-				if (mapping==0) continue;
-				Molecule *directMol = mapping->getMolecule();
-				if (directMol!=0) directProductMolecules.insert(directMol);
+		if (!directProductsPrepared) {
+			directProductMolecules.clear();
+			for (unsigned int msIndex=0; msIndex<n_mappingsets; msIndex++) {
+				MappingSet *ms = mappingSet[msIndex];
+				if (ms==0) continue;
+				for (unsigned int mapIndex=0; mapIndex<ms->getNumOfMappings(); mapIndex++) {
+					Mapping *mapping = ms->get(mapIndex);
+					if (mapping==0) continue;
+					Molecule *directMol = mapping->getMolecule();
+					if (directMol!=0) directProductMolecules.insert(directMol);
+				}
 			}
 		}
 		if (this->usesIncrementalMembership()) {

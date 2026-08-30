@@ -271,6 +271,7 @@ namespace NFcore
 			 * vector and do not change simulation behavior. */
 			int getNumOfObsForOutput() const { return static_cast<int>(obsToOutput.size()); }
 			Observable * getObsForOutput(int index) const { return obsToOutput.at(index); }
+			bool getOnTheFlyObservables() const { return onTheFlyObservables; }
 			double getAverageGroupValue(string groupName, int valIndex);
 			
 			/* Compartment management for cBNGL */
@@ -1492,6 +1493,9 @@ namespace NFcore
 			/* Whether this reaction can use a conservative, endpoint-local
 			 * membership refresh after it fires. */
 			virtual bool usesIncrementalMembership() const { return false; }
+			/* Whether the product list can be limited to explicitly mapped
+			 * molecules for this firing. */
+			virtual bool canUseDirectProductList() const { return false; }
 			/* Whether every membership entry on a molecule type can be omitted
 			 * when that molecule is only an indirect product of this firing. */
 			virtual bool canSkipIndirectMembership(

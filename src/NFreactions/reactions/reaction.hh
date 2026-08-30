@@ -188,6 +188,7 @@ namespace NFcore
 					System *s);
 			virtual ~EnergyRxnClass() {}
 			virtual bool usesIncrementalMembership() const { return simpleMembership; }
+			virtual bool canUseDirectProductList() const;
 			virtual bool canSkipIndirectMembership(
 					ReactionClass *firedReaction) const;
 			virtual bool shouldUpdateMembership(Molecule *m,
@@ -215,6 +216,8 @@ namespace NFcore
 			MoleculeType *partnerMoleculeType;
 			std::uint64_t weightedDependencyMask;
 			bool dependencyMaskValid;
+			mutable bool directProductListDecisionKnown;
+			mutable bool directProductListSafe;
 
 			bool dependsOnEndpoint(MoleculeType *targetMoleculeType,
 					MoleculeType *changedMoleculeType,
