@@ -18,9 +18,13 @@ void NFtest_molecule::run()
 	mappingIds.insert(9);
 	mappingIds.insert(3);
 	mappingIds.insert(9);
-	if (mappingIds.size() != 2 || *mappingIds.begin() != 3 ||
-			*(mappingIds.begin() + 1) != 9) {
+	MappingIdSet::iterator mappingIdsIt = mappingIds.begin();
+	if (mappingIds.size() != 2 || *mappingIdsIt != 3) {
 		throw runtime_error("compact reaction membership IDs were not sorted or unique");
+	}
+	++mappingIdsIt;
+	if (*mappingIdsIt != 9) {
+		throw runtime_error("compact reaction membership IDs were not sorted");
 	}
 	if (mappingIds.erase(3) != 1 || mappingIds.size() != 1 ||
 			*mappingIds.begin() != 9) {
