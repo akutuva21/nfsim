@@ -16,8 +16,34 @@ using namespace NFcore;
 class TestTransformationSet : public TransformationSet {
 public:
 	TestTransformationSet(vector<TemplateMolecule*> &reactants) : TransformationSet(reactants) {}
+	// Excludes the single bond anchored at m1's component excludeComp, recorded
+	// as both of its half-edges the way checkMolecularity() builds the set.
 	bool testCanReach(Molecule *m1, Molecule *m2, int excludeComp) {
-		return canReachExcludingBond(m1, m2, excludeComp);
+		vector< pair<Molecule *, int> > excludedBonds;
+		if (m1->isBindingSiteBonded(excludeComp)) {
+			Molecule *partner = m1->getBondedMolecule(excludeComp);
+			int partnerIndex = m1->getBondedMoleculeBindingSiteIndex(excludeComp);
+			excludedBonds.push_back(make_pair(m1, excludeComp));
+			excludedBonds.push_back(make_pair(partner, partnerIndex));
+		}
+		return canReachExcludingBonds(m1, m2, excludedBonds);
+	}
+
+	// Excludes an explicit set of bonds, each given as one (molecule, component)
+	// endpoint; the partner half-edge is derived here.
+	bool testCanReachExcluding(Molecule *m1, Molecule *m2,
+			const vector< pair<Molecule *, int> > &bonds) {
+		vector< pair<Molecule *, int> > excludedBonds;
+		for (unsigned int b = 0; b < bonds.size(); ++b) {
+			Molecule *mol = bonds[b].first;
+			int comp = bonds[b].second;
+			if (!mol->isBindingSiteBonded(comp)) continue;
+			Molecule *partner = mol->getBondedMolecule(comp);
+			int partnerIndex = mol->getBondedMoleculeBindingSiteIndex(comp);
+			excludedBonds.push_back(make_pair(mol, comp));
+			excludedBonds.push_back(make_pair(partner, partnerIndex));
+		}
+		return canReachExcludingBonds(m1, m2, excludedBonds);
 	}
 };
 
@@ -200,8 +226,8 @@ void NFtest_transformations::run()
 
 
 
-	// --- Testing canReachExcludingBond ---
-	cout << "  Testing canReachExcludingBond..." << endl;
+	// --- Testing canReachExcludingBonds ---
+	cout << "  Testing canReachExcludingBonds..." << endl;
 	vector<string> ringComps;
 	ringComps.push_back("s1");
 	ringComps.push_back("s2");
@@ -239,7 +265,7 @@ void NFtest_transformations::run()
 
 	// Test on the line m1 - m2. Exclude bond at m1's s1 (index 0).
 	if (testTS->testCanReach(m1, m2, 0) != false) {
-		throw runtime_error("canReachExcludingBond failed on line topology (should be false)");
+		throw runtime_error("canReachExcludingBonds failed on line topology (should be false)");
 	}
 
 	// Close the ring: m4(s2) - m1(s2)
@@ -247,7 +273,7 @@ void NFtest_transformations::run()
 
 	// Now m1, m2, m3, m4 are in a ring. Test excluding bond at m1's s1 (index 0).
 	if (testTS->testCanReach(m1, m2, 0) != true) {
-		throw runtime_error("canReachExcludingBond failed on ring topology (should be true)");
+		throw runtime_error("canReachExcludingBonds failed on ring topology (should be true)");
 	}
 
 	// Add another branch to test BFS robustness
@@ -255,13 +281,34 @@ void NFtest_transformations::run()
 	Molecule::bind(m3, 2, m5, 0); // m3(s3) - m5(s1)
 
 	if (testTS->testCanReach(m1, m2, 0) != true) {
-		throw runtime_error("canReachExcludingBond failed on ring topology with branch (should be true)");
+		throw runtime_error("canReachExcludingBonds failed on ring topology with branch (should be true)");
+	}
+
+	// A two-bond ring: the case a per-bond test cannot answer. m6 and m7 are
+	// bound to each other twice, so excluding either bond on its own leaves them
+	// connected through the other, while excluding both separates them. A rule
+	// that deletes both bonds at once is exactly this second question, and
+	// answering it one bond at a time is what used to block the dissociation.
+	Molecule *m6 = molRing->genDefaultMolecule();
+	Molecule *m7 = molRing->genDefaultMolecule();
+	Molecule::bind(m6, 0, m7, 0);
+	Molecule::bind(m6, 1, m7, 1);
+
+	if (testTS->testCanReach(m6, m7, 0) != true) {
+		throw runtime_error("canReachExcludingBonds: one bond of a two-bond ring should leave the pair connected");
+	}
+
+	vector< pair<Molecule *, int> > bothBonds;
+	bothBonds.push_back(make_pair(m6, 0));
+	bothBonds.push_back(make_pair(m6, 1));
+	if (testTS->testCanReachExcluding(m6, m7, bothBonds) != false) {
+		throw runtime_error("canReachExcludingBonds: excluding both bonds of a two-bond ring should separate the pair");
 	}
 
 	delete testTS;
 	delete tm1;
 
-	cout << "  canReachExcludingBond tests passed!" << endl;
+	cout << "  canReachExcludingBonds tests passed!" << endl;
 
 
 

@@ -181,9 +181,17 @@ ReactionClass::ReactionClass(string name, double baseRate, string baseRateParame
 		}
 	}
 
+	// Correct the rate for reaction center symmetry.  Note that these all assign
+	// through 'this->': the constructor argument 'baseRate' shadows the member,
+	// and the member was copied from it above, so scaling the argument here would
+	// discard the correction.  Only rate laws that route through setBaseRate()
+	// (which applies the factor itself) used to recover it; every other rate law
+	// -- global function, local function (DOR), function product, MM -- is
+	// constructed with baseRate=1 and never calls setBaseRate, so a symmetric
+	// rule fired at 1/symmetryFactor times its intended rate (2x for a homodimer).
 	if ( this->transformationSet->usingSymmetryFactor() )
 	{	// new general method for handling reaction center symmetry
-		baseRate *= this->transformationSet->getSymmetryFactor();
+		this->baseRate *= this->transformationSet->getSymmetryFactor();
 	}
 	else
 	{	// old method for handling symmetric binding and unbinding
@@ -196,7 +204,7 @@ ReactionClass::ReactionClass(string name, double baseRate, string baseRateParame
 				cout<<"Make sure that is correct."<<endl;
 
 				cout<<endl;
-				baseRate = baseRate*0.5;  //We have to correct the rate to get the proper factor
+				this->baseRate = this->baseRate*0.5;  //We have to correct the rate to get the proper factor
 				isDimerStyle=true;
 			}
 		}
@@ -208,7 +216,7 @@ ReactionClass::ReactionClass(string name, double baseRate, string baseRateParame
 				cout<<"Warning! You have an unbinding rxn (" << name << ") that is symmetric."<<endl;
 				cout<<"Make sure that is correct."<<endl;
 				cout<<endl;
-				baseRate = baseRate*0.5;  //We have to correct the rate to get the proper factor
+				this->baseRate = this->baseRate*0.5;  //We have to correct the rate to get the proper factor
 				isDimerStyle=true;
 			}
 		}
@@ -221,10 +229,34 @@ ReactionClass::ReactionClass(string name, double baseRate, string baseRateParame
 	// check for population type reactants
 	isPopulationType = new bool[n_reactants];
 	matchOncePerReactant = new bool[n_reactants];
+	contextCountsPerComplex = new bool[n_reactants];
 	for( unsigned int i=0; i < n_reactants; ++i )
 	{
 		isPopulationType[i] = reactantTemplates[i]->getMoleculeType()->isPopulationType();
 		matchOncePerReactant[i] = false;
+		contextCountsPerComplex[i] = false;
+	}
+
+	// Count a reactant the rule never transforms once per complex, as BNG does.
+	//
+	// BNG gives a pure context pattern one reaction instance per matching complex
+	// no matter how many molecules inside it match, because the reaction produced
+	// does not depend on which embedding was chosen -- same reactants, same
+	// products, same transformation.  Verified against BNG's generated network for
+	// a homodimer, a single subunit of that homodimer, a heterodimer, and a
+	// scaffold holding two *distinguishable* copies: all four get a bare rate
+	// constant.  A pattern the rule does transform is different and is left alone
+	// here: binding one of a homodimer's two sites really is two reactions, and
+	// BNG emits the factor of two for it.
+	//
+	// Only meaningful while complexes are tracked; see contextCountsPerComplex.
+	if( system->isUsingComplex() )
+	{
+		for( unsigned int i=0; i < n_reactants; ++i )
+		{
+			if( isPopulationType[i] ) continue;
+			contextCountsPerComplex[i] = transformationSet->isPureContextReactant(i);
+		}
 	}
 
 
@@ -287,6 +319,7 @@ ReactionClass::~ReactionClass()
 	delete [] mappingSet;
 	delete [] isPopulationType;
 	delete [] matchOncePerReactant;
+	delete [] contextCountsPerComplex;
 	delete [] identicalPopCountCorrection;
 	delete directProductMolecules;
 	connectedReactions.clear();
