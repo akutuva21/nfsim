@@ -586,6 +586,32 @@ void MoleculeType::updateRxnMembership(Molecule * m,
 		ReactionClass * firedReaction, bool directProduct)
 {
 	const vector<unsigned char> *cachedDecisions = 0;
+	IncrementalMembershipChange membershipChange;
+	bool hasMembershipChange = directProduct && firedReaction != 0 &&
+		firedReaction->usesIncrementalMembership() &&
+		firedReaction->getIncrementalMembershipChange(membershipChange);
+	bool refineMembershipChange = hasMembershipChange &&
+		m->getMoleculeType() == membershipChange.moleculeType1;
+	if (refineMembershipChange && membershipChange.componentIndex1 >= 0 &&
+			membershipChange.componentIndex1 < 64) {
+		/* When the weighted molecule is full immediately before or after the
+		 * event, every accepted context dependency on the changed site crosses
+		 * its predicate.  The endpoint cache is therefore already exact and the
+		 * per-reaction mask test would only add overhead. */
+		std::uint64_t changedBit = std::uint64_t(1) <<
+				membershipChange.componentIndex1;
+		int componentCount = m->getMoleculeType()->getNumOfComponents();
+		if (componentCount <= 64) {
+			std::uint64_t fullMask = componentCount == 64
+					? ~std::uint64_t(0)
+					: ((std::uint64_t(1) << componentCount) - 1);
+			std::uint64_t newMask = m->getBoundComponentMask();
+			std::uint64_t oldMask = membershipChange.isBoundAfter1
+					? (newMask & ~changedBit) : (newMask | changedBit);
+			if (newMask == fullMask || oldMask == fullMask)
+				refineMembershipChange = false;
+		}
+	}
 	if (directProduct && firedReaction != 0 &&
 		firedReaction->usesIncrementalMembership()) {
 		unordered_map<ReactionClass *, bool>::iterator safe =
@@ -636,6 +662,10 @@ void MoleculeType::updateRxnMembership(Molecule * m,
 						it != entry.reactionIndices.end(); ++it) {
 					unsigned int r = *it;
 					ReactionClass *rxn = reactions.at(r);
+					if (refineMembershipChange &&
+							!rxn->shouldUpdateMembershipForChange(
+									m, membershipChange))
+						continue;
 					bool defer = this->system->isDeferringMembershipPropensityUpdates() &&
 						rxn->supportsDeferredMembershipUpdate();
 					if (defer) {
@@ -661,6 +691,9 @@ void MoleculeType::updateRxnMembership(Molecule * m,
 			if (!(*cachedDecisions)[r]) continue;
 		}
 		else if (!rxn->shouldUpdateMembership(m, firedReaction, directProduct))
+			continue;
+		if (refineMembershipChange &&
+				!rxn->shouldUpdateMembershipForChange(m, membershipChange))
 			continue;
 		bool defer = this->system->isDeferringMembershipPropensityUpdates() &&
 			rxn->supportsDeferredMembershipUpdate();

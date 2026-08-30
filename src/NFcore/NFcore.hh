@@ -98,6 +98,21 @@ namespace NFcore
 
 	class ReactionClass; /* defines a reaction class, (in other words, a rxn rule) */
 
+	/* Endpoint state changes exposed by compact EnergyPattern reactions.  The
+	 * descriptor is built once per fired reaction and reused while its direct
+	 * product molecules refresh membership. */
+	struct IncrementalMembershipChange {
+		IncrementalMembershipChange() :
+			moleculeType1(0), componentIndex1(-1), isBoundAfter1(false),
+			moleculeType2(0), componentIndex2(-1), isBoundAfter2(false) {}
+		MoleculeType *moleculeType1;
+		int componentIndex1;
+		bool isBoundAfter1;
+		MoleculeType *moleculeType2;
+		int componentIndex2;
+		bool isBoundAfter2;
+	};
+
 	class Observable;  /* object that moniters counts of things we want to keep track of */
 
 	class Complex;  /* collection of molecules that are bonded to each
@@ -1712,6 +1727,15 @@ namespace NFcore
 			 * This permits one decision vector to be reused for all molecules of a
 			 * type during a compact EnergyPattern firing. */
 			virtual bool membershipDecisionIsTypeInvariant() const { return false; }
+			/* Describe the endpoint changes made by a compact EnergyPattern fire. */
+			virtual bool getIncrementalMembershipChange(
+					IncrementalMembershipChange &change) const { return false; }
+			/* Refine an endpoint-local membership decision using the current
+			 * post-event molecule state.  Called only after shouldUpdateMembership()
+			 * has accepted the candidate; the default preserves legacy behavior. */
+			virtual bool shouldUpdateMembershipForChange(
+					Molecule *m,
+					const IncrementalMembershipChange &change) const { return true; }
 			/* Whether membership mutations can defer update_a() until all direct
 			 * products from the current compact EnergyPattern event are processed. */
 			virtual bool supportsDeferredMembershipUpdate() const { return false; }

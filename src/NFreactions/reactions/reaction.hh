@@ -216,6 +216,11 @@ namespace NFcore
 			virtual bool membershipDecisionIsTypeInvariant() const {
 				return simpleMembership;
 			}
+			virtual bool getIncrementalMembershipChange(
+					IncrementalMembershipChange &change) const;
+			virtual bool shouldUpdateMembershipForChange(
+					Molecule *m,
+					const IncrementalMembershipChange &change) const;
 			virtual bool supportsDeferredMembershipUpdate() const {
 				return simpleMembership;
 			}

@@ -1154,6 +1154,71 @@ bool EnergyRxnClass::shouldUpdateMembership(
 	return false;
 }
 
+bool EnergyRxnClass::getIncrementalMembershipChange(
+		IncrementalMembershipChange &change) const
+{
+	if (!simpleMembership)
+		return false;
+	change.moleculeType1 = reactantTemplates[0]->getMoleculeType();
+	change.componentIndex1 = reactionCenterComponentIndex;
+	change.isBoundAfter1 = isForward;
+	change.moleculeType2 = partnerMoleculeType;
+	change.componentIndex2 = partnerComponentIndex;
+	change.isBoundAfter2 = isForward;
+	return true;
+}
+
+bool EnergyRxnClass::shouldUpdateMembershipForChange(
+		Molecule *m, const IncrementalMembershipChange &change) const
+{
+	if (!simpleMembership || m == 0)
+		return true;
+
+	MoleculeType *targetMoleculeType = m->getMoleculeType();
+	if (targetMoleculeType == partnerMoleculeType &&
+			change.moleculeType2 == partnerMoleculeType &&
+			change.componentIndex2 == partnerComponentIndex)
+		return true;
+
+	MoleculeType *weightedType = reactantTemplates[0]->getMoleculeType();
+	if (targetMoleculeType != weightedType ||
+			change.moleculeType1 != weightedType)
+		return false;
+
+	if (change.componentIndex1 == reactionCenterComponentIndex)
+		return true;
+
+	if (change.componentIndex1 < 0 || change.componentIndex1 >= 64)
+		return true;
+	std::uint64_t changedBit =
+			(std::uint64_t(1) << change.componentIndex1);
+	if (dependencyMaskValid &&
+			(weightedDependencyMask & changedBit) == 0)
+		return false;
+	if (!componentMaskFastPath) {
+		for (unsigned int ci = 0; ci < conditionComponentIndices.size(); ++ci) {
+			if (conditionComponentIndices[ci] == change.componentIndex1)
+				return true;
+		}
+		return false;
+	}
+
+	std::uint64_t newMask = m->getBoundComponentMask();
+	bool observedBound = (newMask & changedBit) != 0;
+	if (observedBound != change.isBoundAfter1)
+		return true;
+	std::uint64_t oldMask = change.isBoundAfter1
+			? (newMask & ~changedBit) : (newMask | changedBit);
+	for (unsigned int ti = 0; ti < conditionalComponentMasks.size(); ++ti) {
+		std::uint64_t requiredMask = conditionalComponentMasks[ti];
+		bool wasSatisfied = (oldMask & requiredMask) == requiredMask;
+		bool isSatisfied = (newMask & requiredMask) == requiredMask;
+		if (wasSatisfied != isSatisfied)
+			return true;
+	}
+	return false;
+}
+
 bool EnergyRxnClass::canSkipIndirectMembership(
 		ReactionClass *firedReaction) const
 {
