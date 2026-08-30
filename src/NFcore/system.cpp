@@ -899,6 +899,38 @@ void System::update_A_tot(ReactionClass *r, double old_a, double new_a)
 
 }
 
+void System::beginDeferredMembershipPropensityUpdates()
+{
+	deferredMembershipReactions.clear();
+	++deferredMembershipUpdateGeneration;
+	deferringMembershipPropensityUpdates = true;
+}
+
+void System::deferMembershipPropensityUpdate(ReactionClass *r)
+{
+	if (r != 0 && r->markDeferredMembershipUpdate(
+			deferredMembershipUpdateGeneration))
+		deferredMembershipReactions.push_back(r);
+}
+
+void System::endDeferredMembershipPropensityUpdates()
+{
+	if (!deferringMembershipPropensityUpdates)
+		return;
+	/* Reset the guard before calling update_A_tot so any nested update follows
+	 * the normal selector path. */
+	deferringMembershipPropensityUpdates = false;
+	for (vector<ReactionClass *>::const_iterator it =
+			deferredMembershipReactions.begin();
+			it != deferredMembershipReactions.end(); ++it) {
+		ReactionClass *r = *it;
+		double oldA = r->get_a();
+		double newA = r->update_a();
+		update_A_tot(r, oldA, newA);
+	}
+	deferredMembershipReactions.clear();
+}
+
 
 double System::recompute_A_tot()
 {

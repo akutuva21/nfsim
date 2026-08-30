@@ -664,6 +664,11 @@ string ReactionClass::fire(double random_A_number, bool track) {
 	bool profileMembership = profileReaction;
 	ProfileTime profileMembershipStart = profileMembership
 		? profileNow() : ProfileTime();
+	bool deferMembershipPropensityUpdates =
+		directProductsPrepared && this->usesIncrementalMembership() &&
+		!useConnectivity;
+	if (deferMembershipPropensityUpdates)
+		this->system->beginDeferredMembershipPropensityUpdates();
 	for ( molIter = products.begin(); molIter != products.end(); molIter++ ) {
 		Molecule * mol = *molIter;
 		MoleculeType * mt = mol->getMoleculeType();
@@ -695,6 +700,8 @@ string ReactionClass::fire(double random_A_number, bool track) {
 			mol->updateRxnMembership(this, useConnectedUpdate, directProduct);
 		}
 	}
+	if (deferMembershipPropensityUpdates)
+		this->system->endDeferredMembershipPropensityUpdates();
 	if (profileMembership)
 		system->recordProfileMembershipPhase(
 			profileElapsedSeconds(profileMembershipStart));

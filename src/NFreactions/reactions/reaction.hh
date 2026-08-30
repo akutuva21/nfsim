@@ -191,6 +191,9 @@ namespace NFcore
 			virtual bool membershipDecisionIsTypeInvariant() const {
 				return simpleMembership;
 			}
+			virtual bool supportsDeferredMembershipUpdate() const {
+				return simpleMembership;
+			}
 			virtual bool canUseDirectProductList() const;
 			virtual bool canSkipIndirectMembership(
 					ReactionClass *firedReaction) const;

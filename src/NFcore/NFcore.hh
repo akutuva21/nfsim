@@ -405,6 +405,12 @@ namespace NFcore
 			//double calculateMeanCount(MoleculeType *m);
 
 			void update_A_tot(ReactionClass *r, double old_a, double new_a);
+			void beginDeferredMembershipPropensityUpdates();
+			void deferMembershipPropensityUpdate(ReactionClass *r);
+			void endDeferredMembershipPropensityUpdates();
+			bool isDeferringMembershipPropensityUpdates() const {
+				return deferringMembershipPropensityUpdates;
+			}
 
 
 
@@ -801,6 +807,9 @@ namespace NFcore
 
 			//Data structure that performs the selection of the next reaction class
 			ReactionSelector * selector;
+			bool deferringMembershipPropensityUpdates = false;
+			vector<ReactionClass *> deferredMembershipReactions;
+			unsigned long long deferredMembershipUpdateGeneration = 0;
 
 			// To look up connected reactions quickly
 			vector <vector <bool> > connectedReactions;
@@ -1520,6 +1529,16 @@ namespace NFcore
 			 * This permits one decision vector to be reused for all molecules of a
 			 * type during a compact EnergyPattern firing. */
 			virtual bool membershipDecisionIsTypeInvariant() const { return false; }
+			/* Whether membership mutations can defer update_a() until all direct
+			 * products from the current compact EnergyPattern event are processed. */
+			virtual bool supportsDeferredMembershipUpdate() const { return false; }
+			/* Mark this reaction once per deferred membership batch. */
+			bool markDeferredMembershipUpdate(unsigned long long generation) {
+				if (deferredMembershipUpdateGeneration == generation)
+					return false;
+				deferredMembershipUpdateGeneration = generation;
+				return true;
+			}
 			/* Return false when the supplied product cannot affect this reaction's
 			 * membership or mapping-local rate factors. */
 			virtual bool shouldUpdateMembership(Molecule *m,
@@ -1603,6 +1622,7 @@ namespace NFcore
 			string baseRateParameterName;
 			double a;
 			unsigned int fireCounter;
+			unsigned long long deferredMembershipUpdateGeneration = 0;
 
 			unsigned int traversalLimit;
 

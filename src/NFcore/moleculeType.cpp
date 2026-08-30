@@ -636,10 +636,17 @@ void MoleculeType::updateRxnMembership(Molecule * m,
 						it != entry.reactionIndices.end(); ++it) {
 					unsigned int r = *it;
 					ReactionClass *rxn = reactions.at(r);
-					double oldA = rxn->get_a();
-					rxn->tryToAdd(m, reactionPositions.at(r));
-					double newA = rxn->update_a();
-					this->system->update_A_tot(rxn, oldA, newA);
+					bool defer = this->system->isDeferringMembershipPropensityUpdates() &&
+						rxn->supportsDeferredMembershipUpdate();
+					if (defer) {
+						rxn->tryToAdd(m, reactionPositions.at(r));
+						this->system->deferMembershipPropensityUpdate(rxn);
+					} else {
+						double oldA = rxn->get_a();
+						rxn->tryToAdd(m, reactionPositions.at(r));
+						double newA = rxn->update_a();
+						this->system->update_A_tot(rxn, oldA, newA);
+					}
 				}
 				return;
 			}
@@ -655,10 +662,17 @@ void MoleculeType::updateRxnMembership(Molecule * m,
 		}
 		else if (!rxn->shouldUpdateMembership(m, firedReaction, directProduct))
 			continue;
-		double oldA = rxn->get_a();
-		rxn->tryToAdd(m, reactionPositions.at(r));
-		double newA = rxn->update_a();
-		this->system->update_A_tot(rxn,oldA,newA);
+		bool defer = this->system->isDeferringMembershipPropensityUpdates() &&
+			rxn->supportsDeferredMembershipUpdate();
+		if (defer) {
+			rxn->tryToAdd(m, reactionPositions.at(r));
+			this->system->deferMembershipPropensityUpdate(rxn);
+		} else {
+			double oldA = rxn->get_a();
+			rxn->tryToAdd(m, reactionPositions.at(r));
+			double newA = rxn->update_a();
+			this->system->update_A_tot(rxn,oldA,newA);
+		}
   	}
 
 }
