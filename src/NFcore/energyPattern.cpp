@@ -89,17 +89,17 @@ bool EnergyFunction::getBindingContext(
     context.conditions = extractContextConditions(
         conditionalPatterns, molType1, bindSite1, molType2, bindSite2);
 
-    /* The existing expanded representation uses a signed int bit mask.  Do
-     * not create a compact descriptor that cannot be represented by the
-     * same mask width; the caller will use the legacy path instead. */
-    if (context.conditions.empty() || context.conditions.size() >= 31) return false;
+    /* Keep the descriptor within the 64-bit mask used by the compact
+     * evaluator.  A 64-bit mask covers the 40-site promoter benchmark while
+     * avoiding the exponential materialization used by the legacy path. */
+    if (context.conditions.empty() || context.conditions.size() >= 64) return false;
 
     for (int pi : conditionalPatterns) {
-        unsigned int conditionMask = 0;
+        std::uint64_t conditionMask = 0;
         for (unsigned int ci = 0; ci < context.conditions.size(); ci++) {
             const vector<int> &gated = context.conditions[ci].gatedPatternIndices;
             if (find(gated.begin(), gated.end(), pi) != gated.end()) {
-                conditionMask |= (1u << ci);
+                conditionMask |= (std::uint64_t(1) << ci);
             }
         }
 

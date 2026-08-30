@@ -852,10 +852,10 @@ double EnergyRxnClass::evaluateLocalFunctions(MappingSet *ms)
 	}
 
 	Molecule *weightedMolecule = ms->get(0)->getMolecule();
-	unsigned int conditionMask = 0;
+	std::uint64_t conditionMask = 0;
 	for (unsigned int ci=0; ci<conditionComponentIndices.size(); ci++) {
 		if (weightedMolecule->isBindingSiteBonded(conditionComponentIndices[ci]))
-			conditionMask |= (1u << ci);
+			conditionMask |= (std::uint64_t(1) << ci);
 	}
 
 	double deltaG = baseEnergy;

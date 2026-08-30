@@ -33,6 +33,7 @@
 #include <vector>
 #include <map>
 #include <set>
+#include <cstdint>
 #include <cmath>
 
 namespace NFcore {
@@ -126,7 +127,7 @@ namespace NFcore {
      */
     struct EnergyPatternTerm {
         double energyValue;
-        unsigned int conditionMask;
+        std::uint64_t conditionMask;
     };
 
     struct EnergyBindingContext {
