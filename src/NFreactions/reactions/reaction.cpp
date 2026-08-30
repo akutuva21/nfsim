@@ -357,7 +357,7 @@ BasicRxnClass::BasicRxnClass(string name, double baseRate, string baseRateName, 
 	reactantLists = new ReactantList *[n_reactants];
 	//Set up the reactantLists
 	for(unsigned int r=0; r<n_reactants; r++)
-		reactantLists[r]=(new ReactantList(r,transformationSet,25));
+		reactantLists[r]=(new ReactantList(r,transformationSet,25,this->system));
 	
 	this->connectivityFlag = s->getConnectivityFlag();
 	
@@ -414,8 +414,8 @@ int BasicRxnClass::checkForEquality(Molecule *m, MappingSet* ms, int rxnIndex, R
 	/*
 	Check if mapping set clashes with any of the mapping sets already in reactantList
 	*/
-	set<int> tempSet = m->getRxnListMappingSet(rxnIndex);
-	for(set<int>::iterator it= tempSet.begin();it!= tempSet.end(); ++it){
+	const set<int>& tempSet = m->getRxnListMappingSet(rxnIndex);
+	for(set<int>::const_iterator it= tempSet.begin();it!= tempSet.end(); ++it){
 		MappingSet* ms2 = reactantList->getMappingSet(*it);
 		if(MappingSet::checkForEquality(ms,ms2)){
 			return *it;
@@ -447,6 +447,9 @@ int BasicRxnClass::checkForEquality(Molecule *m, MappingSet* ms, int rxnIndex, R
  */
 bool BasicRxnClass::tryToAdd(Molecule *m, unsigned int reactantPos)
 {
+	if (system != 0 && system->isProfilingEnabled())
+		system->recordProfileMatchCandidate();
+
 	//First a bit of error checking, that you should skip unless we are debugging...
 	//	if(reactantPos<0 || reactantPos>=n_reactants || m==NULL)
 	//	{
@@ -769,6 +772,3 @@ void BasicRxnClass::pickMappingSets(double random_A_number) const
 		}
 	}
 }
-
-
-

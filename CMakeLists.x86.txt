@@ -23,6 +23,7 @@ set(SUB_DIRS
     src/NFtest/tlbr 
     src/NFtest/simple_system
     src/NFtest/scheduler
+    src/NFtest/energyPattern
     src/NFtest/tinyxml
     src/NFtest/transformations
     src/NFtest/input

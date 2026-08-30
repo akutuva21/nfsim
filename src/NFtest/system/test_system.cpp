@@ -1,6 +1,8 @@
 #include "test_system.hh"
 #include "../../NFreactions/reactions/reaction.hh"
+#include "../../NFfunction/NFfunction.hh"
 #include <iostream>
+#include <sstream>
 #include <stdexcept>
 #include <vector>
 #include <string>
@@ -152,6 +154,33 @@ void NFtest_system::run()
 
 	cout << "  System::getReactionByName tests passed!" << endl;
 
+	cout << "  Testing System::getGlobalFunctionByName..." << endl;
+
+	vector<string> emptyVec;
+	GlobalFunction* gf1 = new GlobalFunction("Func1", "1.0", emptyVec, emptyVec, emptyVec, sys);
+	GlobalFunction* gf2 = new GlobalFunction("Func2", "2.0", emptyVec, emptyVec, emptyVec, sys);
+
+	sys->addGlobalFunction(gf1);
+	sys->addGlobalFunction(gf2);
+
+	if (sys->getGlobalFunctionByName("Func1") != gf1) {
+		throw std::runtime_error("System::getGlobalFunctionByName did not return correct function for 'Func1'.");
+	}
+
+	if (sys->getGlobalFunctionByName("Func2") != gf2) {
+		throw std::runtime_error("System::getGlobalFunctionByName did not return correct function for 'Func2'.");
+	}
+
+	if (sys->getGlobalFunctionByName("Func3") != NULL) {
+		throw std::runtime_error("System::getGlobalFunctionByName did not return NULL for nonexistent function 'Func3'.");
+	}
+
+	if (sys->getGlobalFunctionByName("") != NULL) {
+		throw std::runtime_error("System::getGlobalFunctionByName did not return NULL for empty string name.");
+	}
+
+	cout << "  System::getGlobalFunctionByName tests passed!" << endl;
+
 	cout << "  Testing System::getMoleculeTypeByName..." << endl;
 
 	// Test happy path
@@ -175,6 +204,96 @@ void NFtest_system::run()
 	}
 
 	cout << "  System::getMoleculeTypeByName tests passed!" << endl;
+
+	cout << "  Testing System::getLocalFunctionByName..." << endl;
+
+	// Create dummy arguments for LocalFunction
+	vector<string> args;
+	args.push_back("arg1");
+	vector<string> varRefNames;
+	vector<string> varObservableNames;
+	vector<Observable *> varObservables;
+	vector<int> varRefScope;
+	vector<string> paramNames;
+
+	LocalFunction* lf1 = new LocalFunction(sys, "func1", "1.0", "1.0", args, varRefNames, varObservableNames, varObservables, varRefScope, paramNames);
+	LocalFunction* lf2 = new LocalFunction(sys, "func2", "2.0", "2.0", args, varRefNames, varObservableNames, varObservables, varRefScope, paramNames);
+
+	sys->addLocalFunction(lf1);
+	sys->addLocalFunction(lf2);
+
+	if (sys->getLocalFunctionByName("func1") != lf1) {
+		throw std::runtime_error("System::getLocalFunctionByName did not return correct LocalFunction for 'func1'.");
+	}
+	if (sys->getLocalFunctionByName("func2") != lf2) {
+		throw std::runtime_error("System::getLocalFunctionByName did not return correct LocalFunction for 'func2'.");
+	}
+	if (sys->getLocalFunctionByName("NonExistentFunc") != NULL) {
+		throw std::runtime_error("System::getLocalFunctionByName did not return NULL for non-existent local function.");
+	}
+	if (sys->getLocalFunctionByName("") != NULL) {
+		throw std::runtime_error("System::getLocalFunctionByName did not return NULL for empty string name.");
+	}
+
+	cout << "  System::getLocalFunctionByName tests passed!" << endl;
+
+	cout << "  Testing System::getObservableByName..." << endl;
+
+	// Create and add an observable
+	vector<TemplateMolecule*> obsTemplates;
+	TemplateMolecule* tmObs = new TemplateMolecule(mtA);
+	obsTemplates.push_back(tmObs);
+	Observable* obs1 = new MoleculesObservable("Obs1", obsTemplates);
+	sys->addObservableForOutput(obs1);
+
+	if (sys->getObservableByName("Obs1") != obs1) {
+		throw std::runtime_error("System::getObservableByName did not return correct observable for 'Obs1'.");
+	}
+
+	// Capture cout/cerr for edge cases (avoid console spam during tests)
+	std::streambuf* oldCout = std::cout.rdbuf();
+	std::streambuf* oldCerr = std::cerr.rdbuf();
+	std::ostringstream localCout;
+	std::ostringstream localCerr;
+	std::cout.rdbuf(localCout.rdbuf());
+	std::cerr.rdbuf(localCerr.rdbuf());
+
+	Observable* notFoundObs = sys->getObservableByName("NonExistentObs");
+
+	std::cout.rdbuf(oldCout);
+	std::cerr.rdbuf(oldCerr);
+
+	if (notFoundObs != NULL) {
+		throw std::runtime_error("System::getObservableByName did not return NULL for nonexistent observable.");
+	}
+
+	string expectedWarning = "!!Warning, the system could not identify the observable: NonExistentObs.\n";
+	if (localCerr.str().find(expectedWarning) == string::npos) {
+		throw std::runtime_error("System::getObservableByName did not print correct warning for nonexistent observable.");
+	}
+
+	cout << "  System::getObservableByName tests passed!" << endl;
+
+	vector<string> funcs, argNames;
+	CompositeFunction* cf1 = new CompositeFunction(sys, "Func1", "x + y", funcs, argNames, paramNames);
+	CompositeFunction* cf2 = new CompositeFunction(sys, "Func2", "a * b", funcs, argNames, paramNames);
+	sys->addCompositeFunction(cf1);
+	sys->addCompositeFunction(cf2);
+
+	if (sys->getCompositeFunctionByName("Func1") != cf1) {
+		throw std::runtime_error("System::getCompositeFunctionByName did not return correct function for 'Func1'.");
+	}
+	if (sys->getCompositeFunctionByName("Func2") != cf2) {
+		throw std::runtime_error("System::getCompositeFunctionByName did not return correct function for 'Func2'.");
+	}
+	if (sys->getCompositeFunctionByName("Func3") != NULL) {
+		throw std::runtime_error("System::getCompositeFunctionByName did not return NULL for nonexistent function 'Func3'.");
+	}
+	if (sys->getCompositeFunctionByName("") != NULL) {
+		throw std::runtime_error("System::getCompositeFunctionByName did not return NULL for empty string name.");
+	}
+
+	cout << "  System::getCompositeFunctionByName tests passed!" << endl;
 
 	// Cleanup
 	// Note: System destructor deletes MoleculeTypes added to it

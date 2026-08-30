@@ -100,6 +100,10 @@ double FuncFactory::Eval(mu::Parser *p)
 	}
 	return 0;
 }
+static double MockThrowException() {
+	throw mu::Parser::exception_type("Mock Eval exception");
+	return 0;
+}
 
 
 void FuncFactory::test()
@@ -242,6 +246,27 @@ void FuncFactory::test()
 		cout<<"fail! Exception not thrown."<<endl;
 		exit(1);
 	}
+	}
+
+	{
+	//Test 7: Check error path for Eval with mock exception
+	cout<<" 7) test Eval() error path with mock exception: ";
+	mu::Parser *p = FuncFactory::create();
+	p->DefineFun("mock_throw", MockThrowException);
+	p->SetExpr("mock_throw()");
+	bool threw = false;
+	try {
+		FuncFactory::Eval(p);
+	} catch(const std::runtime_error& e) {
+		threw = true;
+	}
+	if(threw)
+		cout<<"pass."<<endl;
+	else {
+		cout<<"fail! Exception not thrown."<<endl;
+		exit(1);
+	}
+	delete p;
 	}
 
 	//Thats all the test I can think of!
