@@ -291,7 +291,6 @@ namespace NFcore
 				@author Michael Sneddon
 			*/
 			bool hasSymBindingTransform() const { return hasSymBinding; };
-			bool hasTopologyChangingTransform() const { return topologyChanging; };
 
 			/*!
 				Returns the number of transformations that the template at reactantIndex given has.
