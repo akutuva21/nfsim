@@ -1007,12 +1007,15 @@ namespace NFcore
 
 
 			/* updates a molecules membership (assumes molecule is of type this) */
-			void updateRxnMembership(Molecule * m);
+			void updateRxnMembership(Molecule * m,
+					ReactionClass * firedReaction = 0,
+					bool directProduct = false);
 			/* Updates only molecule membership in connected reactions.
 			 * The connected reactions are inferred at the simulation start.
 			 * Arvind Rasi Subramaniam
 			 */
-			void updateConnectedRxnMembership(Molecule * m, ReactionClass * r);
+			void updateConnectedRxnMembership(Molecule * m, ReactionClass * r,
+					bool directProduct = false);
 
 			/* auto populate with default molecules */
 			void populateWithDefaultMolecules(int moleculeCount);
@@ -1280,7 +1283,8 @@ namespace NFcore
 
 			/* function that tells this molecule that it changed states or bonds
 			 * and it should update its reaction membership */
-			void updateRxnMembership(ReactionClass * r, bool useConnectivity);
+			void updateRxnMembership(ReactionClass * r, bool useConnectivity,
+					bool directProduct = false);
 			void removeFromObservables();
 			void addToObservables();
 
@@ -1481,6 +1485,14 @@ namespace NFcore
 			virtual void remove(Molecule *m, unsigned int reactantPos) = 0;
 
 			virtual double update_a() = 0;
+			/* Whether this reaction can use a conservative, endpoint-local
+			 * membership refresh after it fires. */
+			virtual bool usesIncrementalMembership() const { return false; }
+			/* Return false when the supplied product cannot affect this reaction's
+			 * membership or mapping-local rate factors. */
+			virtual bool shouldUpdateMembership(Molecule *m,
+					ReactionClass *firedReaction,
+					bool directProduct) const { return true; }
 
 
 

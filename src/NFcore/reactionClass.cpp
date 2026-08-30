@@ -511,12 +511,13 @@ string ReactionClass::fire(double random_A_number, bool track) {
 	// Add newly created molecules to the list of products
 	this->transformationSet->getListOfAddedMolecules(mappingSet,products,traversalLimit);
 
-	// Track molecules that were explicitly mapped by this firing only when the
-	// connectivity-aware membership path is enabled. Products added through
-	// bonded-neighborhood traversal must use the full updater; ordinary runs do
-	// not need this set or its per-fire allocation work.
+	// Track molecules that were explicitly mapped by this firing when either
+	// connectivity-aware membership or a compact energy reaction may use the
+	// endpoint-local membership filter. Products added through bonded-neighborhood
+	// traversal remain conservative and use the full updater.
 	bool hasIndirectProducts = false;
-	if (useConnectivity) {
+	bool trackDirectProducts = useConnectivity || this->usesIncrementalMembership();
+	if (trackDirectProducts) {
 		directProductMolecules.clear();
 		for (unsigned int msIndex=0; msIndex<n_mappingsets; msIndex++) {
 			MappingSet *ms = mappingSet[msIndex];
@@ -528,12 +529,14 @@ string ReactionClass::fire(double random_A_number, bool track) {
 				if (directMol!=0) directProductMolecules.insert(directMol);
 			}
 		}
-		for (molIter = products.begin(); molIter != products.end(); molIter++) {
-			Molecule *mol = *molIter;
-			if (!mol->isAlive()) continue;
-			if (directProductMolecules.find(mol)==directProductMolecules.end()) {
-				hasIndirectProducts = true;
-				break;
+		if (useConnectivity) {
+			for (molIter = products.begin(); molIter != products.end(); molIter++) {
+				Molecule *mol = *molIter;
+				if (!mol->isAlive()) continue;
+				if (directProductMolecules.find(mol)==directProductMolecules.end()) {
+					hasIndirectProducts = true;
+					break;
+				}
 			}
 		}
 	}
@@ -637,7 +640,9 @@ string ReactionClass::fire(double random_A_number, bool track) {
 				useConnectivity &&
 				!hasIndirectProducts &&
 				directProductMolecules.find(mol)!=directProductMolecules.end();
-			mol->updateRxnMembership(this, useConnectedUpdate);
+			bool directProduct = !trackDirectProducts ||
+				directProductMolecules.find(mol)!=directProductMolecules.end();
+			mol->updateRxnMembership(this, useConnectedUpdate, directProduct);
 		}
 	}
 	if (profileMembership)

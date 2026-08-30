@@ -567,11 +567,14 @@ void MoleculeType::prepareForSimulation()
 	}
 }
 
-void MoleculeType::updateRxnMembership(Molecule * m)
+void MoleculeType::updateRxnMembership(Molecule * m,
+		ReactionClass * firedReaction, bool directProduct)
 {
 	for( unsigned int r=0; r<reactions.size(); r++ )
 	{
 		ReactionClass * rxn=reactions.at(r);
+		if (!rxn->shouldUpdateMembership(m, firedReaction, directProduct))
+			continue;
 		double oldA = rxn->get_a();
 		rxn->tryToAdd(m, reactionPositions.at(r));
 		double newA = rxn->update_a();
@@ -580,7 +583,8 @@ void MoleculeType::updateRxnMembership(Molecule * m)
 
 }
 
-void MoleculeType::updateConnectedRxnMembership(Molecule * m, ReactionClass * firedReaction)
+void MoleculeType::updateConnectedRxnMembership(Molecule * m,
+		ReactionClass * firedReaction, bool directProduct)
 {
 	// Preserve the MoleculeType's native reaction order so the connectivity path
 	// mutates reactant containers in the same sequence as a full membership
@@ -591,6 +595,8 @@ void MoleculeType::updateConnectedRxnMembership(Molecule * m, ReactionClass * fi
 				firedReaction->getRxnId(), rxn->getRxnId())) {
 			continue;
 		}
+		if (!rxn->shouldUpdateMembership(m, firedReaction, directProduct))
+			continue;
 		int pos = reactionPositions.at(r);
 		double oldA = rxn->get_a();
 		double oldAwithTotal = rxn->update_a();
@@ -821,7 +827,6 @@ void MoleculeType::printDetails() const
 //	cout<<"        of which "<< indexOfDORrxns.size() <<" are DOR rxns. "<<endl;
 	cout<<"   -has "<< molObs.size() <<" molecules observables " <<endl;
 }
-
 
 
 

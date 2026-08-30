@@ -1,6 +1,7 @@
 #ifndef BASICREACTIONS_HH_
 #define BASICREACTIONS_HH_
 
+#include <cstdint>
 
 #include "../NFreactions.hh"
 
@@ -169,7 +170,7 @@ namespace NFcore
 	 * select a reaction-center molecule with its context-dependent rate factor,
 	 * but does not create one BasicRxnClass for every boolean context state.
 	 * The input path only selects this class for factorized binding contexts
-	 * whose conditional terms each depend on one site on the same reactant.
+	 * whose conditional terms depend only on sites of the same reactant.
 	 */
 	class EnergyRxnClass : public DORRxnClass {
 		public:
@@ -185,8 +186,13 @@ namespace NFcore
 					bool isForward,
 					System *s);
 			virtual ~EnergyRxnClass() {}
+			virtual bool usesIncrementalMembership() const { return simpleMembership; }
+			virtual bool shouldUpdateMembership(Molecule *m,
+					ReactionClass *firedReaction,
+					bool directProduct) const;
 
 		protected:
+			virtual bool tryToAdd(Molecule *m, unsigned int reactantPos);
 			virtual double evaluateLocalFunctions(MappingSet *ms);
 			virtual void pickRuleMonkeyMappingSets(double randNumber) const;
 			virtual double exactRuleMonkey_a();
@@ -198,6 +204,16 @@ namespace NFcore
 			double phi;
 			double RT;
 			bool isForward;
+			bool simpleMembership;
+			int reactionCenterComponentIndex;
+			int partnerComponentIndex;
+			MoleculeType *partnerMoleculeType;
+			std::uint64_t weightedDependencyMask;
+			bool dependencyMaskValid;
+
+			bool dependsOnEndpoint(MoleculeType *targetMoleculeType,
+					MoleculeType *changedMoleculeType,
+					int changedComponentIndex) const;
 	};
 
 	/* A reaction class with DOR calculations on two reactants.

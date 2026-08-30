@@ -165,17 +165,18 @@ LocalFunction * Molecule::getLocalFunction(int localFunctionIndex) {
 
 
 
-void Molecule::updateRxnMembership(ReactionClass * r, bool useConnectivity)
+void Molecule::updateRxnMembership(ReactionClass * r, bool useConnectivity,
+		bool directProduct)
 {
 	System *profileSystem = parentMoleculeType->getSystem();
 	if (r != 0 && profileSystem != 0 && profileSystem->isProfileReactionActive())
 		profileSystem->recordProfileMembershipUpdate();
 
 	if (useConnectivity) {
-		parentMoleculeType->updateConnectedRxnMembership(this, r);
+		parentMoleculeType->updateConnectedRxnMembership(this, r, directProduct);
 	}
 	else {
-		parentMoleculeType->updateRxnMembership(this);
+		parentMoleculeType->updateRxnMembership(this, r, directProduct);
 	}
 }
 

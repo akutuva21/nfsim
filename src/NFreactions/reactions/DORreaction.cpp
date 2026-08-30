@@ -816,7 +816,13 @@ EnergyRxnClass::EnergyRxnClass(
 	baseEnergy(context.baseEnergy),
 	phi(phi),
 	RT(RT),
-	isForward(isForward)
+	isForward(isForward),
+	simpleMembership(false),
+	reactionCenterComponentIndex(-1),
+	partnerComponentIndex(-1),
+	partnerMoleculeType(0),
+	weightedDependencyMask(0),
+	dependencyMaskValid(true)
 {
 	/* The compact input path currently supplies contexts on the first
 	 * reaction-center molecule.  Its mapping is the first mapping in both the
@@ -842,6 +848,195 @@ EnergyRxnClass::EnergyRxnClass(
 		conditionComponentIndices.push_back(
 			weightedType->getCompIndexFromName(condition.compName));
 	}
+
+	/* Compact input creates only a reaction-center constraint on the weighted
+	 * molecule.  Cache its two binding endpoints so membership refreshes can
+	 * update the DOR tree directly instead of recursively comparing the
+	 * template on every energy reaction.  Leave unusual/symmetric templates on
+	 * the general DOR path. */
+	if (transformationSet->getNumOfTransformations(0) > 0) {
+		Transformation *center = transformationSet->getTransformation(0, 0);
+		reactionCenterComponentIndex = center->getComponentIndex();
+		if (isForward && n_reactants == 2 &&
+				transformationSet->getNumOfTransformations(1) == 1 &&
+				center->getType() == TransformationFactory::BINDING) {
+			Transformation *partner = transformationSet->getTransformation(1, 0);
+			partnerComponentIndex = partner->getComponentIndex();
+			partnerMoleculeType = reactantTemplates[1]->getMoleculeType();
+			simpleMembership =
+				partner->getType() == TransformationFactory::EMPTY &&
+				reactantTemplates[0]->getN_symComps() == 0 &&
+				reactantTemplates[0]->getN_connectedTo() == 0 &&
+				reactantTemplates[1]->getN_symComps() == 0 &&
+				reactantTemplates[1]->getN_connectedTo() == 0;
+		} else if (!isForward && n_reactants == 1 &&
+				transformationSet->getNumOfTransformations(0) == 2 &&
+				center->getType() == TransformationFactory::UNBINDING) {
+			Transformation *partner = transformationSet->getTransformation(0, 1);
+			partnerComponentIndex = partner->getComponentIndex();
+			TemplateMolecule *partnerTemplate = partner->getTemplateMolecule();
+			partnerMoleculeType = partnerTemplate->getMoleculeType();
+			simpleMembership =
+				partner->getType() == TransformationFactory::EMPTY &&
+				reactantTemplates[0]->getN_symComps() == 0 &&
+				reactantTemplates[0]->getN_connectedTo() == 0 &&
+				partnerTemplate->getN_symComps() == 0 &&
+				partnerTemplate->getN_connectedTo() == 0;
+		}
+	}
+
+	if (simpleMembership) {
+		if (reactionCenterComponentIndex < 0 ||
+				reactionCenterComponentIndex >= 64) {
+			dependencyMaskValid = false;
+		} else {
+			weightedDependencyMask |=
+					(std::uint64_t(1) << reactionCenterComponentIndex);
+		}
+		for (unsigned int ci=0; ci<conditionComponentIndices.size(); ci++) {
+			int componentIndex = conditionComponentIndices[ci];
+			if (componentIndex < 0 || componentIndex >= 64) {
+				dependencyMaskValid = false;
+			} else {
+				weightedDependencyMask |=
+						(std::uint64_t(1) << componentIndex);
+			}
+		}
+	}
+}
+
+bool EnergyRxnClass::tryToAdd(Molecule *m, unsigned int reactantPos)
+{
+	if (!simpleMembership)
+		return DORRxnClass::tryToAdd(m, reactantPos);
+
+	ReactantList *partnerList = 0;
+	if (isForward && reactantPos == 1) {
+		partnerList = reactantLists[reactantPos];
+		if (partnerList->getHasClonedMappings())
+			return DORRxnClass::tryToAdd(m, reactantPos);
+	}
+
+	if (system != 0 && system->isProfilingEnabled())
+		system->recordProfileMatchCandidate();
+
+	/* The unweighted ligand side of a compact forward rule has exactly one
+	 * empty-site constraint.  Keep it in the ordinary ReactantList, but avoid
+	 * recursively comparing its one-component template on every refresh. */
+	if (isForward && reactantPos == 1) {
+		ReactantList *rl = partnerList;
+
+		int rxnIndex = m->getMoleculeType()->getRxnIndex(this, reactantPos);
+		bool matches = m->isBindingSiteOpen(partnerComponentIndex);
+		if (!matches) {
+			while (m->getRxnListMappingId(rxnIndex) >= 0) {
+				int mappingId = m->getRxnListMappingId(rxnIndex);
+				m->deleteRxnListMappingId(rxnIndex, mappingId);
+				rl->removeMappingSet(mappingId);
+			}
+		} else if (m->getRxnListMappingId(rxnIndex) < 0) {
+			MappingSet *mappingSet = rl->pushNextAvailableMappingSet();
+			mappingSet->set(0, m);
+			m->setRxnListMappingId(rxnIndex, mappingSet->getId());
+		}
+		return true;
+	}
+
+	if (reactantPos != (unsigned int)DORreactantIndex)
+		return DORRxnClass::tryToAdd(m, reactantPos);
+
+	int rxnIndex = m->getMoleculeType()->getRxnIndex(this, reactantPos);
+	Molecule *partnerMolecule = 0;
+	bool matches = false;
+	if (isForward) {
+		matches = m->isBindingSiteOpen(reactionCenterComponentIndex);
+	} else if (m->isBindingSiteBonded(reactionCenterComponentIndex)) {
+		partnerMolecule = m->getBondedMolecule(reactionCenterComponentIndex);
+		matches = partnerMolecule != 0 &&
+				partnerMolecule->getMoleculeType() == partnerMoleculeType &&
+				m->getBondedMoleculeBindingSiteIndex(reactionCenterComponentIndex) ==
+					partnerComponentIndex;
+	}
+
+	if (!matches) {
+		while (m->getRxnListMappingId(rxnIndex) >= 0) {
+			int mappingId = m->getRxnListMappingId(rxnIndex);
+			m->deleteRxnListMappingId(rxnIndex, mappingId);
+			reactantTree->removeMappingSet(mappingId);
+		}
+		return true;
+	}
+
+	const set<int>& existingMappings = m->getRxnListMappingSet(rxnIndex);
+	if (!existingMappings.empty()) {
+		for (set<int>::const_iterator it = existingMappings.begin();
+				it != existingMappings.end(); ++it) {
+			MappingSet *mappingSet = reactantTree->getMappingSet(*it);
+			mappingSet->set(0, m);
+			if (!isForward) mappingSet->set(1, partnerMolecule);
+			reactantTree->updateValue(
+					*it, evaluateLocalFunctions(mappingSet));
+		}
+		return true;
+	}
+
+	MappingSet *mappingSet = reactantTree->pushNextAvailableMappingSet();
+	mappingSet->set(0, m);
+	if (!isForward) mappingSet->set(1, partnerMolecule);
+	reactantTree->confirmPush(
+				mappingSet->getId(), evaluateLocalFunctions(mappingSet));
+	m->setRxnListMappingId(rxnIndex, mappingSet->getId());
+	return true;
+}
+
+bool EnergyRxnClass::dependsOnEndpoint(
+		MoleculeType *targetMoleculeType,
+		MoleculeType *changedMoleculeType,
+		int changedComponentIndex) const
+{
+	MoleculeType *weightedType = reactantTemplates[0]->getMoleculeType();
+	if (targetMoleculeType == weightedType &&
+			changedMoleculeType == weightedType) {
+		if (dependencyMaskValid && changedComponentIndex >= 0 &&
+				changedComponentIndex < 64) {
+			return (weightedDependencyMask &
+					(std::uint64_t(1) << changedComponentIndex)) != 0;
+		}
+		if (changedComponentIndex == reactionCenterComponentIndex)
+			return true;
+		for (unsigned int ci=0; ci<conditionComponentIndices.size(); ci++) {
+			if (changedComponentIndex == conditionComponentIndices[ci])
+				return true;
+		}
+	}
+
+	return targetMoleculeType == partnerMoleculeType &&
+			changedMoleculeType == partnerMoleculeType &&
+			changedComponentIndex == partnerComponentIndex;
+}
+
+bool EnergyRxnClass::shouldUpdateMembership(
+		Molecule *m, ReactionClass *firedReaction, bool directProduct) const
+{
+	if (!simpleMembership || !directProduct || firedReaction == 0 ||
+			!firedReaction->usesIncrementalMembership())
+		return true;
+
+	const EnergyRxnClass *firedEnergy =
+		dynamic_cast<const EnergyRxnClass *>(firedReaction);
+	if (firedEnergy == 0 || !firedEnergy->simpleMembership)
+		return true;
+
+	MoleculeType *targetMoleculeType = m->getMoleculeType();
+	if (dependsOnEndpoint(targetMoleculeType,
+			firedEnergy->reactantTemplates[0]->getMoleculeType(),
+			firedEnergy->reactionCenterComponentIndex))
+		return true;
+	if (dependsOnEndpoint(targetMoleculeType,
+			firedEnergy->partnerMoleculeType,
+			firedEnergy->partnerComponentIndex))
+		return true;
+	return false;
 }
 
 double EnergyRxnClass::evaluateLocalFunctions(MappingSet *ms)
