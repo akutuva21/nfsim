@@ -19,6 +19,12 @@ double tfun_interpolate_value(
 	const std::string &method,
 	double x);
 
+// Normalize BioNetGen's zero-argument time aliases to the parser variable
+// bound to System::current_time.  Generic functions do not carry an explicit
+// XML Time reference, so this keeps time() usable in their expressions.
+std::string normalizeTimeExpression(const std::string &expression);
+bool containsTimeExpression(const std::string &expression);
+
 namespace NFcore {
 
 	class System;

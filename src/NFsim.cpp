@@ -49,6 +49,8 @@
  *
  *  -sim [Duration in sec] = specifies the length of time to simulate the system
  *
+ *  -i [Absolute time in sec] = sets the initial simulation time.  The default is 0.
+ *
  *  -oSteps [num of steps] = specifies the number of times to output during the simulation
  *
  *  -oTimes [t1,t2,...] = specifies explicit output times (in seconds from simulation start)
@@ -65,7 +67,9 @@
  *
  *  -notf = disables On the Fly Observables, see manual
  *
- *  -cb = turn on complex bookkeeping, see manual
+ *  -cb = turn on complex bookkeeping and distinct-complex molecularity checks.
+ *
+ *  -bscb = explicit legacy spelling of -cb's same-complex binding guard.
  * 
  *  -connect - infer network connectivity before starting simulation. (default: no).
  *             @author Arvind Rasi Subramaniam
@@ -530,6 +534,7 @@ System *initSystemFromFlags(const map<string,string>& argMap, bool verbose)
 			}
 
 			//Actually create the system
+			// Both CLI spellings select the same complex-aware reaction policy.
 			bool cb = false;
 			if(turnOnComplexBookkeeping || blockSameComplexBinding) cb=true;
 			int suggestedTraveralLimit = ReactionClass::NO_LIMIT;
@@ -541,6 +546,14 @@ System *initSystemFromFlags(const map<string,string>& argMap, bool verbose)
 
 			if(s!=NULL)
 			{
+				if (argMap.find("i") != argMap.end()) {
+					double initialTime = NFinput::parseAsDouble(argMap, "i", 0.0);
+					s->setCurrentTime(initialTime);
+					if (verbose) {
+						cout << "\tInitial simulation time (-i) set to: " << initialTime << endl << endl;
+					}
+				}
+
 				if(verbose) {cout<<endl;}
 
 				//If requested, be sure to output the values of global functions
@@ -831,7 +844,7 @@ bool runFromArgs(System *s, const map<string,string>& argMap, bool verbose)
 		cout<<"\n\nparse appears to be successful.  Here, check your system:\n";
 		s->printAllMoleculeTypes();
 		s->printAllReactions();
-		s->printAllObservableCounts(0);
+		s->printAllObservableCounts(s->getCurrentTime());
 		cout<<endl;
 		s->printAllFunctions();
 		cout<<"-------------------------\n";
@@ -941,6 +954,11 @@ void printHelp(const string& version)
 	cout<<"                    when running an xml file.  Fractional seconds are valid."<<endl;
 	cout<<"                    for instance, you could use: -sim 525.50"<<endl;
 	cout<<""<<endl;
+	cout<<"  -i [time]         sets the absolute simulation start time (default: 0)."<<endl;
+	cout<<"                    This value is used by time-dependent functions and the"<<endl;
+	cout<<"                    output time column.  Output times remain relative to"<<endl;
+	cout<<"                    the start of the requested simulation."<<endl;
+	cout<<""<<endl;
 	cout<<"  -eq [time]        used to specify the length (in seconds) to equilibrate the"<<endl;
 	cout<<"                    system before running the simulation."<<endl;
 	cout<<""<<endl;
@@ -966,6 +984,12 @@ void printHelp(const string& version)
 	cout<<"                    right before you output especially if you don't output"<<endl;
 	cout<<"                    too often.  Use this flag to switch to recomputing at "<<endl;
 	cout<<"                    every output step instead of using On The Fly output."<<endl;
+	cout<<""<<endl;
+	cout<<"  -cb               enables complex bookkeeping and distinct-complex"<<endl;
+	cout<<"                    molecularity checks for separate reactant patterns."<<endl;
+	cout<<""<<endl;
+	cout<<"  -bscb             explicit legacy spelling of -cb's same-complex"<<endl;
+	cout<<"                    binding guard."<<endl;
 	cout<<""<<endl;
 	cout<<"  -ogf              output the value of all global functions."<<endl;
 	cout<<""<<endl;
@@ -1023,12 +1047,3 @@ void printHelp(const string& version)
 	cout<<""<<endl;
 	cout<<""<<endl;
 }
-
-
-
-
-
-
-
-
-

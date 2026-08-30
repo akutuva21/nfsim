@@ -267,6 +267,12 @@ void System::setUsingComplex(bool val)
 	}
 }
 
+void System::setCurrentTime(double time)
+{
+	current_time = time;
+	invalidateStepToCache();
+}
+
 void System::setOutputToBinary()
 {
 	this->useBinaryOutput = true;
@@ -1240,7 +1246,7 @@ void System::equilibrate(double duration)
 {
 	invalidateStepToCache();
 	double startTime = current_time;
-	stepTo(duration);
+	stepTo(startTime + duration);
 	current_time = startTime;
 	invalidateStepToCache();
 }
@@ -1510,6 +1516,12 @@ void System::outputAllObservableCounts(double time)
 
 void System::outputAllObservableCounts(double cSampleTime, int eventCounter)
 {
+	// A sampled output may be requested between stochastic events.  Evaluate
+	// generic time-dependent functions at the requested sample time while
+	// preserving the simulator's actual event clock for the caller.
+	double simulationTime = current_time;
+	current_time = cSampleTime;
+
 	if(!onTheFlyObservables)
 	{
 		for(obsIter = obsToOutput.begin(); obsIter != obsToOutput.end(); obsIter++)
@@ -1628,7 +1640,7 @@ void System::outputAllObservableCounts(double cSampleTime, int eventCounter)
 		}
 	}
 
-
+	current_time = simulationTime;
 
 }
 
@@ -1643,7 +1655,10 @@ void System::printAllObservableCounts(double cSampleTime)
 }
 
 void System::printAllObservableCounts(double cSampleTime,int eventCounter)
-{	
+{
+	double simulationTime = current_time;
+	current_time = cSampleTime;
+
 	cout<<"Time";
 	for(obsIter = obsToOutput.begin(); obsIter != obsToOutput.end(); obsIter++)
 		cout<<"\t"<<(*obsIter)->getName();
@@ -1677,6 +1692,7 @@ void System::printAllObservableCounts(double cSampleTime,int eventCounter)
 		cout<<"\t"<<eventCounter;
 	}
 	cout<<endl;
+	current_time = simulationTime;
 }
 
 

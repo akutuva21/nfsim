@@ -33,34 +33,16 @@ Observable::~Observable()
 
 void Observable::add()
 {
-	//First, we add to our observable count
 	count++;
-
-	//Next, we update our dependent reactions, if there are any
-	for(int r=0; r<n_dependentRxns; r++) {
-		double old_a = dependentRxns[r]->get_a();
-		double new_a = dependentRxns[r]->update_a();
-		templateMolecules[0]->getMoleculeType()->getSystem()->update_A_tot(dependentRxns[r],old_a,new_a);
-	}
+	updateDependentReactions();
 }
 
 /* add multiple new matches to an observable (rather than call 'add' a bunch of times --justin */
 /* useful for counters! */
 void Observable::add( int n_matches )
 {
-	//debug
-	//cout << "Observable::add( " << n_matches << " )" << endl;
-
-	// First, we add to our observable count
 	count += n_matches;
-
-	// Next, we update our dependent reactions, if there are any
-	for (int r=0; r<n_dependentRxns; r++)
-	{
-		double old_a = dependentRxns[r]->get_a();
-		double new_a = dependentRxns[r]->update_a();
-		templateMolecules[0]->getMoleculeType()->getSystem()->update_A_tot( dependentRxns[r], old_a, new_a);
-	}
+	updateDependentReactions();
 }
 
 
@@ -83,22 +65,13 @@ void Observable::subtract()
 	}
 
 	count--;
-
-	//Next, we update our dependent reactions, if there are any
-	for(int r=0; r<n_dependentRxns; r++) {
-		double old_a = dependentRxns[r]->get_a();
-		double new_a = dependentRxns[r]->update_a();
-		templateMolecules[0]->getMoleculeType()->getSystem()->update_A_tot(dependentRxns[r],old_a,new_a);
-	}
+	updateDependentReactions();
 }
 
 /* Remove multiple matches fron an observable (rather than call 'subtract' a bunch of times --justin */
 /* Necessary to make counters fast! */
 void Observable::subtract( int n_matches )
 {
-	//debug
-	//cout << "Observable::subtract( " << n_matches << " )" << endl;
-
 	if (count - n_matches < 0)
 	{
 		cerr << "Error in observable count!! Removing " << n_matches << " matches will result in a negative match count!"
@@ -106,16 +79,8 @@ void Observable::subtract( int n_matches )
 		exit(1);
 	}
 
-	// First, we subtract from our observable count
 	count -= n_matches;
-
-	// Next, we update our dependent reactions, if there are any
-	for (int r=0; r<n_dependentRxns; r++)
-	{
-		double old_a = dependentRxns[r]->get_a();
-		double new_a = dependentRxns[r]->update_a();
-		templateMolecules[0]->getMoleculeType()->getSystem()->update_A_tot( dependentRxns[r], old_a, new_a);
-	}
+	updateDependentReactions();
 }
 
 void Observable::straightSubtract()
@@ -126,6 +91,17 @@ void Observable::straightSubtract()
 void Observable::straightSubtract(int n_matches)
 {
 	count -= n_matches;
+}
+
+void Observable::updateDependentReactions()
+{
+	for (int r=0; r<n_dependentRxns; r++)
+	{
+		double old_a = dependentRxns[r]->get_a();
+		double new_a = dependentRxns[r]->update_a();
+		templateMolecules[0]->getMoleculeType()->getSystem()->update_A_tot(
+				dependentRxns[r], old_a, new_a);
+	}
 }
 
 
@@ -529,7 +505,3 @@ int SpeciesObservable::isObservable(Complex *c) const
 	}
 	return matches;
 }
-
-
-
-

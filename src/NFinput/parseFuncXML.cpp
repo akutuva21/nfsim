@@ -809,6 +809,19 @@ bool NFinput::initFunctions(
 				system->setHasTimeDependentFunctions(true);
 			}
 
+			// Generic functions may use BioNetGen's time() / t() aliases
+			// without an explicit XML Reference entry.
+			if (containsTimeExpression(funcExpression)) {
+				GlobalFunction *gf = system->getGlobalFunctionByName(funcName);
+				if (gf) {
+					gf->addSystemPointer(system);
+				} else {
+					CompositeFunction *cf = system->getCompositeFunctionByName(funcName);
+					if (cf) cf->addSystemPointer(system);
+				}
+				system->setHasTimeDependentFunctions(true);
+			}
+
 			// AS-2021
 			// check to see if it has a type and if yes, if it's of type TFUN
 			if (!processTfunFunction(pFunction, funcName, funcExpression, refNamesSorted, refTypesSorted, system, parameter)) {

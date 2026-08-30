@@ -189,7 +189,12 @@ void LocalFunction::prepareForSimulation(System *s) {
 
 	//Finally, we can create the local function
 	try {
+		const string expression = normalizeTimeExpression(this->parsedExpression);
 		p=FuncFactory::create();
+		if (expression != this->parsedExpression) {
+			p->DefineVar("time", s->getCurrentTimePointer());
+			s->setHasTimeDependentFunctions(true);
+		}
 
 		//Give the local observable to the function so it can be used
 		for(unsigned int i=0; i<n_varRefs; i++) {
@@ -206,7 +211,7 @@ void LocalFunction::prepareForSimulation(System *s) {
 		}
 
 		//Finally, we can set the expression
-		p->SetExpr(this->parsedExpression);
+		p->SetExpr(expression);
 
 	//Catch anything that goes astray
 	} catch (mu::Parser::exception_type &e) {
