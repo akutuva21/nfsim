@@ -1027,6 +1027,20 @@ bool EnergyRxnClass::tryToAdd(Molecule *m, unsigned int reactantPos)
 
 	const MappingIdSet& existingMappings = m->getRxnListMappingSet(rxnIndex);
 	if (!existingMappings.empty()) {
+		/* A simple compact energy rule has at most one mapping for its weighted
+		 * molecule.  Keep the common refresh on the existing tree node and avoid
+		 * the iterator/setup work used by the general multi-mapping path. */
+		if (existingMappings.size() == 1) {
+			int mappingId = *existingMappings.begin();
+			MappingSet *mappingSet = reactantTree->getMappingSet(mappingId);
+			if (mappingSet != 0 && mappingSet->get(0) != 0 &&
+					mappingSet->get(0)->getMolecule() == m) {
+				if (!isForward) mappingSet->set(1, partnerMolecule);
+				reactantTree->updateValue(
+						mappingId, evaluateLocalFunctions(mappingSet));
+				return true;
+			}
+		}
 		for (MappingIdSet::const_iterator it = existingMappings.begin();
 				it != existingMappings.end(); ++it) {
 			MappingSet *mappingSet = reactantTree->getMappingSet(*it);
