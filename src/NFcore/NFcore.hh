@@ -105,7 +105,9 @@ namespace NFcore
 	 * transformation itself remain per-reaction scratch objects. */
 	class CompactPartnerPool {
 		public:
-			CompactPartnerPool() : molecules(), positions() {}
+			CompactPartnerPool() : molecules(), positions(),
+					lastRefreshedMolecule(0), lastRefreshMatches(false),
+					hasLastRefresh(false) {}
 
 			int size() const { return static_cast<int>(molecules.size()); }
 			Molecule *getByIndex(unsigned int index) const {
@@ -115,12 +117,39 @@ namespace NFcore
 				return positions.find(molecule) != positions.end();
 			}
 			bool add(Molecule *molecule) {
-				if (molecule == 0 || contains(molecule)) return false;
-				positions[molecule] = static_cast<unsigned int>(molecules.size());
+				invalidateRefreshCache();
+				return addRaw(molecule);
+			}
+			bool remove(Molecule *molecule) {
+				invalidateRefreshCache();
+				return removeRaw(molecule);
+			}
+			bool refresh(Molecule *molecule, bool matches) {
+				if (molecule == 0) return false;
+				if (hasLastRefresh && lastRefreshedMolecule == molecule &&
+						lastRefreshMatches == matches)
+					return false;
+				lastRefreshedMolecule = molecule;
+				lastRefreshMatches = matches;
+				hasLastRefresh = true;
+				return matches ? addRaw(molecule) : removeRaw(molecule);
+			}
+
+		private:
+			void invalidateRefreshCache() {
+				hasLastRefresh = false;
+				lastRefreshedMolecule = 0;
+			}
+			bool addRaw(Molecule *molecule) {
+				if (molecule == 0) return false;
+				std::pair<std::unordered_map<Molecule *, unsigned int>::iterator, bool>
+						inserted = positions.emplace(
+							molecule, static_cast<unsigned int>(molecules.size()));
+				if (!inserted.second) return false;
 				molecules.push_back(molecule);
 				return true;
 			}
-			bool remove(Molecule *molecule) {
+			bool removeRaw(Molecule *molecule) {
 				std::unordered_map<Molecule *, unsigned int>::iterator it =
 					positions.find(molecule);
 				if (it == positions.end()) return false;
@@ -135,10 +164,11 @@ namespace NFcore
 				positions.erase(it);
 				return true;
 			}
-
-		private:
 			std::vector<Molecule *> molecules;
 			std::unordered_map<Molecule *, unsigned int> positions;
+			Molecule *lastRefreshedMolecule;
+			bool lastRefreshMatches;
+			bool hasLastRefresh;
 	};
 
 	/* Endpoint state changes exposed by compact EnergyPattern reactions.  The
