@@ -13,10 +13,10 @@ static int safe_stoi(const std::string& str, int default_val = 0) {
 	try {
 		return std::stoi(str);
 	} catch (const std::invalid_argument& e) {
-		std::cerr << "Warning: invalid argument to stoi for: " << str << ", defaulting to " << default_val << std::endl;
+		std::cerr << "Warning: invalid argument to stoi for: " << str << ", defaulting to " << default_val << '\n';
 		return default_val;
 	} catch (const std::out_of_range& e) {
-		std::cerr << "Warning: out of range value for stoi for: " << str << ", defaulting to " << default_val << std::endl;
+		std::cerr << "Warning: out of range value for stoi for: " << str << ", defaulting to " << default_val << '\n';
 		return default_val;
 	}
 }
@@ -25,10 +25,10 @@ static double safe_stod(const std::string& str, double default_val = 0.0) {
 	try {
 		return std::stod(str);
 	} catch (const std::invalid_argument& e) {
-		std::cerr << "Warning: invalid argument to stod for: " << str << ", defaulting to " << default_val << std::endl;
+		std::cerr << "Warning: invalid argument to stod for: " << str << ", defaulting to " << default_val << '\n';
 		return default_val;
 	} catch (const std::out_of_range& e) {
-		std::cerr << "Warning: out of range value for stod for: " << str << ", defaulting to " << default_val << std::endl;
+		std::cerr << "Warning: out of range value for stod for: " << str << ", defaulting to " << default_val << '\n';
 		return default_val;
 	}
 }
@@ -338,7 +338,10 @@ void job2str(job& j, char* p, size_t max_len) {
 	for (size_t i = 0; i < j.parameters.size(); ++i) {
 		oss << j.parameters[i] << "," << j.values[i] << ",";
 	}
-	snprintf(p, max_len, "%s", oss.str().c_str());
+		int n_written = snprintf(p, max_len, "%s", oss.str().c_str());
+		if (n_written < 0 || (size_t)n_written >= max_len) {
+			throw std::runtime_error("Buffer truncation in job2str");
+		}
 }
 
 void str2job(char* str, job& jnow) {
@@ -575,7 +578,7 @@ void DynamicParallel (map<string, string> argMap,int rank,int size) {
 			for (int i = 0; i < slave_filenames.size(); ++i) {
 				int n_written = snprintf(str, MSG_DATA_SIZE, "%zu,%s", slave_buffers[i].length()+1, slave_filenames[i].c_str());
 				if (n_written < 0 || n_written >= MSG_DATA_SIZE) {
-					std::cerr << "CRITICAL SECURITY ERROR: snprintf truncated or failed!" << std::endl;
+					std::cerr << "CRITICAL SECURITY ERROR: snprintf truncated or failed!" << '\n';
 #ifdef NF_MPI
 					MPI_Abort(MPI_COMM_WORLD, 1);
 #else
@@ -667,7 +670,7 @@ string BroadcastString(int Rank,int From,string InBuffer) {
 
 	// 🛡️ Sentinel check: validate MPI dynamic allocation bounds
 	if (Length < 0 || Length > 500 * 1024 * 1024) {
-		std::cerr << "CRITICAL SECURITY ERROR: MPI_Bcast Length (" << Length << ") is out of bounds or negative!" << std::endl;
+		std::cerr << "CRITICAL SECURITY ERROR: MPI_Bcast Length (" << Length << ") is out of bounds or negative!" << '\n';
 		MPI_Abort(MPI_COMM_WORLD, 1);
 	}
 
@@ -725,7 +728,12 @@ string ConvergeAllData(int Rank,int Size,string Buffer) {
 				MPI_Recv(&MessageSize,1, MPI_INT, OtherNode, TAG_DATA, MPI_COMM_WORLD, &status);
 				// 🛡️ Sentinel check: validate MPI dynamic allocation bounds and prevent integer overflow
 				if (MessageSize < 0 || MessageSize > 500 * 1024 * 1024 || MessageSize > 2147483647 - CurrentMessageSize) {
-					std::cerr << "CRITICAL SECURITY ERROR: MPI_Recv MessageSize (" << MessageSize << ") is out of bounds or causes overflow!" << std::endl;
+					std::cerr << "CRITICAL SECURITY ERROR: MPI_Recv MessageSize (" << MessageSize << ") is out of bounds or causes overflow!" << '\n';
+					MPI_Abort(MPI_COMM_WORLD, 1);
+				}
+				// 🛡️ Sentinel check: validate total message size to prevent memory exhaustion across multiple recvs
+				if (CurrentMessageSize > 1024 * 1024 * 1024 - MessageSize) {
+					std::cerr << "CRITICAL SECURITY ERROR: Total MessageSize exceeds 1GB limit!" << std::endl;
 					MPI_Abort(MPI_COMM_WORLD, 1);
 				}
 				if (MessageSize > 0) {
@@ -805,32 +813,41 @@ void PrintFileBuffer(map<string, map<int, string> > FileMap,vector<job*> JobQueu
 	//Now going through each distinct filename and printing output in a variety of formats
 	ofstream Output;
 	for (map<string, map<int, string> >::iterator it = FileMap.begin(); it != FileMap.end(); ++it) {
-		string Filename = getPath(JobQueue[it->second.begin()->first]->filename)+it->first;
-		//if (Filename.length() <= 4 || Filename.substr(Filename.length()-4).compare(".gdat") != 0) {
-			//Appending the output buffer from each job 
-			Output.open(Filename.data());
-			for (map<int, string>::iterator itt = it->second.begin(); itt != it->second.end(); ++itt) {
-				//Printing job data
-				job* CurrentJob = JobQueue[itt->first];
-				Output << "**JOB SPECIFICATIONS**" << endl; 
-				Output << "JOBOVERVIEW(MODEL:" << CurrentJob->filename;
-				for (int i=0; i < int(CurrentJob->argument.size()); i++) {
-					Output << "," << CurrentJob->argument[i] << ":" << CurrentJob->argval[i];
-				}
-				Output << ")" << endl;
-				if (CurrentJob->parameters.size() > 0) {
-					Output << "PARAMETER;VALUE" << endl;
-					for (int i=0; i < int(CurrentJob->parameters.size()); ++i) {
-						Output << CurrentJob->parameters[i] << ";" << CurrentJob->values[i] << endl; 
-					}
-				}
-				Output << "**JOB OUTPUT**" << endl;
-				//Printing file data
-				Output << itt->second << endl << endl;
+		string out_file = it->first;
+
+		// 🛡️ Sentinel check: validate output filename to prevent path traversal
+		if (out_file.find("..") != string::npos ||
+		    (out_file.length() > 0 && out_file[0] == '/') ||
+		    (out_file.length() > 0 && out_file[0] == '\\') ||
+		    out_file.find(":") != string::npos) {
+			std::cerr << "CRITICAL SECURITY WARNING: Path traversal detected in output filename '" << out_file << "'. Skipping file write." << std::endl;
+			continue;
+		}
+
+		string Filename = getPath(JobQueue[it->second.begin()->first]->filename)+out_file;
+		//Appending the output buffer from each job
+		Output.open(Filename.data());
+		for (map<int, string>::iterator itt = it->second.begin(); itt != it->second.end(); ++itt) {
+			//Printing job data
+			job* CurrentJob = JobQueue[itt->first];
+			Output << "**JOB SPECIFICATIONS**" << endl;
+			Output << "JOBOVERVIEW(MODEL:" << CurrentJob->filename;
+			for (int i=0; i < int(CurrentJob->argument.size()); i++) {
+				Output << "," << CurrentJob->argument[i] << ":" << CurrentJob->argval[i];
 			}
-			Output.close();
-			Output.clear();
-		//}
+			Output << ")" << endl;
+			if (CurrentJob->parameters.size() > 0) {
+				Output << "PARAMETER;VALUE" << endl;
+				for (int i=0; i < int(CurrentJob->parameters.size()); ++i) {
+					Output << CurrentJob->parameters[i] << ";" << CurrentJob->values[i] << endl;
+				}
+			}
+			Output << "**JOB OUTPUT**" << endl;
+			//Printing file data
+			Output << itt->second << endl << endl;
+		}
+		Output.close();
+		Output.clear();
 	}
 }
 

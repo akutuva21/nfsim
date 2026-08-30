@@ -265,13 +265,7 @@ namespace mu
     if (m_pTokenReader->GetArgSep()==std::use_facet<numpunct<char_type> >(loc).decimal_point())
       Error(ecLOCALE);
 
-    // <ibg> 20060222: Bugfix for Borland-Kylix:
-    // adding a space to the expression will keep Borlands KYLIX from going wild
-    // when calling tellg on a stringstream created from the expression after
-    // reading a value at the end of an expression. (mu::Parser::IsVal function)
-    // (tellg returns -1 otherwise causing the parser to ignore the value)
-    string_type sBuf(a_sExpr + _T(" ") );
-    m_pTokenReader->SetFormula(sBuf);
+    m_pTokenReader->SetFormula(a_sExpr);
     ReInit();
   }
 

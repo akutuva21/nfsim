@@ -204,9 +204,6 @@ void NFtest_tlbr::runSystem(int n_L, int n_R, double cTot, double beta, double k
 
 
 
-	//add the observables if we so choose
-	//if(outputObservables) addObservables(s,L,R);
-
 	//Prepare to run
 
 	s->printAllMoleculeTypes();
