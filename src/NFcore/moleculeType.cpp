@@ -156,6 +156,10 @@ void MoleculeType::init(
 
 	mList = new MoleculeList(this,2,system->getGlobalMoleculeLimit());
 	n_eqComp = 0;
+	eqCompOriginalName = nullptr;
+	eqCompSizes = nullptr;
+	eqCompName = nullptr;
+	eqCompIndex = nullptr;
 	indexToEqClass = nullptr;
 }
 

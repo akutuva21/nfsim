@@ -138,7 +138,10 @@ namespace NFcore
 				Returns the combined rate factor sum of this tree, which is needed by
 				the DOR reactionclass in order to properly update its propensity
 			*/
-			double getRateFactorSum() const { return leftRateFactorSum[0]; };
+			double getRateFactorSum() const {
+				return singleMappingFastPath
+					? singleMappingRateFactor : leftRateFactorSum[0];
+			};
 
 			double getRateFactor(int mappingSetArrayIndex) const;
 
@@ -217,6 +220,17 @@ namespace NFcore
 
 			//The index of the first molecule in the tree
 			unsigned int firstMappingTreeIndex;
+
+			/* A compact EnergyPattern tree normally contains one weighted molecule.
+			 * Keep its rate in a scalar so updates and selection do not walk the
+			 * otherwise-required binary tree.  The arrays remain authoritative after
+			 * a second mapping is added. */
+			bool singleMappingFastPath;
+			unsigned int singleMappingId;
+			double singleMappingRateFactor;
+
+			void materializeSingleMappingTree();
+			void refreshSingleMappingFastPath();
 	};
 }
 
