@@ -179,10 +179,9 @@ bool createExpandedBindingReactions(
     string mt1Name = molType1->getName();
     string mt2Name = molType2->getName();
 
-    /* A factorized context can be evaluated from the selected reaction
+    /* A mapping-local context can be evaluated from the selected reaction
      * mapping. Keep the legacy materialized expansion for contexts that span
-     * both reactants or whose energy pattern needs multiple conditions
-     * simultaneously; those cases need a more general representation. */
+     * both reactants or cannot be represented by one weighted molecule. */
     EnergyBindingContext compactContext;
     bool useCompact = ef->getBindingContext(
         mt1Name, bindSite1, mt2Name, bindSite2, compactContext);
@@ -197,11 +196,12 @@ bool createExpandedBindingReactions(
             }
         }
 
-        /* One bit per term is the factorized case: each conditional energy
-         * contribution is gated by one occupancy predicate. */
+        /* A term may require several occupancy predicates simultaneously.
+         * EnergyRxnClass evaluates the full mask against the selected
+         * weighted molecule, so conjunctions remain compact rather than
+         * expanding into one rule per boolean context combination. */
         for (const auto &term : compactContext.conditionalTerms) {
-            if (term.conditionMask == 0 ||
-                (term.conditionMask & (term.conditionMask - 1u)) != 0) {
+            if (term.conditionMask == 0) {
                 useCompact = false;
                 break;
             }
