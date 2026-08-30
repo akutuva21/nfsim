@@ -219,6 +219,8 @@ namespace NFcore
 			virtual bool supportsDeferredMembershipUpdate() const {
 				return simpleMembership;
 			}
+			virtual bool tryToAddAndReportChange(
+					Molecule *m, unsigned int reactantPos);
 			virtual bool canUseDirectProductList() const;
 			virtual bool canSkipIndirectMembership(
 					ReactionClass *firedReaction) const;
@@ -252,6 +254,8 @@ namespace NFcore
 			double conditionedEnergyRateFactor;
 			mutable bool directProductListDecisionKnown;
 			mutable bool directProductListSafe;
+
+			bool tryToAddCompact(Molecule *m, unsigned int reactantPos);
 
 			bool dependsOnEndpoint(MoleculeType *targetMoleculeType,
 					MoleculeType *changedMoleculeType,

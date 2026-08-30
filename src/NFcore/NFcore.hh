@@ -1686,6 +1686,15 @@ namespace NFcore
 			virtual void init() = 0; //called when the reaction is added to the system
 			virtual void prepareForSimulation() = 0; //called once everything is added to the system
 			virtual bool tryToAdd(Molecule *m, unsigned int reactantPos) = 0;
+			/* Same membership update as tryToAdd(), with a conservative indication
+			 * of whether the reaction's propensity may have changed.  The default
+			 * keeps the legacy behavior for reaction classes whose membership
+			 * updates are not instrumented. */
+			virtual bool tryToAddAndReportChange(
+					Molecule *m, unsigned int reactantPos) {
+				tryToAdd(m, reactantPos);
+				return true;
+			}
 			virtual void remove(Molecule *m, unsigned int reactantPos) = 0;
 
 			virtual double update_a() = 0;

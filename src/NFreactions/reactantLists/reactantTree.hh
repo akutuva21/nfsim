@@ -97,7 +97,7 @@ namespace NFcore
 				When a local function value changes, it must update the value in the reactant tree.  This
 				method allows you to update values without changing the mappingSet membership of this tree.
 			 */
-			void updateValue(unsigned int mappingSetId, double newRateFactor);
+			bool updateValue(unsigned int mappingSetId, double newRateFactor);
 
 			/*!
 				Returns a MappingSet so that a DOR can evaluate a local function on it.

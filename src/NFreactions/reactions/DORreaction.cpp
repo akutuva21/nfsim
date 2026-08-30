@@ -967,6 +967,23 @@ bool EnergyRxnClass::tryToAdd(Molecule *m, unsigned int reactantPos)
 {
 	if (!simpleMembership)
 		return DORRxnClass::tryToAdd(m, reactantPos);
+	tryToAddCompact(m, reactantPos);
+	return true;
+}
+
+bool EnergyRxnClass::tryToAddAndReportChange(
+		Molecule *m, unsigned int reactantPos)
+{
+	if (!simpleMembership) {
+		tryToAdd(m, reactantPos);
+		return true;
+	}
+	return tryToAddCompact(m, reactantPos);
+}
+
+bool EnergyRxnClass::tryToAddCompact(
+		Molecule *m, unsigned int reactantPos)
+{
 
 	ReactantList *partnerList = 0;
 	if (isForward && reactantPos == 1) {
@@ -987,21 +1004,26 @@ bool EnergyRxnClass::tryToAdd(Molecule *m, unsigned int reactantPos)
 		int rxnIndex = m->getMoleculeType()->getRxnIndex(this, reactantPos);
 		bool matches = m->isBindingSiteOpen(partnerComponentIndex);
 		if (!matches) {
+			bool changed = m->getRxnListMappingId(rxnIndex) >= 0;
 			while (m->getRxnListMappingId(rxnIndex) >= 0) {
 				int mappingId = m->getRxnListMappingId(rxnIndex);
 				m->deleteRxnListMappingId(rxnIndex, mappingId);
 				rl->removeMappingSet(mappingId);
 			}
+			return changed;
 		} else if (m->getRxnListMappingId(rxnIndex) < 0) {
 			MappingSet *mappingSet = rl->pushNextAvailableMappingSet();
 			mappingSet->set(0, m);
 			m->setRxnListMappingId(rxnIndex, mappingSet->getId());
+			return true;
 		}
-		return true;
+		return false;
 	}
 
-	if (reactantPos != (unsigned int)DORreactantIndex)
-		return DORRxnClass::tryToAdd(m, reactantPos);
+	if (reactantPos != (unsigned int)DORreactantIndex) {
+		DORRxnClass::tryToAdd(m, reactantPos);
+		return true;
+	}
 
 	int rxnIndex = m->getMoleculeType()->getRxnIndex(this, reactantPos);
 	Molecule *partnerMolecule = 0;
@@ -1017,12 +1039,13 @@ bool EnergyRxnClass::tryToAdd(Molecule *m, unsigned int reactantPos)
 	}
 
 	if (!matches) {
+		bool changed = m->getRxnListMappingId(rxnIndex) >= 0;
 		while (m->getRxnListMappingId(rxnIndex) >= 0) {
 			int mappingId = m->getRxnListMappingId(rxnIndex);
 			m->deleteRxnListMappingId(rxnIndex, mappingId);
 			reactantTree->removeMappingSet(mappingId);
 		}
-		return true;
+		return changed;
 	}
 
 	const MappingIdSet& existingMappings = m->getRxnListMappingSet(rxnIndex);
@@ -1035,21 +1058,34 @@ bool EnergyRxnClass::tryToAdd(Molecule *m, unsigned int reactantPos)
 			MappingSet *mappingSet = reactantTree->getMappingSet(mappingId);
 			if (mappingSet != 0 && mappingSet->get(0) != 0 &&
 					mappingSet->get(0)->getMolecule() == m) {
-				if (!isForward) mappingSet->set(1, partnerMolecule);
-				reactantTree->updateValue(
+				bool mappingChanged = false;
+				if (!isForward) {
+					mappingChanged = mappingSet->get(1)->getMolecule() !=
+							partnerMolecule;
+					if (mappingChanged) mappingSet->set(1, partnerMolecule);
+				}
+				bool rateChanged = reactantTree->updateValue(
 						mappingId, evaluateLocalFunctions(mappingSet));
-				return true;
+				return mappingChanged || rateChanged;
 			}
 		}
+		bool changed = false;
 		for (MappingIdSet::const_iterator it = existingMappings.begin();
 				it != existingMappings.end(); ++it) {
 			MappingSet *mappingSet = reactantTree->getMappingSet(*it);
+			if (mappingSet->get(0)->getMolecule() != m)
+				changed = true;
 			mappingSet->set(0, m);
-			if (!isForward) mappingSet->set(1, partnerMolecule);
-			reactantTree->updateValue(
-					*it, evaluateLocalFunctions(mappingSet));
+			if (!isForward) {
+				if (mappingSet->get(1)->getMolecule() != partnerMolecule)
+					changed = true;
+				mappingSet->set(1, partnerMolecule);
+			}
+			if (reactantTree->updateValue(
+						*it, evaluateLocalFunctions(mappingSet)))
+				changed = true;
 		}
-		return true;
+		return changed;
 	}
 
 	MappingSet *mappingSet = reactantTree->pushNextAvailableMappingSet();

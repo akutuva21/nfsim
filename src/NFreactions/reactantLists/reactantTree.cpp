@@ -470,7 +470,7 @@ void ReactantTree::pickReactantFromValue(MappingSet *&ms, double value, double b
 
 
 
-void ReactantTree::updateValue(unsigned int mappingSetId, double newRateFactor)
+bool ReactantTree::updateValue(unsigned int mappingSetId, double newRateFactor)
 {
 	//Here we start from the bottom, removing the old value and adding the new value
 	//Go to that position in the tree, and work up and out
@@ -490,7 +490,7 @@ void ReactantTree::updateValue(unsigned int mappingSetId, double newRateFactor)
 	double oldRateFactor = leftRateFactorSum[cn];
 
 	//Make sure there is something to change!  If not, just get out of here!
-	if(oldRateFactor==newRateFactor) return;
+	if(oldRateFactor==newRateFactor) return false;
 
 	leftRateFactorSum[cn] = newRateFactor;
 	leftRateFactorSum[0] -= oldRateFactor;
@@ -518,6 +518,7 @@ void ReactantTree::updateValue(unsigned int mappingSetId, double newRateFactor)
 
 
 	//Ok, we are up to date.  Nothing else changes here...
+	return true;
 }
 
 

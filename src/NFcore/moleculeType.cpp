@@ -639,8 +639,8 @@ void MoleculeType::updateRxnMembership(Molecule * m,
 					bool defer = this->system->isDeferringMembershipPropensityUpdates() &&
 						rxn->supportsDeferredMembershipUpdate();
 					if (defer) {
-						rxn->tryToAdd(m, reactionPositions.at(r));
-						this->system->deferMembershipPropensityUpdate(rxn);
+						if (rxn->tryToAddAndReportChange(m, reactionPositions.at(r)))
+							this->system->deferMembershipPropensityUpdate(rxn);
 					} else {
 						double oldA = rxn->get_a();
 						rxn->tryToAdd(m, reactionPositions.at(r));
@@ -665,8 +665,8 @@ void MoleculeType::updateRxnMembership(Molecule * m,
 		bool defer = this->system->isDeferringMembershipPropensityUpdates() &&
 			rxn->supportsDeferredMembershipUpdate();
 		if (defer) {
-			rxn->tryToAdd(m, reactionPositions.at(r));
-			this->system->deferMembershipPropensityUpdate(rxn);
+			if (rxn->tryToAddAndReportChange(m, reactionPositions.at(r)))
+				this->system->deferMembershipPropensityUpdate(rxn);
 		} else {
 			double oldA = rxn->get_a();
 			rxn->tryToAdd(m, reactionPositions.at(r));
