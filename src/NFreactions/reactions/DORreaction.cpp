@@ -188,7 +188,8 @@ DORRxnClass::DORRxnClass(
 		int dorReactantIndex,
 		System *s,
 		unsigned int reactantListInitialCapacity,
-		unsigned int reactantTreeInitialCapacity) :
+		unsigned int reactantTreeInitialCapacity,
+		bool allocateReactantLists) :
 	ReactionClass(name,baseRate,baseRateName,transformationSet,s),
 	cf(0),
 	DORreactantIndex(dorReactantIndex),
@@ -218,9 +219,15 @@ DORRxnClass::DORRxnClass(
 	this->msPairBuffer = new MappingSet *[n_reactants > 2 ? n_reactants : 2];
 	this->reactantLists = new ReactantList *[n_reactants];
 	for (unsigned int r=0; r<n_reactants; r++) {
-		if ((int)r != this->DORreactantIndex)
-			this->reactantLists[r] = new ReactantList(
-					r, transformationSet, reactantListInitialCapacity);
+		if ((int)r != this->DORreactantIndex) {
+			if (allocateReactantLists)
+				this->reactantLists[r] = new ReactantList(
+						r, transformationSet, reactantListInitialCapacity);
+			else
+				this->reactantLists[r] = 0;
+		} else {
+			this->reactantLists[r] = 0;
+		}
 	}
 	this->a = 0;
 }
@@ -858,7 +865,8 @@ EnergyRxnClass::EnergyRxnClass(
 	 * geometric list growth; reverse rules have no ordinary partner list.  The
 	 * weighted tree stays deliberately small and expands for unusual contexts. */
 	DORRxnClass(name,baseRate,baseRateName,transformationSet,dorReactantIndex,s,
-			compactReactantListInitialCapacity(transformationSet, dorReactantIndex), 4),
+			compactReactantListInitialCapacity(transformationSet, dorReactantIndex), 4,
+			false),
 	conditionalTerms(context.conditionalTerms),
 	componentMaskFastPath(true),
 	baseEnergy(context.baseEnergy),
@@ -869,6 +877,8 @@ EnergyRxnClass::EnergyRxnClass(
 	reactionCenterComponentIndex(-1),
 	partnerComponentIndex(-1),
 	partnerMoleculeType(0),
+	partnerPool(0),
+	compactPartnerMappingSet(0),
 	weightedDependencyMask(0),
 	dependencyMaskValid(true),
 	singleConditionalTermFastPath(false),
@@ -934,6 +944,7 @@ EnergyRxnClass::EnergyRxnClass(
 			partnerMoleculeType = reactantTemplates[1]->getMoleculeType();
 			simpleMembership =
 				partner->getType() == TransformationFactory::EMPTY &&
+				!partnerMoleculeType->isPopulationType() &&
 				reactantTemplates[0]->getN_symComps() == 0 &&
 				reactantTemplates[0]->getN_connectedTo() == 0 &&
 				reactantTemplates[1]->getN_symComps() == 0 &&
@@ -954,6 +965,11 @@ EnergyRxnClass::EnergyRxnClass(
 		}
 	}
 
+	if (simpleMembership && isForward && n_reactants == 2) {
+		partnerPool = partnerMoleculeType->getOrCreateCompactPartnerPool(
+				partnerComponentIndex);
+		compactPartnerMappingSet = transformationSet->generateBlankMappingSet(1, 0);
+	}
 	if (simpleMembership) {
 		if (reactionCenterComponentIndex < 0 ||
 				reactionCenterComponentIndex >= 64) {
@@ -971,8 +987,15 @@ EnergyRxnClass::EnergyRxnClass(
 						(std::uint64_t(1) << componentIndex);
 			}
 		}
+	} else if (n_reactants > 1 && reactantLists[1] == 0) {
+		/* The compact constructor suppresses non-weighted lists until the
+		 * template has been classified. Unsupported contexts use the normal DOR
+		 * implementation and therefore need the ordinary list. */
+		reactantLists[1] = new ReactantList(
+				1, transformationSet,
+				compactReactantListInitialCapacity(transformationSet,
+						dorReactantIndex));
 	}
-
 	/* Most generated promoter rules have one conditional energy term.  Its
 	 * occupancy test still changes per refresh, but the two Arrhenius factors
 	 * do not.  Cache those factors so the hot membership path only performs the
@@ -986,6 +1009,12 @@ EnergyRxnClass::EnergyRxnClass(
 				(baseEnergy + conditionalTerms[0].energyValue)) / RT);
 		singleConditionalTermFastPath = true;
 	}
+}
+
+EnergyRxnClass::~EnergyRxnClass()
+{
+	delete compactPartnerMappingSet;
+	compactPartnerMappingSet = 0;
 }
 
 bool EnergyRxnClass::tryToAdd(Molecule *m, unsigned int reactantPos)
@@ -1028,40 +1057,22 @@ bool EnergyRxnClass::tryToAddCompact(
 		Molecule *m, unsigned int reactantPos, int rxnIndex)
 {
 
-	ReactantList *partnerList = 0;
-	if (isForward && reactantPos == 1) {
-		partnerList = reactantLists[reactantPos];
-		if (partnerList->getHasClonedMappings())
-			return DORRxnClass::tryToAdd(m, reactantPos);
-	}
-
 	if (system != 0 && system->isProfilingEnabled())
 		system->recordProfileMatchCandidate();
 
 	/* The unweighted ligand side of a compact forward rule has exactly one
-	 * empty-site constraint.  Keep it in the ordinary ReactantList, but avoid
-	 * recursively comparing its one-component template on every refresh. */
+	 * empty-site constraint.  All simple rules for the same endpoint share this
+	 * pool, so only the first membership change needs to mutate storage. */
 	if (isForward && reactantPos == 1) {
-		ReactantList *rl = partnerList;
-
-		if (rxnIndex < 0)
-			rxnIndex = m->getMoleculeType()->getRxnIndex(this, reactantPos);
 		bool matches = m->isBindingSiteOpen(partnerComponentIndex);
-		if (!matches) {
-			bool changed = m->getRxnListMappingId(rxnIndex) >= 0;
-			while (m->getRxnListMappingId(rxnIndex) >= 0) {
-				int mappingId = m->getRxnListMappingId(rxnIndex);
-				m->deleteRxnListMappingId(rxnIndex, mappingId);
-				rl->removeMappingSet(mappingId);
-			}
-			return changed;
-		} else if (m->getRxnListMappingId(rxnIndex) < 0) {
-			MappingSet *mappingSet = rl->pushNextAvailableMappingSet();
-			mappingSet->set(0, m);
-			m->setRxnListMappingId(rxnIndex, mappingSet->getId());
-			return true;
-		}
-		return false;
+		if (!matches)
+			partnerPool->remove(m);
+		else
+			partnerPool->add(m);
+		/* The pool is shared by all simple rules for this endpoint.  Even when
+		 * this rule's call is idempotent, its propensity still depends on the
+		 * shared pool count and must be included in a deferred update. */
+		return true;
 	}
 
 	if (reactantPos != (unsigned int)DORreactantIndex) {
@@ -1082,7 +1093,6 @@ bool EnergyRxnClass::tryToAddCompact(
 				m->getBondedMoleculeBindingSiteIndex(reactionCenterComponentIndex) ==
 					partnerComponentIndex;
 	}
-
 	if (!matches) {
 		bool changed = m->getRxnListMappingId(rxnIndex) >= 0;
 		while (m->getRxnListMappingId(rxnIndex) >= 0) {
@@ -1140,6 +1150,41 @@ bool EnergyRxnClass::tryToAddCompact(
 				mappingSet->getId(), evaluateLocalFunctions(mappingSet));
 	m->setRxnListMappingId(rxnIndex, mappingSet->getId());
 	return true;
+}
+
+void EnergyRxnClass::remove(Molecule *m, unsigned int reactantPos)
+{
+	if (simpleMembership && isForward && reactantPos == 1) {
+		if (partnerPool != 0) partnerPool->remove(m);
+		return;
+	}
+	DORRxnClass::remove(m, reactantPos);
+}
+
+int EnergyRxnClass::getReactantCount(unsigned int reactantIndex) const
+{
+	if (simpleMembership && isForward && reactantIndex == 1)
+		return partnerPool == 0 ? 0 : partnerPool->size();
+	return DORRxnClass::getReactantCount(reactantIndex);
+}
+
+int EnergyRxnClass::getCorrectedReactantCount(
+		unsigned int reactantIndex) const
+{
+	if (!(simpleMembership && isForward && reactantIndex == 1))
+		return DORRxnClass::getCorrectedReactantCount(reactantIndex);
+	if (partnerPool == 0) return 0;
+	if ((matchOncePerReactant[reactantIndex] ||
+			contextCountsPerComplex[reactantIndex]) &&
+			system->isUsingComplex()) {
+		std::unordered_set<int> complexes;
+		for (int i = 0; i < partnerPool->size(); ++i) {
+			Molecule *m = partnerPool->getByIndex(i);
+			if (m != 0) complexes.insert(m->getComplexID());
+		}
+		return static_cast<int>(complexes.size());
+	}
+	return partnerPool->size();
 }
 
 bool EnergyRxnClass::dependsOnEndpoint(
@@ -1354,6 +1399,29 @@ double EnergyRxnClass::evaluateLocalFunctions(MappingSet *ms)
 	return exp(-(energyCoefficient * deltaG) / RT);
 }
 
+void EnergyRxnClass::pickMappingSets(double random_A_number) const
+{
+	if (!(simpleMembership && isForward && n_reactants == 2 &&
+			DORreactantIndex == 0)) {
+		DORRxnClass::pickMappingSets(random_A_number);
+		return;
+	}
+
+	int partnerCount = partnerPool == 0 ? 0 : partnerPool->size();
+	if (partnerCount == 0) return;
+	int partnerIndex = NFutil::RANDOM_INT(0, partnerCount);
+	compactPartnerMappingSet->set(
+			0, partnerPool->getByIndex(static_cast<unsigned int>(partnerIndex)));
+	mappingSet[1] = compactPartnerMappingSet;
+
+	double rateFactorMultiplier = baseRate * static_cast<double>(partnerCount);
+	if (random_A_number < 0)
+		random_A_number = system->getRNG().random(this->a);
+	reactantTree->pickReactantFromValue(
+			mappingSet[DORreactantIndex], random_A_number,
+			rateFactorMultiplier);
+}
+
 double EnergyRxnClass::exactRuleMonkey_a()
 {
 	/* Keep the same total-rate convention as DORRxnClass.  The compact path
@@ -1377,18 +1445,15 @@ double EnergyRxnClass::exactRuleMonkey_a()
 	 * tree's rate factor for each first-reactant mapping.  The context list is
 	 * intentionally not collapsed here: this matches the counting semantics
 	 * of the base branch on which this reaction class is compiled. */
-	static thread_local vector<MappingSet *> contextRepresentatives;
-	contextRepresentatives.clear();
-	for (int i = 0; i < reactantLists[1]->size(); ++i) {
-		MappingSet *ms = reactantLists[1]->getMappingSetByIndex(i);
-		if (ms != 0) contextRepresentatives.push_back(ms);
-	}
+	int partnerCount = partnerPool == 0 ? 0 : partnerPool->size();
 
 	double validPropensity = 0.0;
 	for (int i = 0; i < reactantTree->size(); ++i) {
 		msPairBuffer[0] = reactantTree->getMappingSetByIndex(i);
-		for (size_t j = 0; j < contextRepresentatives.size(); ++j) {
-			msPairBuffer[1] = contextRepresentatives[j];
+		for (int j = 0; j < partnerCount; ++j) {
+			compactPartnerMappingSet->set(
+					0, partnerPool->getByIndex(static_cast<unsigned int>(j)));
+			msPairBuffer[1] = compactPartnerMappingSet;
 			if (transformationSet->checkMolecularity(msPairBuffer)) {
 				validPropensity += baseRate * reactantTree->getRateFactor(i);
 			}
@@ -1405,13 +1470,8 @@ void EnergyRxnClass::pickRuleMonkeyMappingSets(double random_A_number) const
 		return;
 	}
 
-	static thread_local vector<MappingSet *> contextRepresentatives;
-	contextRepresentatives.clear();
-	for (int i = 0; i < reactantLists[1]->size(); ++i) {
-		MappingSet *ms = reactantLists[1]->getMappingSetByIndex(i);
-		if (ms != 0) contextRepresentatives.push_back(ms);
-	}
-	if (contextRepresentatives.empty() || reactantTree->size() == 0)
+	int partnerCount = partnerPool == 0 ? 0 : partnerPool->size();
+	if (partnerCount == 0 || reactantTree->size() == 0)
 		return;
 
 	/* Enumerate valid pairs in RuleMonkey mode.  The normal compact selector
@@ -1424,8 +1484,10 @@ void EnergyRxnClass::pickRuleMonkeyMappingSets(double random_A_number) const
 	double totalWeight = 0.0;
 	for (int i = 0; i < reactantTree->size(); ++i) {
 		msPairBuffer[0] = reactantTree->getMappingSetByIndex(i);
-		for (size_t j = 0; j < contextRepresentatives.size(); ++j) {
-			msPairBuffer[1] = contextRepresentatives[j];
+		for (int j = 0; j < partnerCount; ++j) {
+			compactPartnerMappingSet->set(
+					0, partnerPool->getByIndex(static_cast<unsigned int>(j)));
+			msPairBuffer[1] = compactPartnerMappingSet;
 			if (!transformationSet->checkMolecularity(msPairBuffer)) continue;
 
 			validPairsBuffer.push_back(make_pair(i, (int)j));
@@ -1450,7 +1512,9 @@ void EnergyRxnClass::pickRuleMonkeyMappingSets(double random_A_number) const
 
 	const pair<int, int> selected = validPairsBuffer[selectedIndex];
 	mappingSet[0] = reactantTree->getMappingSetByIndex(selected.first);
-	mappingSet[1] = contextRepresentatives[selected.second];
+	compactPartnerMappingSet->set(
+			0, partnerPool->getByIndex(static_cast<unsigned int>(selected.second)));
+	mappingSet[1] = compactPartnerMappingSet;
 }
 
 

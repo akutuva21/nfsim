@@ -133,7 +133,8 @@ namespace NFcore
 					int dorReactantIndex,
 					System *s,
 					unsigned int reactantListInitialCapacity = 25,
-					unsigned int reactantTreeInitialCapacity = 32);
+					unsigned int reactantTreeInitialCapacity = 32,
+					bool allocateReactantLists = true);
 			virtual ~DORRxnClass();
 
 			virtual void init();
@@ -212,7 +213,7 @@ namespace NFcore
 					double RT,
 					bool isForward,
 					System *s);
-			virtual ~EnergyRxnClass() {}
+			virtual ~EnergyRxnClass();
 			virtual bool usesIncrementalMembership() const { return simpleMembership; }
 			virtual bool membershipDecisionIsTypeInvariant() const {
 				return simpleMembership;
@@ -228,9 +229,12 @@ namespace NFcore
 			virtual bool tryToAddAndReportChange(
 					Molecule *m, unsigned int reactantPos);
 			virtual bool tryToAddWithIndex(
-					Molecule *m, unsigned int reactantPos, int rxnIndex);
+				Molecule *m, unsigned int reactantPos, int rxnIndex);
 			virtual bool tryToAddAndReportChangeWithIndex(
-					Molecule *m, unsigned int reactantPos, int rxnIndex);
+				Molecule *m, unsigned int reactantPos, int rxnIndex);
+			virtual void remove(Molecule *m, unsigned int reactantPos);
+			virtual int getReactantCount(unsigned int reactantIndex) const;
+			virtual int getCorrectedReactantCount(unsigned int reactantIndex) const;
 			virtual bool canUseDirectProductList() const;
 			virtual bool canSkipIndirectMembership(
 					ReactionClass *firedReaction) const;
@@ -257,6 +261,8 @@ namespace NFcore
 			int reactionCenterComponentIndex;
 			int partnerComponentIndex;
 			MoleculeType *partnerMoleculeType;
+			CompactPartnerPool *partnerPool;
+			MappingSet *compactPartnerMappingSet;
 			std::uint64_t weightedDependencyMask;
 			bool dependencyMaskValid;
 			bool singleConditionalTermFastPath;
@@ -271,6 +277,8 @@ namespace NFcore
 			bool dependsOnEndpoint(MoleculeType *targetMoleculeType,
 					MoleculeType *changedMoleculeType,
 					int changedComponentIndex) const;
+
+			virtual void pickMappingSets(double randNumber) const;
 	};
 
 	/* A reaction class with DOR calculations on two reactants.

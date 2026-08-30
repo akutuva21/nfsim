@@ -98,6 +98,49 @@ namespace NFcore
 
 	class ReactionClass; /* defines a reaction class, (in other words, a rxn rule) */
 
+	/* Simple compact EnergyPattern forward rules with the same partner
+	 * molecule/component have identical partner-side eligibility.  Keep that
+	 * eligibility once per molecule type instead of allocating one MappingSet
+	 * and one pointer list per reaction.  MappingSets used by the reaction
+	 * transformation itself remain per-reaction scratch objects. */
+	class CompactPartnerPool {
+		public:
+			CompactPartnerPool() : molecules(), positions() {}
+
+			int size() const { return static_cast<int>(molecules.size()); }
+			Molecule *getByIndex(unsigned int index) const {
+				return index < molecules.size() ? molecules[index] : 0;
+			}
+			bool contains(Molecule *molecule) const {
+				return positions.find(molecule) != positions.end();
+			}
+			bool add(Molecule *molecule) {
+				if (molecule == 0 || contains(molecule)) return false;
+				positions[molecule] = static_cast<unsigned int>(molecules.size());
+				molecules.push_back(molecule);
+				return true;
+			}
+			bool remove(Molecule *molecule) {
+				std::unordered_map<Molecule *, unsigned int>::iterator it =
+					positions.find(molecule);
+				if (it == positions.end()) return false;
+				unsigned int position = it->second;
+				unsigned int last = static_cast<unsigned int>(molecules.size() - 1);
+				if (position != last) {
+					Molecule *replacement = molecules[last];
+					molecules[position] = replacement;
+					positions[replacement] = position;
+				}
+				molecules.pop_back();
+				positions.erase(it);
+				return true;
+			}
+
+		private:
+			std::vector<Molecule *> molecules;
+			std::unordered_map<Molecule *, unsigned int> positions;
+	};
+
 	/* Endpoint state changes exposed by compact EnergyPattern reactions.  The
 	 * descriptor is built once per fired reaction and reused while its direct
 	 * product molecules refresh membership. */
@@ -1174,6 +1217,7 @@ namespace NFcore
 			int getReactionCount() const { return reactions.size(); };
 			bool canSkipIndirectMembership(ReactionClass *firedReaction) const;
 			int getRxnIndex(ReactionClass * rxn, int rxnPosition);
+			CompactPartnerPool *getOrCreateCompactPartnerPool(int componentIndex);
 
 
 
@@ -1320,6 +1364,7 @@ namespace NFcore
 
 			vector <ReactionClass *> reactions; /* List of reactions that this type can be involved with */
 			vector <int> reactionPositions;   /* the position in the reaction for this type of molecule */
+			vector <CompactPartnerPool *> compactPartnerPools;
 
 			vector <int> indexOfDORrxns;
 

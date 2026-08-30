@@ -152,6 +152,8 @@ void MoleculeType::init(
 	//Register myself with the system, and get an ID number
 	this->system = system;
 	this->type_id = this->system->addMoleculeType(this);
+	compactPartnerPools.assign(numOfComponents,
+			static_cast<CompactPartnerPool *>(0));
 
 
 	mList = new MoleculeList(this,2,system->getGlobalMoleculeLimit());
@@ -188,6 +190,10 @@ MoleculeType::~MoleculeType()
 	delete [] eqCompOriginalName;
 	if (indexToEqClass) {
 		delete [] indexToEqClass;
+	}
+	for (vector<CompactPartnerPool *>::iterator it = compactPartnerPools.begin();
+			it != compactPartnerPools.end(); ++it) {
+		delete *it;
 	}
 
 
@@ -440,6 +446,16 @@ Molecule * MoleculeType::getMolecule(int ID_molecule) const {
 }
 int MoleculeType::getMoleculeCount() const {
 	return mList->size();
+}
+
+CompactPartnerPool *MoleculeType::getOrCreateCompactPartnerPool(
+		int componentIndex)
+{
+	if (componentIndex < 0 || componentIndex >= numOfComponents)
+		return 0;
+	if (compactPartnerPools[componentIndex] == 0)
+		compactPartnerPools[componentIndex] = new CompactPartnerPool();
+	return compactPartnerPools[componentIndex];
 }
 
 
