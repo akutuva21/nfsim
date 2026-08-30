@@ -18,6 +18,7 @@ ReactantTree::ReactantTree(
 		unsigned int init_capacity,
 		System *system)
 {
+	this->anyMultiMoleculeComplex = false;
 
 	//First set basic properties of the tree
 	this->reactantIndex=reactantIndex;

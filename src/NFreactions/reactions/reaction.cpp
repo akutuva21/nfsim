@@ -79,6 +79,13 @@ double FunctionalRxnClass::update_a() {
 
 	a *= this->volumeConversionFactor;
 
+	// Scale by baseRate, exactly as BasicRxnClass/DORRxnClass/DOR2RxnClass do.
+	// A FunctionalRxnClass is constructed with baseRate=1 and never routes
+	// through setBaseRate(), so this factor is the reaction center symmetry
+	// correction and nothing else.  Without it a symmetric rule with a
+	// functional rate fires at 1/symmetryFactor times its intended rate.
+	a *= this->baseRate;
+
 	if(a<0) {
 		cout<<"Warning!!  The function you provided for functional rxn: '"<<name<<"' evaluates\n";
 		cout<<"to a value less than zero!  You cannot have a negative propensity!";
@@ -185,9 +192,37 @@ double MMRxnClass::exactRuleMonkey_a()
 
 double MMRxnClass::update_a()
 {
-	double S = (double)getCorrectedReactantCount(0);
+	// See FunctionalRxnClass::update_a() -- an MMRxnClass is likewise built with
+	// baseRate=1 and never calls setBaseRate(), so baseRate carries the reaction
+	// center symmetry correction.  BNG emits symmetry_factor with an MM rate law
+	// whenever the substrate pattern has a non-trivial automorphism.
+	//
+	// It belongs on the substrate COUNT, inside the law -- not on the finished
+	// propensity.  What the factor corrects is a match multiplicity:
+	// getCorrectedReactantCount(0) counts pattern embeddings, and a substrate
+	// pattern with a non-trivial automorphism matches each complex more than
+	// once, so the law is being handed more substrate than exists.  Michaelis-
+	// Menten is not linear in that count, so scaling the finished propensity
+	// instead is exact only below saturation; scaling the count is exact
+	// everywhere, and the two agree wherever the law is linear.
+	//
+	// Only the substrate needs it. The enzyme is pure context here -- an MM rule
+	// does not transform it -- and BNG's MultScale counts reaction-center
+	// automorphisms, so it emits symmetry_factor=1 for an enzyme-side symmetry
+	// and this factor is always the substrate's. (NFsim does over-count a
+	// symmetric context pattern, but that is a separate defect with no
+	// symmetry_factor attached to it; see issue #87.)
+	double S = (double)getCorrectedReactantCount(0) * this->baseRate;
 	double E = (double)getCorrectedReactantCount(1);
-	sFree=0.5*( (S-Km-E) + pow((pow( (S-Km-E),2.0) + 4.0*Km*S),  0.5) );
+	// Free substrate is the non-negative root of sFree^2 - b*sFree - Km*S = 0, b = S-Km-E.
+	// The textbook form 0.5*(b + sqrt(b*b + 4*Km*S)) cancels catastrophically when b < 0,
+	// and rounds to exactly zero once 4*Km*S drops below about 1e-16*b*b, which silently
+	// stops the reaction when Km is small and the enzyme is in excess. The two roots
+	// multiply to -Km*S, so the b < 0 case is written as a sum of like-signed quantities.
+	// See https://github.com/RuleWorld/bionetgen/issues/323
+	double b = S-Km-E;
+	double q = sqrt(b*b + 4.0*Km*S);
+	sFree = (b>=0.0) ? 0.5*(b+q) : 2.0*Km*S/(q-b);
 	a=kcat*sFree*E/(Km+sFree);
 	return a;
 }
@@ -209,6 +244,110 @@ void MMRxnClass::printDetails() const {
 
 
 
+
+
+/* --- pure context counting, shared by every reaction class ------------------
+ *
+ * BioNetGen gives a reactant pattern the rule does not transform one reaction
+ * instance per matching COMPLEX, however many molecules in that complex match
+ * it: every embedding produces the identical reaction, so there is only one.
+ * NFsim enumerates matches per molecule, so these collapse the difference.
+ * Both read the complex off mapping 0, which for such a reactant is the root
+ * molecule placed by the placeholder transform TransformationSet::finalize()
+ * adds. */
+
+/* Scratch buffer for the counts below.  These run on the propensity hot path --
+ * once per reactant per update_a(), which is millions of calls on a model with a
+ * catalytic rule -- so they must not allocate.  A reused vector plus sort beats
+ * building a std::set by more than an order of magnitude, and thread_local keeps
+ * concurrent sessions from sharing it. */
+static thread_local std::vector<int> s_complexScratch;
+
+template <typename Container>
+static int distinctComplexesOf(Container *rc, int size)
+{
+	s_complexScratch.clear();
+	if ((int)s_complexScratch.capacity() < size) s_complexScratch.reserve(size);
+	for (int i = 0; i < size; ++i) {
+		MappingSet *ms = rc->getMappingSetByIndex(i);
+		if (ms && ms->getNumOfMappings() > 0) {
+			Mapping *mapping = ms->get(0);
+			if (mapping && mapping->getMolecule()) {
+				s_complexScratch.push_back(mapping->getMolecule()->getComplexID());
+			}
+		}
+	}
+	std::sort(s_complexScratch.begin(), s_complexScratch.end());
+	return (int)(std::unique(s_complexScratch.begin(), s_complexScratch.end())
+	             - s_complexScratch.begin());
+}
+
+int NFcore::countDistinctComplexes(ReactantList *rl)
+{
+	if (!rl->mayShareComplexes()) return rl->size();
+	return distinctComplexesOf(rl, rl->size());
+}
+
+int NFcore::countDistinctComplexes(ReactantTree *tree)
+{
+	if (!tree->mayShareComplexes()) return tree->size();
+	return distinctComplexesOf(tree, tree->size());
+}
+
+double NFcore::perComplexRateFactorSum(ReactantTree *tree)
+{
+	// One representative term per complex.  getRateFactor() is indexed by the
+	// same flat array position as getMappingSetByIndex(), so this walks the live
+	// entries and keeps the first seen for each complex.
+	std::set<int> seen;
+	double sum = 0.0;
+	int size = tree->size();
+	for (int i = 0; i < size; ++i) {
+		MappingSet *ms = tree->getMappingSetByIndex(i);
+		if (!ms || ms->getNumOfMappings() == 0) continue;
+		Mapping *mapping = ms->get(0);
+		if (!mapping || !mapping->getMolecule()) continue;
+		if (seen.insert(mapping->getMolecule()->getComplexID()).second) {
+			sum += tree->getRateFactor(i);
+		}
+	}
+	return sum;
+}
+
+void NFcore::collectReactantRepresentatives(ReactantList *rl, bool perComplex,
+                                            std::vector<MappingSet*> &out,
+                                            std::vector<int> *flatIndices)
+{
+	out.clear();
+	if (flatIndices) flatIndices->clear();
+	int size = rl->size();
+
+	// Nothing to collapse: either this reactant is transformed by the rule, or
+	// every match sits in a single-molecule complex and one match already is one
+	// complex.  Enumerate every live mapping set, exactly as before.
+	if (!perComplex || !rl->mayShareComplexes()) {
+		for (int i = 0; i < size; ++i) {
+			MappingSet *ms = rl->getMappingSetByIndex(i);
+			if (ms) {
+				out.push_back(ms);
+				if (flatIndices) flatIndices->push_back(i);
+			}
+		}
+		return;
+	}
+
+	std::set<int> seen;
+	for (int i = 0; i < size; ++i) {
+		MappingSet *ms = rl->getMappingSetByIndex(i);
+		if (!ms || ms->getNumOfMappings() == 0) continue;
+		Mapping *mapping = ms->get(0);
+		if (!mapping || !mapping->getMolecule()) continue;
+		if (seen.insert(mapping->getMolecule()->getComplexID()).second) {
+			out.push_back(ms);
+			if (flatIndices) flatIndices->push_back(i);
+		}
+	}
+}
 
 
 BasicRxnClass::BasicRxnClass(string name, double baseRate, string baseRateName, TransformationSet *transformationSet, System *s) :
@@ -343,6 +482,13 @@ bool BasicRxnClass::tryToAdd(Molecule *m, unsigned int reactantPos)
 	//Here we get the standard update...
 	set<int> deleteMs = m->getRxnListMappingSet(rxnIndex);
 
+	// Cheap note for countDistinctComplexes(): while every matched molecule is a
+	// singleton complex, no complex can hold two matches and the distinct-complex
+	// count is just size().
+	if (contextCountsPerComplex[reactantPos]) {
+		rl->noteMappedComplexSize(m->getComplex()->getComplexSize());
+	}
+
 	//Try to map it!
 	MappingSet *ms = rl->pushNextAvailableMappingSet();
 	symmetricMappingSet.clear();
@@ -448,18 +594,24 @@ double BasicRxnClass::exactRuleMonkey_a()
 	} else if (n_reactants == 1) {
 		validCombinations = getCorrectedReactantCount(0);
 	} else if (n_reactants == 2) {
-		// Exact calculation: subtract null events
-		int size0 = getReactantCount(0);
-		int size1 = getReactantCount(1);
+		// Exact calculation: subtract null events.  Enumerate one representative
+		// per complex for a reactant the rule does not transform, so both the
+		// total and the invalid pairs subtracted from it are counted on the same
+		// footing as getCorrectedReactantCount(); for every other reactant this
+		// is still every live mapping set, and the arithmetic is unchanged.
+		static thread_local std::vector<MappingSet*> reps0, reps1;
+		collectReactantRepresentatives(reactantLists[0], contextCountsPerComplex[0], reps0);
+		collectReactantRepresentatives(reactantLists[1], contextCountsPerComplex[1], reps1);
+
 		// Use raw counts here because invalid self-pairs are removed explicitly below.
-		double totalCombinations = (double)getReactantCount(0) * (double)getReactantCount(1);
+		double totalCombinations = (double)reps0.size() * (double)reps1.size();
 		double invalidCombinations = 0;
 
-		for (int i = 0; i < size0; ++i) {
-			msPairBuffer[0] = reactantLists[0]->getMappingSet(i);
-			for (int j = 0; j < size1; ++j) {
-				msPairBuffer[1] = reactantLists[1]->getMappingSet(j);
-				
+		for (size_t i = 0; i < reps0.size(); ++i) {
+			msPairBuffer[0] = reps0[i];
+			for (size_t j = 0; j < reps1.size(); ++j) {
+				msPairBuffer[1] = reps1[j];
+
 				// check for collision
 				if (!transformationSet->checkMolecularity(msPairBuffer)) {
 					invalidCombinations++;
@@ -527,20 +679,12 @@ int BasicRxnClass::getCorrectedReactantCount(unsigned int reactantIndex) const
 	}
 	*/
 
-	if (matchOncePerReactant[reactantIndex] && !isPopulationType[reactantIndex]) {
-		std::set<int> uniqueComplexes;
-		ReactantList *rl = reactantLists[reactantIndex];
-		int size = rl->size();
-		for (int i = 0; i < size; ++i) {
-			MappingSet *ms = rl->getMappingSetByIndex(i);
-			if (ms && ms->getNumOfMappings() > 0) {
-				Mapping *mapping = ms->get(0);
-				if (mapping && mapping->getMolecule()) {
-					uniqueComplexes.insert(mapping->getMolecule()->getComplexID());
-				}
-			}
-		}
-		return (int)uniqueComplexes.size();
+	// MatchOnce is the user's explicit request; contextCountsPerComplex is the
+	// same counting applied automatically to a reactant the rule never transforms,
+	// which is how BNG counts one.
+	if ((matchOncePerReactant[reactantIndex] || contextCountsPerComplex[reactantIndex])
+	    && !isPopulationType[reactantIndex]) {
+		return countDistinctComplexes(reactantLists[reactantIndex]);
 	}
 
 	return isPopulationType[reactantIndex] ?

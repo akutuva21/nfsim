@@ -57,6 +57,17 @@ namespace NFcore
 			 */
 			virtual int size() const { return n_mappingSets; };
 
+			/*! True once any molecule mapped into this container has belonged to a
+			    complex of more than one molecule.  While it is false no complex can
+			    hold two matches, so the distinct-complex count is just size() and the
+			    O(n) scan can be skipped -- which is the common case for catalytic
+			    rules over large monomer pools.  Conservative: a stale true only
+			    costs the scan. */
+			void noteMappedComplexSize(int complexSize) {
+				if (complexSize > 1) anyMultiMoleculeComplex = true;
+			}
+			bool mayShareComplexes() const { return anyMultiMoleculeComplex; }
+
 			/*!
 				Returns the sum population of all mappingSets that have been added to this list
 			 */
@@ -119,6 +130,7 @@ namespace NFcore
 
 			/*! Maintains the number of mappingSets on this list */
 			int n_mappingSets;
+			bool anyMultiMoleculeComplex;
 
 			/*! The total capacity that this list can hold */
 			int capacity;
