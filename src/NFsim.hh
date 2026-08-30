@@ -34,18 +34,21 @@
 //#include  "NFtest/transformations/transformations.hh"
 #include  "NFtest/simple_system/simple_system.hh"
 #include  "NFtest/transcription/transcription.hh"
+#include "NFtest/rng/test_rng.hh"
 #include  "NFtest/tlbr/tlbr.hh"
 #include  "NFtest/agentcell/agentcell.hh"
 #include  "NFtest/scheduler/scheduler.hh"
 #include  "NFtest/transformations/test_transformations.hh"
 #include  "NFtest/util/test_util.hh"
 #include "NFtest/input/test_input.hh"
+#include "NFtest/commandLineParser/test_commandLineParser.hh"
 #include  "NFtest/tinyxml/test_tinyxml.hh"
 #include  "NFtest/nauty24/test_nauty24.hh"
 #include "NFtest/system/test_system.hh"
 #include "NFtest/compartment/test_compartment.hh"
 #include "NFtest/reactionClass/test_reactionClass.hh"
 #include "NFtest/observable/test_observable.hh"
+#include "NFtest/energyPattern/test_energyPattern.hh"
 
 
 

@@ -27,9 +27,12 @@ set(SUB_DIRS
     src/NFtest/scheduler
     src/NFtest/transformations
     src/NFtest/input
+    src/NFtest/commandLineParser
     src/NFtest/agentcell/cell
     src/NFtest/agentcell
+    src/NFtest/rng
     src/NFtest/util
+    src/NFtest/energyPattern
     src/NFtest/tinyxml
     src/NFtest/nauty24
     src/NFtest/system

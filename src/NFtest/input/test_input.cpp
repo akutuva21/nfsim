@@ -1,14 +1,22 @@
 #include "test_input.hh"
+#include "../../NFinput/NFinput.hh"
 #include <iostream>
 #include <sstream>
 #include <stdexcept>
+#include <map>
 
 using namespace std;
+using namespace NFinput;
+
+#include "../../NFcore/NFcore.hh"
 
 // Declare the external functions we want to test in the global namespace
 // as they are defined in walk.cpp without a namespace.
 int getInput(int min, int max);
 double getInput(double min);
+
+// equilibrate is defined in rnfRunner.cpp without a namespace, so we declare it here to test it.
+void equilibrate(const std::string& command, NFcore::System *s);
 
 void NFtest_input::run() {
     cout << "Running NFinput tests..." << endl;
@@ -16,6 +24,7 @@ void NFtest_input::run() {
     // Save old buffers
     streambuf* oldCin = cin.rdbuf();
     streambuf* oldCout = cout.rdbuf();
+    streambuf* oldCerr = cerr.rdbuf();
 
     try {
         // Test getInput(double min)
@@ -136,16 +145,60 @@ void NFtest_input::run() {
             }
         }
 
+        // Test equilibrate error handling
+        {
+            stringstream out;
+            stringstream err;
+            cout.rdbuf(out.rdbuf());
+            cerr.rdbuf(err.rdbuf());
+
+            NFcore::System s("test_system");
+
+            // Should catch runtime_error inside equilibrate and print to out/err
+            equilibrate("eq bad_arg", &s);
+
+            string output = out.str();
+            if (output.find("Could not convert eq times or output steps to numbers") == string::npos) {
+                throw runtime_error("Expected error message in stdout, got: " + output);
+            }
+        }
+
+        // Test NFinput::lookup for missing component
+        {
+            stringstream errOut;
+            cerr.rdbuf(errOut.rdbuf());
+
+            map<string, component> comps;
+            map<string, component> symMap;
+            component* c = nullptr;
+
+            bool result = NFinput::lookup(c, "nonexistent_id", comps, symMap);
+
+            if (result != false) {
+                throw runtime_error("Expected lookup to return false for non-existent component id");
+            }
+
+            string output = errOut.str();
+            if (output.find("It seems that I couldn't find the binding sites or states you are refering to.") == string::npos) {
+                throw runtime_error("Expected error message for missing component in output, got: " + output);
+            }
+            if (output.find("Could not find the component that matches the id: nonexistent_id") == string::npos) {
+                throw runtime_error("Expected error message indicating missing component id in output, got: " + output);
+            }
+        }
+
     } catch (...) {
         // Restore buffers before throwing
         cin.rdbuf(oldCin);
         cout.rdbuf(oldCout);
+        cerr.rdbuf(oldCerr);
         throw;
     }
 
     // Restore buffers
     cin.rdbuf(oldCin);
     cout.rdbuf(oldCout);
+    cerr.rdbuf(oldCerr);
 
     // Explicitly write the passed message to the real cout
     cout << "NFinput tests passed!" << endl;

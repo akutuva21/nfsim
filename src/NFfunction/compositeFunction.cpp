@@ -22,7 +22,6 @@ CompositeFunction::CompositeFunction(System *s,
 					vector <string> &paramNames)
 {
 
-	//cout<<"creating composite function"<<endl;
 	this->name = name;
 	this->originalExpression=expression;
 	this->parsedExpression="";
@@ -275,7 +274,6 @@ void CompositeFunction::finalizeInitialization(System *s)
 		if(numTwoDigits.size()<2) {
 			isTwoDigitNumber = false;
 		} else {
-			//cout<<endl<<numTwoDigits<<endl;
 			try {
 				NFutil::convertToInt(numTwoDigits);
 			} catch (std::runtime_error e) {
@@ -292,8 +290,6 @@ void CompositeFunction::finalizeInitialization(System *s)
 	}
 
 
-	//cout<<"now the expression is finally: "<<parsedExpression<<endl;
-	//cout<<" max reactant index: "<<maxReactantIndex<<endl;
 
 
 	this->n_reactantCounts = maxReactantIndex;
@@ -302,8 +298,6 @@ void CompositeFunction::finalizeInitialization(System *s)
 		reactantCount[r]=0;
 	}
 
-	//cout<<"prepared: "<<this->name<<endl;
-	//cout<<"expression= "<<this->parsedExpression<<endl;
 }
 
 int CompositeFunction::getNumOfArgs() const {
@@ -317,7 +311,6 @@ string CompositeFunction::getArgName(int aIndex) const {
 
 void CompositeFunction::updateParameters(System *s)
 {
-	//cout<<"Updating parameters for function: "<<name<<endl;
 	for(unsigned int i=0; i<n_params; i++) {
 		p->DefineConst(paramNames[i],s->getParameter(paramNames[i]));
 	}
@@ -360,7 +353,6 @@ void CompositeFunction::prepareForSimulation(System *s)
 	}
 
 
-	//cout<<"preparing composite function.."<<this->name<<endl;
 //	exit(0);
 }
 
@@ -413,18 +405,6 @@ void CompositeFunction::printDetails(System *s) {
 
 
 
-//	cout<<"trying something new..."<<endl;
-//	Molecule ** molList = new Molecule *[2];
-//	molList[0] = s->getMoleculeTypeByName("Receptor")->getMolecule(0);
-//	molList[1] = s->getMoleculeTypeByName("Receptor")->getMolecule(1);
-//	int *scope = new int[1];
-//	scope[0]=0;
-//	scope[1]=1;
-//
-//	double x = this->evaluateOn(molList,scope);
-//	cout<<"got final value: "<<x<<endl;
-//
-//	exit(1);
 }
 
 
@@ -444,10 +424,8 @@ void CompositeFunction::addTypeIMoleculeDependency(MoleculeType *mt) {
 
 
 double CompositeFunction::evaluateOn(Molecule **molList, int *scope, int *curReactantCounts, int n_reactants) {
-	//cout << "CompositeFunction::evaluateOn()" << endl;
 
 	//1 evaluate all global functions
-	//cout << "n_gfs=" << n_gfs << endl;
 	for(int f=0; f<n_gfs; f++) {
 		// AS-2021
 		if (gfs[f]->fileFunc==true) {
@@ -458,18 +436,12 @@ double CompositeFunction::evaluateOn(Molecule **molList, int *scope, int *curRea
 	}
 
 	//2 evaluate all local functions
-	//cout << "n_lfs=" << n_lfs << endl;
-	//cout << "scope[0]=" << scope[0] << endl;
-	//cout << "molList[0]" << molList[0]->getMoleculeTypeName() << endl;
 	
 	if(n_lfs>0) {
 
-		//cout<<"evaluating composite function with local dependencies."<<endl;
 		if(molList!=0 && scope!=0) {
 
-			//cout << "n_refLfs=" << n_refLfs << endl;
 			for(int i=0; i<n_refLfs; i++) {
-				//cout<<"--- evaluating: "<<lfs[refLfInds[i]]->getNiceName()<<" with scope: "<<scope[refLfScopes[i]]<<endl;
 				try{
 					this->refLfValues[i] = this->lfs[refLfInds[i]]->getValue(molList[refLfScopes[i]],scope[refLfScopes[i]]);
 				}
@@ -478,12 +450,7 @@ double CompositeFunction::evaluateOn(Molecule **molList, int *scope, int *curRea
 					lfe.setIndex(i);
 					throw lfe;
 				}
-				//cout<<"answer: "<<this->refLfValues[i]<<endl;
 			}
-
-			//for (n_refLfs)  set the value by calling the correct local function to evaluate on the specified scope
-			//which we reference through the given molList.
-			//this->refLfValues[i] = this->lfs[refLfInds[i]]->evaluateOn(molList[refLfScopes[i]],scope[refLfScopes[i]]);
 
 		} else {
 

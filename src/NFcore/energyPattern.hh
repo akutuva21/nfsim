@@ -179,16 +179,18 @@ namespace NFcore {
          * Find energy patterns that overlap with a binding reaction center.
          * Returns indices into the patterns vector.
          */
-        std::vector<int> findRelevantPatternsForBinding(
+        void findRelevantPatternsForBinding(
             const std::string &molType1, const std::string &bindSite1,
-            const std::string &molType2, const std::string &bindSite2
+            const std::string &molType2, const std::string &bindSite2,
+            std::vector<int> &relevant
         ) const;
 
         /*
          * Find energy patterns that overlap with a state-change reaction center.
          */
-        std::vector<int> findRelevantPatternsForStateChange(
-            const std::string &molType, const std::string &comp
+        void findRelevantPatternsForStateChange(
+            const std::string &molType, const std::string &comp,
+            std::vector<int> &relevant
         ) const;
 
         /*

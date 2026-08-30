@@ -171,7 +171,7 @@ void TemplateMolecule::addMapGenerator(MapGenerator *mg) {
 
 
 
-void TemplateMolecule::addEmptyComponent(string cName) {
+void TemplateMolecule::addEmptyComponent(const string& cName) {
 	if(moleculeType->isEquivalentComponent(cName)) {
 		printErrorAndExit("Cannot add empty binding site of a symmetric component with addEmptyComponent() function.");
 	}
@@ -185,7 +185,7 @@ void TemplateMolecule::addEmptyComponent(string cName) {
 	n_emptyComps++;
 	compIsAlwaysMapped[compIndex]=true;
 }
-void TemplateMolecule::addBoundComponent(string cName) {
+void TemplateMolecule::addBoundComponent(const string& cName) {
 	if(moleculeType->isEquivalentComponent(cName)) {
 		printErrorAndExit("Cannot add bound binding site of a symmetric component with addBoundComponent() function.");
 	}
@@ -199,7 +199,7 @@ void TemplateMolecule::addBoundComponent(string cName) {
 	n_occupiedComps++;
 	compIsAlwaysMapped[compIndex]=true;
 }
-void TemplateMolecule::addComponentConstraint(string cName, string stateName) {
+void TemplateMolecule::addComponentConstraint(const string& cName, const string& stateName) {
 	if(moleculeType->isEquivalentComponent(cName)) {
 		printErrorAndExit("Cannot add component constraint of a symmetric component with addComponentConstraint() function.");
 	}
@@ -208,7 +208,7 @@ void TemplateMolecule::addComponentConstraint(string cName, string stateName) {
 	addComponentConstraint(cName,stateValue);
 
 }
-void TemplateMolecule::addComponentConstraint(string cName, int stateValue) {
+void TemplateMolecule::addComponentConstraint(const string& cName, int stateValue) {
 	if(moleculeType->isEquivalentComponent(cName)) {
 		printErrorAndExit("Cannot add component constraint of a symmetric component with addComponentConstraint() function.");
 	}
@@ -238,7 +238,7 @@ void TemplateMolecule::addComponentConstraint(string cName, int stateValue) {
 	n_compStateConstraint++;
 	compIsAlwaysMapped[compIndex]=true;
 }
-void TemplateMolecule::addComponentExclusion(string cName, string stateName) {
+void TemplateMolecule::addComponentExclusion(const string& cName, const string& stateName) {
 	if(moleculeType->isEquivalentComponent(cName)) {
 		printErrorAndExit("Cannot add component exclusion of a symmetric component with addComponentExclusion() function.");
 	}
@@ -246,7 +246,7 @@ void TemplateMolecule::addComponentExclusion(string cName, string stateName) {
 	int stateValue=moleculeType->getStateValueFromName(compIndex,stateName);
 	addComponentExclusion(cName,stateValue);
 }
-void TemplateMolecule::addComponentExclusion(string cName, int stateValue) {
+void TemplateMolecule::addComponentExclusion(const string& cName, int stateValue) {
 	if(moleculeType->isEquivalentComponent(cName)) {
 		printErrorAndExit("Cannot add component exclusion of a symmetric component with addComponentExclusion() function.");
 	}
@@ -865,14 +865,16 @@ int TemplateMolecule::getNumDisjointSets(vector < TemplateMolecule * > &tMolecul
 				vector <int> &uniqueSetId)
 {
 	int setCount=0;
-	for(unsigned int i=0; i<tMolecules.size(); i++)
+	const unsigned int numMolecules = tMolecules.size();
+	for(unsigned int i=0; i<numMolecules; i++)
 	{
 		//First see if this template was already found in a previous set.
 		//if it was, then we don't have to traverse
 		bool alreadyFound = false;
 		for(unsigned int j=0; j<i; j++) {
 			//search set J for this template
-			for(unsigned int kj=0; kj<sets.at(j).size(); kj++) {
+			const unsigned int setJSize = sets.at(j).size();
+			for(unsigned int kj=0; kj<setJSize; kj++) {
 				if(sets.at(j).at(kj)==tMolecules.at(i)) {
 					alreadyFound = true;
 					break;
@@ -1444,6 +1446,22 @@ bool TemplateMolecule::checkConnectedMolecules(Molecule *m, ReactantContainer *r
 
 bool TemplateMolecule::compare(Molecule *m, ReactantContainer *rc, MappingSet *ms, bool holdMolClearToEnd, vector<MappingSet*> *symmetricMappingSet)
 {
+	System *profileSystem = 0;
+	if (m != 0 && m->getMoleculeType() != 0)
+		profileSystem = m->getMoleculeType()->getSystem();
+	ProfileConnectivityScope profileConnectivityScope(
+		profileSystem, PROFILE_CONNECTIVITY_MATCHING);
+	struct ProfileCompareScope {
+		System *system;
+		bool enabled;
+		ProfileCompareScope(System *s) : system(s), enabled(false) {
+			enabled = system != 0 && system->isProfileReactionActive();
+			if (enabled) system->beginProfileTemplateCompare();
+		}
+		~ProfileCompareScope() {
+			if (enabled) system->endProfileTemplateCompare();
+		}
+	} profileCompareScope(profileSystem);
 
 	// Track if we're in a nested disjoint match to prevent counter reset
 	bool head = false;
@@ -1734,7 +1752,8 @@ string TemplateMolecule::getPatternString() {
 	TemplateMolecule::traverse(this,tmList,false);
 
 	//First put in the basic information, from non symmetric constraints...
-	for(unsigned int t=0; t<tmList.size(); t++) {
+	unsigned int tmListSize = tmList.size();
+	for(unsigned int t=0; t<tmListSize; t++) {
 		TemplateMolecule *tm = tmList.at(t);
 		//tm->printDetails(cout);
 		MoleculeType * mt = tm->getMoleculeType();
