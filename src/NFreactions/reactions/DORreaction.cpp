@@ -1063,6 +1063,18 @@ bool EnergyRxnClass::shouldUpdateMembership(
 	return false;
 }
 
+bool EnergyRxnClass::canSkipIndirectMembership(
+		ReactionClass *firedReaction) const
+{
+	if (!simpleMembership || firedReaction == 0 ||
+			!firedReaction->usesIncrementalMembership())
+		return false;
+
+	const EnergyRxnClass *firedEnergy =
+			dynamic_cast<const EnergyRxnClass *>(firedReaction);
+	return firedEnergy != 0 && firedEnergy->simpleMembership;
+}
+
 double EnergyRxnClass::evaluateLocalFunctions(MappingSet *ms)
 {
 	if (ms == 0 || ms->getNumOfMappings() == 0 || ms->get(0) == 0 ||

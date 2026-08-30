@@ -505,6 +505,17 @@ void MoleculeType::addReactionClass(ReactionClass * r, int rPosition)
 	}
 }
 
+bool MoleculeType::canSkipIndirectMembership(
+		ReactionClass *firedReaction) const
+{
+	for (vector<ReactionClass *>::const_iterator it = reactions.begin();
+			it != reactions.end(); ++it) {
+		if (!(*it)->canSkipIndirectMembership(firedReaction))
+			return false;
+	}
+	return true;
+}
+
 
 
 void MoleculeType::populateWithDefaultMolecules(int moleculeCount)
@@ -827,6 +838,4 @@ void MoleculeType::printDetails() const
 //	cout<<"        of which "<< indexOfDORrxns.size() <<" are DOR rxns. "<<endl;
 	cout<<"   -has "<< molObs.size() <<" molecules observables " <<endl;
 }
-
-
 

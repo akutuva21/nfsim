@@ -519,6 +519,7 @@ string ReactionClass::fire(double random_A_number, bool track) {
 	bool trackDirectProducts = useConnectivity || this->usesIncrementalMembership();
 	if (trackDirectProducts) {
 		directProductMolecules.clear();
+		indirectMembershipDecisions.clear();
 		for (unsigned int msIndex=0; msIndex<n_mappingsets; msIndex++) {
 			MappingSet *ms = mappingSet[msIndex];
 			if (ms==0) continue;
@@ -527,6 +528,20 @@ string ReactionClass::fire(double random_A_number, bool track) {
 				if (mapping==0) continue;
 				Molecule *directMol = mapping->getMolecule();
 				if (directMol!=0) directProductMolecules.insert(directMol);
+			}
+		}
+		if (this->usesIncrementalMembership()) {
+			for (molIter = products.begin(); molIter != products.end(); ++molIter) {
+				Molecule *mol = *molIter;
+				if (!mol->isAlive() ||
+						directProductMolecules.find(mol) != directProductMolecules.end())
+					continue;
+				MoleculeType *mt = mol->getMoleculeType();
+				if (indirectMembershipDecisions.find(mt) ==
+						indirectMembershipDecisions.end()) {
+					indirectMembershipDecisions.emplace(
+							mt, mt->canSkipIndirectMembership(this));
+				}
 			}
 		}
 		if (useConnectivity) {
@@ -642,6 +657,12 @@ string ReactionClass::fire(double random_A_number, bool track) {
 				directProductMolecules.find(mol)!=directProductMolecules.end();
 			bool directProduct = !trackDirectProducts ||
 				directProductMolecules.find(mol)!=directProductMolecules.end();
+			if (!directProduct) {
+				auto decision = indirectMembershipDecisions.find(mt);
+				if (decision != indirectMembershipDecisions.end() &&
+						decision->second)
+					continue;
+			}
 			mol->updateRxnMembership(this, useConnectedUpdate, directProduct);
 		}
 	}

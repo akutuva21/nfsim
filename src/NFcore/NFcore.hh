@@ -975,6 +975,7 @@ namespace NFcore
 			int getMoleculeCount() const;
 
 			int getReactionCount() const { return reactions.size(); };
+			bool canSkipIndirectMembership(ReactionClass *firedReaction) const;
 			int getRxnIndex(ReactionClass * rxn, int rxnPosition);
 
 
@@ -1491,6 +1492,10 @@ namespace NFcore
 			/* Whether this reaction can use a conservative, endpoint-local
 			 * membership refresh after it fires. */
 			virtual bool usesIncrementalMembership() const { return false; }
+			/* Whether every membership entry on a molecule type can be omitted
+			 * when that molecule is only an indirect product of this firing. */
+			virtual bool canSkipIndirectMembership(
+					ReactionClass *firedReaction) const { return false; }
 			/* Return false when the supplied product cannot affect this reaction's
 			 * membership or mapping-local rate factors. */
 			virtual bool shouldUpdateMembership(Molecule *m,
@@ -1636,6 +1641,9 @@ namespace NFcore
 			 * Keeping this per reaction avoids allocating the same product set on
 			 * every firing while leaving the normal path free of this bookkeeping. */
 			unordered_set<Molecule *> directProductMolecules;
+			/* Cached per-molecule-type decisions for indirect products of a compact
+			 * energy firing. */
+			unordered_map<MoleculeType *, bool> indirectMembershipDecisions;
 			/* whether to use reaction connectivity for updating molecule
 			 * membership
 			 * Arvind Rasi Subramaniam
