@@ -257,8 +257,8 @@ void DORRxnClass::remove(Molecule *m, unsigned int reactantPos)
 
 int DORRxnClass::checkForCollision(Molecule *m, MappingSet* ms, int rxnIndex){
 	
-	const set<int>& tempSet = m->getRxnListMappingSet(rxnIndex);
-	for(set<int>::const_iterator it= tempSet.begin();it!= tempSet.end(); ++it){
+	const MappingIdSet& tempSet = m->getRxnListMappingSet(rxnIndex);
+	for(MappingIdSet::const_iterator it= tempSet.begin();it!= tempSet.end(); ++it){
 		MappingSet* ms2 = reactantTree->getMappingSet(*it);
 		if(MappingSet::checkForEquality(ms,ms2)){
 			return *it;
@@ -286,7 +286,7 @@ bool DORRxnClass::tryToAdd(Molecule *m, unsigned int reactantPos) {
 			}
 		}
 		//JJT: keep a list containing those mapping sets that will be deleted
-		set<int> deleteMs = m->getRxnListMappingSet(rxnIndex);
+		MappingIdSet deleteMs = m->getRxnListMappingSet(rxnIndex);
 		symmetricMappingSet.clear();
 		if(m->getRxnListMappingId(rxnIndex)>=0) {
 			/* JJT: this branch contains those reactions for which a reaction and a molecule had been mapped together before
@@ -348,7 +348,7 @@ bool DORRxnClass::tryToAdd(Molecule *m, unsigned int reactantPos) {
 				
 			}
 
-			for(set<int>::iterator it=deleteMs.begin();it!=deleteMs.end(); ++it){
+			for(MappingIdSet::iterator it=deleteMs.begin();it!=deleteMs.end(); ++it){
 				m->deleteRxnListMappingId(rxnIndex,*it);
 				reactantTree->removeMappingSet(*it);
 			}
@@ -1008,9 +1008,9 @@ bool EnergyRxnClass::tryToAdd(Molecule *m, unsigned int reactantPos)
 		return true;
 	}
 
-	const set<int>& existingMappings = m->getRxnListMappingSet(rxnIndex);
+	const MappingIdSet& existingMappings = m->getRxnListMappingSet(rxnIndex);
 	if (!existingMappings.empty()) {
-		for (set<int>::const_iterator it = existingMappings.begin();
+		for (MappingIdSet::const_iterator it = existingMappings.begin();
 				it != existingMappings.end(); ++it) {
 			MappingSet *mappingSet = reactantTree->getMappingSet(*it);
 			mappingSet->set(0, m);

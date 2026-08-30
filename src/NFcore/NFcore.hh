@@ -111,6 +111,42 @@ namespace NFcore
 
 	class SystemSnapshot;
 
+	/* Compact sorted membership IDs. Reaction membership is usually empty or
+	 * contains one mapping per molecule, while std::set stores tree metadata for
+	 * every reaction slot and mapping. */
+	class MappingIdSet {
+		public:
+			typedef vector<int>::iterator iterator;
+			typedef vector<int>::const_iterator const_iterator;
+
+			bool empty() const { return ids.empty(); }
+			size_t size() const { return ids.size(); }
+			iterator begin() { return ids.begin(); }
+			iterator end() { return ids.end(); }
+			const_iterator begin() const { return ids.begin(); }
+			const_iterator end() const { return ids.end(); }
+			void clear() { ids.clear(); }
+
+			pair<iterator, bool> insert(int id) {
+				iterator position = lower_bound(ids.begin(), ids.end(), id);
+				if (position != ids.end() && *position == id)
+					return make_pair(position, false);
+				position = ids.insert(position, id);
+				return make_pair(position, true);
+			}
+
+			size_t erase(int id) {
+				iterator position = lower_bound(ids.begin(), ids.end(), id);
+				if (position == ids.end() || *position != id)
+					return 0;
+				ids.erase(position);
+				return 1;
+			}
+
+		private:
+			vector<int> ids;
+	};
+
 
 	//exception for the handling of local functions and mapping sets
 	class LocalFunctionException: public exception
@@ -1253,11 +1289,12 @@ namespace NFcore
 
 			int getRxnListMappingId(int rxnIndex) { 
 				//return rxnListMappingId[rxnIndex];
-				return (rxnListMappingId2[rxnIndex].size() > 0) ? *rxnListMappingId2[rxnIndex].begin() : -1;  //JJT: changing to handle multiple mappings per reaction
+				MappingIdSet &mappingIds = rxnListMappingId2[rxnIndex];
+				return (mappingIds.size() > 0) ?
+					*mappingIds.begin() : -1;  //JJT: changing to handle multiple mappings per reaction
 			};
 
-			const set<int>& getRxnListMappingSet(int rxnIndex) const {
-
+			const MappingIdSet& getRxnListMappingSet(int rxnIndex) const {
 				return rxnListMappingId2[rxnIndex];
 			}
 
@@ -1268,7 +1305,8 @@ namespace NFcore
 						return true;
 					}
 					else{
-						pair<std::set<int>::iterator,bool> it = this->rxnListMappingId2[rxnIndex].insert(rxnListMappingId); //JJT: using a set* instead of int* to deal with multiple mappings per reaction
+						pair<MappingIdSet::iterator,bool> it =
+							this->rxnListMappingId2[rxnIndex].insert(rxnListMappingId); //JJT: using a set* instead of int* to deal with multiple mappings per reaction
 						return it.second; //JJT:  return whether it is a new insert or not
 					}
 			};
@@ -1406,7 +1444,7 @@ namespace NFcore
 
 
 			//Used to keep track of which reactions this molecule is in...
-			set<int>* rxnListMappingId2;
+			MappingIdSet* rxnListMappingId2;
 			map<vector<Molecule *>, int>* rxnListMappingId3;
 			int nReactions;
 
