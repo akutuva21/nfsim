@@ -784,7 +784,7 @@ void MoleculeType::updateRxnMembership(Molecule * m,
 			for (vector<unsigned int>::const_iterator it =
 					partnerReactions.begin(); it != partnerReactions.end(); ++it) {
 				ReactionClass *rxn = reactions[*it];
-				if (defer && rxn->supportsDeferredMembershipUpdate())
+				if (defer)
 					this->system->deferMembershipPropensityUpdate(rxn);
 				else {
 					double oldA = rxn->get_a();
@@ -848,8 +848,7 @@ void MoleculeType::updateRxnMembership(Molecule * m,
 					if (useCompactPartnerPoolIndex &&
 							compactMembershipBitIsSet(*partnerCandidates, r)) {
 						if (!compactPartnerPoolChanged) continue;
-						bool defer = this->system->isDeferringMembershipPropensityUpdates() &&
-								rxn->supportsDeferredMembershipUpdate();
+						bool defer = this->system->isDeferringMembershipPropensityUpdates();
 						if (defer)
 							this->system->deferMembershipPropensityUpdate(rxn);
 						else {
@@ -942,8 +941,7 @@ void MoleculeType::updateRxnMembership(Molecule * m,
 				if (useCompactPartnerPoolIndex &&
 						compactMembershipBitIsSet(*partnerCandidates, r)) {
 					if (!compactPartnerPoolChanged) continue;
-					bool defer = this->system->isDeferringMembershipPropensityUpdates() &&
-						rxn->supportsDeferredMembershipUpdate();
+					bool defer = this->system->isDeferringMembershipPropensityUpdates();
 					if (defer)
 						this->system->deferMembershipPropensityUpdate(rxn);
 					else {
@@ -994,8 +992,7 @@ void MoleculeType::updateRxnMembership(Molecule * m,
 		if (useCompactPartnerPoolIndex &&
 				compactMembershipBitIsSet(*partnerCandidates, r)) {
 			if (!compactPartnerPoolChanged) continue;
-			bool defer = this->system->isDeferringMembershipPropensityUpdates() &&
-				rxn->supportsDeferredMembershipUpdate();
+			bool defer = this->system->isDeferringMembershipPropensityUpdates();
 			if (defer)
 				this->system->deferMembershipPropensityUpdate(rxn);
 			else {
