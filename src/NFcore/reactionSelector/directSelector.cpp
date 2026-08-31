@@ -29,6 +29,21 @@ unsigned int directSelectorTrailingZeroCount(std::uint64_t value)
 #endif
 }
 
+/* The active bitset is maintained by every selector update.  A compact
+ * EnergyPattern batch normally changes the values of already-active rules,
+ * so rewriting the same word for every rule only creates avoidable stores.
+ * The selector invariant guarantees that the bit reflects oldA on entry. */
+inline void directSelectorUpdateActiveBit(
+		std::uint64_t &word, std::uint64_t bit, bool wasActive, bool isActive)
+{
+	if (wasActive == isActive)
+		return;
+	if (isActive)
+		word |= bit;
+	else
+		word &= ~bit;
+}
+
 }
 
 
@@ -134,10 +149,8 @@ double DirectSelector::update(ReactionClass *r,double oldA, double newA)
 			std::uint64_t &word =
 				activeReactionBits[static_cast<std::size_t>(reaction) >> 6];
 			std::uint64_t bit = std::uint64_t(1) << (reaction & 63);
-			if (newA != 0.0)
-				word |= bit;
-			else
-				word &= ~bit;
+			directSelectorUpdateActiveBit(word, bit,
+				oldA != 0.0, newA != 0.0);
 		}
 	}
 	return Atot;
@@ -170,13 +183,11 @@ double DirectSelector::updateBatch(vector<ReactionClass *> &rxns)
 		selectionBlockPropensities[block] += newA;
 		if (sparseSelectionSafe) {
 			std::uint64_t &word =
-					activeReactionBits[static_cast<std::size_t>(reaction) >> 6];
+				activeReactionBits[static_cast<std::size_t>(reaction) >> 6];
 			std::uint64_t bit =
-					std::uint64_t(1) << (reaction & 63);
-			if (newA != 0.0)
-				word |= bit;
-			else
-				word &= ~bit;
+				std::uint64_t(1) << (reaction & 63);
+			directSelectorUpdateActiveBit(word, bit,
+					oldA != 0.0, newA != 0.0);
 		}
 	}
 	return Atot;
