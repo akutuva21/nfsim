@@ -274,6 +274,9 @@ namespace NFcore
 			double RT;
 			bool isForward;
 			bool simpleMembership;
+			bool compactFactorizedPropensity;
+			bool compactForwardPartnerPropensity;
+			bool compactReversePropensity;
 			bool preFireBindingFastPath;
 			int reactionCenterComponentIndex;
 			int partnerComponentIndex;
