@@ -232,6 +232,8 @@ bool DORRxnClass::tryToAdd(Molecule *m, unsigned int reactantPos) {
 	if (contextCountsPerComplex[reactantPos] && reactantPos == (unsigned)DORreactantIndex) {
 		reactantTree->noteMappedComplexSize(m->getComplex()->getComplexSize());
 	}
+	if (system != 0 && system->isProfilingEnabled())
+		system->recordProfileMatchCandidate();
 	if(reactantPos==(unsigned)this->DORreactantIndex) {
 
 		// handle the DOR reactant
