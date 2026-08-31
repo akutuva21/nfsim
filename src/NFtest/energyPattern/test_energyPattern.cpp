@@ -1,4 +1,5 @@
 #include "test_energyPattern.hh"
+#include "../../NFcore/NFcore.hh"
 #include "../../NFcore/energyPattern.hh"
 #include <iostream>
 #include <stdexcept>
@@ -195,6 +196,33 @@ void NFtest_energyPattern::run()
     if (fwdS.name != "RxnState_fwd") throw runtime_error("State forward rule name mismatch.");
     if (abs(fwdS.deltaG - (-3.0)) > 1e-6) throw runtime_error("State forward rule deltaG mismatch.");
     if (abs(fwdS.rate - exp(-8.5)) > 1e-6) throw runtime_error("State forward rule rate mismatch.");
+
+    cout << "  Testing compact partner pool swap removal..." << endl;
+    System *poolSystem = new System("CompactPartnerPoolTest");
+    vector<string> poolComponents;
+    poolComponents.push_back("site");
+    MoleculeType *poolMoleculeType =
+        new MoleculeType("PoolMolecule", poolComponents, poolSystem);
+    Molecule *poolMolecule0 = poolMoleculeType->genDefaultMolecule();
+    Molecule *poolMolecule1 = poolMoleculeType->genDefaultMolecule();
+    Molecule *poolMolecule2 = poolMoleculeType->genDefaultMolecule();
+    CompactPartnerPool pool;
+    pool.add(poolMolecule0,
+             static_cast<unsigned int>(poolMolecule0->getMolListId()));
+    pool.add(poolMolecule1,
+             static_cast<unsigned int>(poolMolecule1->getMolListId()));
+    pool.add(poolMolecule2,
+             static_cast<unsigned int>(poolMolecule2->getMolListId()));
+    if (!pool.remove(poolMolecule0,
+                     static_cast<unsigned int>(poolMolecule0->getMolListId())))
+        throw runtime_error("compact partner pool did not remove its first entry.");
+    if (!pool.contains(poolMolecule1,
+                       static_cast<unsigned int>(poolMolecule1->getMolListId())) ||
+        !pool.contains(poolMolecule2,
+                       static_cast<unsigned int>(poolMolecule2->getMolListId())) ||
+        pool.getByIndex(0) != poolMolecule2)
+        throw runtime_error("compact partner pool reverse index was not updated after swap removal.");
+    delete poolSystem;
 
 	cout << "EnergyFunction tests completed successfully." << endl;
 }
