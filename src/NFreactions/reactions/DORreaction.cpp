@@ -884,6 +884,8 @@ EnergyRxnClass::EnergyRxnClass(
 	singleConditionalTermFastPath(false),
 	baseEnergyRateFactor(0.0),
 	conditionedEnergyRateFactor(0.0),
+	multiConditionalTermFastPath(false),
+	conditionalRateFactors(),
 	minimumConditionalBits(0),
 	directProductListDecisionKnown(false),
 	directProductListSafe(false)
@@ -1024,6 +1026,27 @@ EnergyRxnClass::EnergyRxnClass(
 			exp(-(energyCoefficient *
 				(baseEnergy + conditionalTerms[0].energyValue)) / RT);
 		singleConditionalTermFastPath = true;
+	} else if (componentMaskFastPath && conditionalTerms.size() > 1 &&
+			conditionalTerms.size() <= 8) {
+		/* A small number of independent energy terms has only a small number of
+		 * possible summed energies.  Cache those exact sums once per reaction;
+		 * the hot path then performs the same mask tests but no exponential.  Cap
+		 * the table to keep memory bounded for unusually large contexts. */
+		double energyCoefficient = isForward ? phi : (phi - 1.0);
+		unsigned int combinationCount =
+				1u << static_cast<unsigned int>(conditionalTerms.size());
+		conditionalRateFactors.resize(combinationCount);
+		for (unsigned int combination = 0;
+				combination < combinationCount; ++combination) {
+			double deltaG = baseEnergy;
+			for (unsigned int ti = 0; ti < conditionalTerms.size(); ++ti) {
+				if (combination & (1u << ti))
+					deltaG += conditionalTerms[ti].energyValue;
+			}
+			conditionalRateFactors[combination] =
+				exp(-(energyCoefficient * deltaG) / RT);
+		}
+		multiConditionalTermFastPath = true;
 	}
 }
 
@@ -1458,6 +1481,16 @@ double EnergyRxnClass::evaluateLocalFunctions(MappingSet *ms)
 		return (boundMask & conditionalComponentMasks[0]) ==
 				conditionalComponentMasks[0]
 			? conditionedEnergyRateFactor : baseEnergyRateFactor;
+	}
+	if (multiConditionalTermFastPath) {
+		std::uint64_t boundMask = weightedMolecule->getBoundComponentMask();
+		unsigned int activeTerms = 0;
+		for (unsigned int ti = 0; ti < conditionalTerms.size(); ++ti) {
+			std::uint64_t requiredMask = conditionalComponentMasks[ti];
+			if ((boundMask & requiredMask) == requiredMask)
+				activeTerms |= (1u << ti);
+		}
+		return conditionalRateFactors[activeTerms];
 	}
 
 	double deltaG = baseEnergy;

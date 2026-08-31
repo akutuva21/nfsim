@@ -279,6 +279,8 @@ namespace NFcore
 			bool singleConditionalTermFastPath;
 			double baseEnergyRateFactor;
 			double conditionedEnergyRateFactor;
+			bool multiConditionalTermFastPath;
+			std::vector<double> conditionalRateFactors;
 			unsigned int minimumConditionalBits;
 			mutable bool directProductListDecisionKnown;
 			mutable bool directProductListSafe;
