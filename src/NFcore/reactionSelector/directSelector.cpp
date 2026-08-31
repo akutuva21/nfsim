@@ -189,12 +189,17 @@ double DirectSelector::updateBatch(vector<ReactionClass *> &rxns)
 	for (vector<ReactionClass *>::const_iterator it = rxns.begin();
 			it != rxns.end(); ++it) {
 		ReactionClass *r = *it;
-		double oldA = r->get_a();
+		int reaction = r->getRxnId();
+		bool indexedReaction = sparseSelectionSafe &&
+				reaction >= 0 && reaction < n_reactions &&
+				reactionClassList[reaction] == r;
+		double oldA = indexedReaction
+				? reactionPropensities[static_cast<std::size_t>(reaction)]
+				: r->get_a();
 		double newA = r->update_a();
 		Atot -= oldA;
 		Atot += newA;
 
-		int reaction = r->getRxnId();
 		if (reactionIndexMode == 0 && (reaction < 0 || reaction >= n_reactions ||
 				reactionClassList[reaction] != r)) {
 			/* System::prepareForSimulation() assigns the global reaction id
