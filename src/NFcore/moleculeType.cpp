@@ -765,6 +765,29 @@ void MoleculeType::updateRxnMembership(Molecule * m,
 				refreshCompactPartnerPool(
 						m, reactionPositions[firstPartnerReaction]);
 	}
+	bool allReactionsUseCompactPartnerPool =
+			useCompactPartnerPoolIndex &&
+			compactPartnerReactionIndices[membershipChange.componentIndex2].size() ==
+				reactions.size();
+	if (allReactionsUseCompactPartnerPool) {
+		if (compactPartnerPoolChanged) {
+			bool defer = this->system->isDeferringMembershipPropensityUpdates();
+			const vector<unsigned int> &partnerReactions =
+					compactPartnerReactionIndices[membershipChange.componentIndex2];
+			for (vector<unsigned int>::const_iterator it =
+					partnerReactions.begin(); it != partnerReactions.end(); ++it) {
+				ReactionClass *rxn = reactions[*it];
+				if (defer && rxn->supportsDeferredMembershipUpdate())
+					this->system->deferMembershipPropensityUpdate(rxn);
+				else {
+					double oldA = rxn->get_a();
+					double newA = rxn->update_a();
+					this->system->update_A_tot(rxn, oldA, newA);
+				}
+			}
+		}
+		return;
+	}
 	if (directProduct && firedReaction != 0 &&
 		firedReaction->usesIncrementalMembership()) {
 		unordered_map<ReactionClass *, bool>::iterator safe =
