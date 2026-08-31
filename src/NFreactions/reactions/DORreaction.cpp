@@ -1468,6 +1468,31 @@ bool EnergyRxnClass::canUseDirectProductList() const
 	return safe;
 }
 
+bool EnergyRxnClass::checkPreFireConditions(
+		MappingSet **mappingSets) const
+{
+	/* The compact forward constructor creates one binding transformation on
+	 * reactant 0 and one empty partner mapping on reactant 1.  If either site
+	 * became occupied after membership was indexed, the transformation would
+	 * reject the event later; reject it here before the generic fire pipeline. */
+	if (!(simpleMembership && isForward && n_reactants == 2 &&
+			transformationSet != 0 &&
+			transformationSet->getNumOfTransformations(0) == 1 &&
+			transformationSet->getNumOfTransformations(1) == 1) ||
+			mappingSets == 0 || mappingSets[0] == 0 || mappingSets[1] == 0)
+		return true;
+	Mapping *weightedMapping = mappingSets[0]->get(0);
+	Mapping *partnerMapping = mappingSets[1]->get(0);
+	if (weightedMapping == 0 || partnerMapping == 0)
+		return true;
+	Molecule *weightedMolecule = weightedMapping->getMolecule();
+	Molecule *partnerMolecule = partnerMapping->getMolecule();
+	if (weightedMolecule == 0 || partnerMolecule == 0)
+		return true;
+	return !weightedMolecule->isBindingSiteBonded(weightedMapping->getIndex()) &&
+			!partnerMolecule->isBindingSiteBonded(partnerMapping->getIndex());
+}
+
 double EnergyRxnClass::evaluateLocalFunctions(MappingSet *ms)
 {
 	if (ms == 0 || ms->getNumOfMappings() == 0 || ms->get(0) == 0 ||

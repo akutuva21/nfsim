@@ -1918,6 +1918,13 @@ namespace NFcore
 			/* Whether membership mutations can defer update_a() until all direct
 			 * products from the current compact EnergyPattern event are processed. */
 			virtual bool supportsDeferredMembershipUpdate() const { return false; }
+			/* Give specialized reactions a chance to reject a stale mapping before
+			 * product preparation and membership work.  The default preserves the
+			 * legacy transformation-time checks. */
+			virtual bool checkPreFireConditions(MappingSet **mappingSets) const {
+				(void)mappingSets;
+				return true;
+			}
 			/* Mark this reaction once per deferred membership batch. */
 			bool markDeferredMembershipUpdate(unsigned long long generation) {
 				if (deferredMembershipUpdateGeneration == generation)

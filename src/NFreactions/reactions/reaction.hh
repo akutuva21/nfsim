@@ -252,6 +252,8 @@ namespace NFcore
 			virtual bool canUseDirectProductList() const;
 			virtual bool canSkipIndirectMembership(
 					ReactionClass *firedReaction) const;
+			virtual bool checkPreFireConditions(
+					MappingSet **mappingSets) const;
 			virtual bool shouldUpdateMembership(Molecule *m,
 					ReactionClass *firedReaction,
 					bool directProduct) const;
