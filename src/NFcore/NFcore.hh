@@ -1445,6 +1445,8 @@ namespace NFcore
 			 * the native reaction order without scanning every registered reaction. */
 			vector<vector<std::uint64_t> > compactEnergyCenterCandidateBits;
 			vector<vector<std::uint64_t> > compactEnergyContextCandidateBits;
+			vector<vector<std::uint64_t> > compactPartnerCandidateBits;
+			vector<vector<unsigned int> > compactPartnerReactionIndices;
 			vector<unsigned int> compactEnergyContextMinimumRequiredBits;
 			vector<std::uint64_t> nonCompactMembershipCandidateBits;
 			bool hasCompactEnergyMembershipIndex;
@@ -1859,6 +1861,22 @@ namespace NFcore
 				(void)reactionCenterComponent;
 				(void)contextComponentMask;
 				(void)minimumContextComponents;
+				return false;
+			}
+			/* Describe a simple EnergyPattern partner-side pool dependency. */
+			virtual bool getCompactPartnerPoolInfo(
+					unsigned int reactantPos,
+					int &partnerComponent) const {
+				(void)reactantPos;
+				(void)partnerComponent;
+				return false;
+			}
+			/* Refresh a shared compact partner pool without rebuilding a
+			 * per-reaction membership entry. */
+			virtual bool refreshCompactPartnerPool(
+					Molecule *m, unsigned int reactantPos) {
+				(void)m;
+				(void)reactantPos;
 				return false;
 			}
 			/* Refine an endpoint-local membership decision using the current

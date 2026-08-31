@@ -1299,6 +1299,27 @@ bool EnergyRxnClass::getCompactMembershipIndexInfo(
 	return true;
 }
 
+bool EnergyRxnClass::getCompactPartnerPoolInfo(
+	unsigned int reactantPos, int &partnerComponent) const
+{
+	if (!simpleMembership || !isForward || reactantPos != 1 ||
+			partnerComponentIndex < 0)
+		return false;
+	partnerComponent = partnerComponentIndex;
+	return true;
+}
+
+bool EnergyRxnClass::refreshCompactPartnerPool(
+	Molecule *m, unsigned int reactantPos)
+{
+	if (!simpleMembership || !isForward || reactantPos != 1 ||
+			m == 0 || partnerPool == 0)
+		return false;
+	return partnerPool->refresh(
+				m, static_cast<unsigned int>(m->getMolListId()),
+				m->isBindingSiteOpen(partnerComponentIndex));
+}
+
 bool EnergyRxnClass::shouldUpdateMembershipForChange(
 		Molecule *m, const IncrementalMembershipChange &change) const
 {

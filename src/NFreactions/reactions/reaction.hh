@@ -225,6 +225,11 @@ namespace NFcore
 					int &reactionCenterComponent,
 					std::uint64_t &contextComponentMask,
 					unsigned int &minimumContextComponents) const;
+			virtual bool getCompactPartnerPoolInfo(
+					unsigned int reactantPos,
+					int &partnerComponent) const;
+			virtual bool refreshCompactPartnerPool(
+					Molecule *m, unsigned int reactantPos);
 			virtual bool shouldUpdateMembershipForChange(
 					Molecule *m,
 					const IncrementalMembershipChange &change) const;
