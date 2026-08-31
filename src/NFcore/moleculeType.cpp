@@ -909,15 +909,29 @@ void MoleculeType::updateRxnMembership(Molecule * m,
 			std::uint64_t candidates = wordIndex <
 					nonCompactMembershipCandidateBits.size()
 				? nonCompactMembershipCandidateBits[wordIndex] : 0;
+			std::uint64_t contextCandidateBits = 0;
 			if (wordIndex < centerCandidates.size())
 				candidates |= centerCandidates[wordIndex];
 			if (includeContext && wordIndex < contextCandidates.size())
-				candidates |= contextCandidates[wordIndex];
+				contextCandidateBits = contextCandidates[wordIndex];
+			candidates |= contextCandidateBits;
 			while (candidates != 0) {
 				unsigned int bit = compactMembershipTrailingZeroCount(candidates);
 				unsigned int r = static_cast<unsigned int>((wordIndex << 6) + bit);
 				candidates &= candidates - 1;
 				ReactionClass *rxn = reactions[r];
+				std::uint64_t reactionBit = std::uint64_t(1) << bit;
+				bool contextCandidate =
+						(contextCandidateBits & reactionBit) != 0;
+				bool centerCandidate = wordIndex < centerCandidates.size() &&
+						(centerCandidates[wordIndex] & reactionBit) != 0;
+				/* A context-only change cannot create a weighted-side mapping:
+				 * the reaction center occupancy is unchanged.  Avoid probing an
+				 * inactive compact rule and retain the normal path for center and
+				 * non-compact candidates. */
+				if (contextCandidate && !centerCandidate &&
+						m->getRxnListMappingId(r) < 0)
+					continue;
 				if (useCompactPartnerPoolIndex &&
 						compactMembershipBitIsSet(*partnerCandidates, r)) {
 					if (!compactPartnerPoolChanged) continue;
