@@ -105,7 +105,7 @@ namespace NFcore
 	 * transformation itself remain per-reaction scratch objects. */
 	class CompactPartnerPool {
 		public:
-			CompactPartnerPool() : molecules(), positions(),
+			CompactPartnerPool() : molecules(), positions(), moleculeSlots(),
 					lastRefreshedMolecule(0), lastRefreshMatches(false),
 					hasLastRefresh(false) {}
 
@@ -113,18 +113,23 @@ namespace NFcore
 			Molecule *getByIndex(unsigned int index) const {
 				return index < molecules.size() ? molecules[index] : 0;
 			}
-			bool contains(Molecule *molecule) const {
-				return positions.find(molecule) != positions.end();
+			bool contains(Molecule *molecule, unsigned int moleculeSlot) const {
+				if (moleculeSlot >= positions.size()) return false;
+				int position = positions[moleculeSlot];
+				return position >= 0 &&
+						static_cast<unsigned int>(position) < molecules.size() &&
+						molecules[position] == molecule;
 			}
-			bool add(Molecule *molecule) {
+			bool add(Molecule *molecule, unsigned int moleculeSlot) {
 				invalidateRefreshCache();
-				return addRaw(molecule);
+				return addRaw(molecule, moleculeSlot);
 			}
-			bool remove(Molecule *molecule) {
+			bool remove(Molecule *molecule, unsigned int moleculeSlot) {
 				invalidateRefreshCache();
-				return removeRaw(molecule);
+				return removeRaw(molecule, moleculeSlot);
 			}
-			bool refresh(Molecule *molecule, bool matches) {
+			bool refresh(Molecule *molecule, unsigned int moleculeSlot,
+					bool matches) {
 				if (molecule == 0) return false;
 				if (hasLastRefresh && lastRefreshedMolecule == molecule &&
 						lastRefreshMatches == matches)
@@ -132,7 +137,8 @@ namespace NFcore
 				lastRefreshedMolecule = molecule;
 				lastRefreshMatches = matches;
 				hasLastRefresh = true;
-				return matches ? addRaw(molecule) : removeRaw(molecule);
+				return matches ? addRaw(molecule, moleculeSlot)
+						: removeRaw(molecule, moleculeSlot);
 			}
 
 		private:
@@ -140,32 +146,45 @@ namespace NFcore
 				hasLastRefresh = false;
 				lastRefreshedMolecule = 0;
 			}
-			bool addRaw(Molecule *molecule) {
+			void ensurePositionCapacity(unsigned int moleculeSlot) {
+				if (moleculeSlot >= positions.size())
+					positions.resize(static_cast<size_t>(moleculeSlot) + 1, -1);
+			}
+			bool addRaw(Molecule *molecule, unsigned int moleculeSlot) {
 				if (molecule == 0) return false;
-				std::pair<std::unordered_map<Molecule *, unsigned int>::iterator, bool>
-						inserted = positions.emplace(
-							molecule, static_cast<unsigned int>(molecules.size()));
-				if (!inserted.second) return false;
+				ensurePositionCapacity(moleculeSlot);
+				int position = positions[moleculeSlot];
+				if (position >= 0) return false;
+				positions[moleculeSlot] = static_cast<int>(molecules.size());
 				molecules.push_back(molecule);
+				moleculeSlots.push_back(moleculeSlot);
 				return true;
 			}
-			bool removeRaw(Molecule *molecule) {
-				std::unordered_map<Molecule *, unsigned int>::iterator it =
-					positions.find(molecule);
-				if (it == positions.end()) return false;
-				unsigned int position = it->second;
+			bool removeRaw(Molecule *molecule, unsigned int moleculeSlot) {
+				if (moleculeSlot >= positions.size()) return false;
+				int storedPosition = positions[moleculeSlot];
+				if (storedPosition < 0 ||
+						static_cast<unsigned int>(storedPosition) >= molecules.size() ||
+						molecules[storedPosition] != molecule)
+					return false;
+				unsigned int position = static_cast<unsigned int>(storedPosition);
 				unsigned int last = static_cast<unsigned int>(molecules.size() - 1);
 				if (position != last) {
 					Molecule *replacement = molecules[last];
 					molecules[position] = replacement;
-					positions[replacement] = position;
+					positions[moleculeSlots[last]] = static_cast<int>(position);
 				}
 				molecules.pop_back();
-				positions.erase(it);
+				moleculeSlots.pop_back();
+				positions[moleculeSlot] = -1;
 				return true;
 			}
 			std::vector<Molecule *> molecules;
-			std::unordered_map<Molecule *, unsigned int> positions;
+			/* MoleculeList assigns a stable slot ID to every molecule object.  A
+			 * dense reverse index avoids one unordered_map node and allocation per
+			 * eligible partner while retaining O(1) membership updates. */
+			std::vector<int> positions;
+			std::vector<unsigned int> moleculeSlots;
 			Molecule *lastRefreshedMolecule;
 			bool lastRefreshMatches;
 			bool hasLastRefresh;

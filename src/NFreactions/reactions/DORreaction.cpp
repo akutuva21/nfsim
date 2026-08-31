@@ -1065,7 +1065,8 @@ bool EnergyRxnClass::tryToAddCompact(
 	 * pool, so only the first membership change needs to mutate storage. */
 	if (isForward && reactantPos == 1) {
 		bool matches = m->isBindingSiteOpen(partnerComponentIndex);
-		partnerPool->refresh(m, matches);
+		partnerPool->refresh(m,
+				static_cast<unsigned int>(m->getMolListId()), matches);
 		/* The pool is shared by all simple rules for this endpoint.  Even when
 		 * this rule's call is idempotent, its propensity still depends on the
 		 * shared pool count and must be included in a deferred update. */
@@ -1152,7 +1153,9 @@ bool EnergyRxnClass::tryToAddCompact(
 void EnergyRxnClass::remove(Molecule *m, unsigned int reactantPos)
 {
 	if (simpleMembership && isForward && reactantPos == 1) {
-		if (partnerPool != 0) partnerPool->remove(m);
+		if (partnerPool != 0)
+			partnerPool->remove(m,
+					static_cast<unsigned int>(m->getMolListId()));
 		return;
 	}
 	DORRxnClass::remove(m, reactantPos);
