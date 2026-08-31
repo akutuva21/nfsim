@@ -9,8 +9,27 @@
 
 #include "reactionSelector.hh"
 
+#if defined(_MSC_VER)
+#include <intrin.h>
+#endif
+
 using namespace std;
 using namespace NFcore;
+
+namespace {
+
+unsigned int directSelectorTrailingZeroCount(std::uint64_t value)
+{
+#if defined(_MSC_VER)
+	unsigned long bit = 0;
+	_BitScanForward64(&bit, value);
+	return static_cast<unsigned int>(bit);
+#else
+	return static_cast<unsigned int>(__builtin_ctzll(value));
+#endif
+}
+
+}
 
 
 
@@ -21,9 +40,21 @@ DirectSelector::DirectSelector(vector <ReactionClass *> &rxns, System *sys) :
 	this->Atot = 0;
 	this->n_reactions = rxns.size();
 	this->reactionClassList = new ReactionClass *[n_reactions];
+	this->sparseSelectionSafe = n_reactions > 0;
 	for(int r=0; r<n_reactions; r++) {
 		reactionClassList[r] = rxns.at(r);
 		Atot += reactionClassList[r]->get_a();
+		if (!reactionClassList[r]->supportsSparseSelection())
+			sparseSelectionSafe = false;
+	}
+	if (sparseSelectionSafe) {
+		activeReactionBits.assign(
+				(static_cast<std::size_t>(n_reactions) + 63) / 64, 0);
+		for (int r=0; r<n_reactions; r++) {
+			if (reactionClassList[r]->get_a() != 0.0)
+				activeReactionBits[static_cast<std::size_t>(r) >> 6] |=
+					(std::uint64_t(1) << (r & 63));
+		}
 	}
 }
 
@@ -34,13 +65,21 @@ DirectSelector::~DirectSelector()
 	Atot = 0;
 	n_reactions = 0;
 	delete [] reactionClassList;
+	sparseSelectionSafe = false;
+	activeReactionBits.clear();
 }
 
 double DirectSelector::refactorPropensities()
 {
 	Atot = 0;
+	if (sparseSelectionSafe)
+		std::fill(activeReactionBits.begin(), activeReactionBits.end(), 0);
 	for(int r=0; r<n_reactions; r++) {
-		Atot += reactionClassList[r]->update_a();
+		double propensity = reactionClassList[r]->update_a();
+		Atot += propensity;
+		if (sparseSelectionSafe && propensity != 0.0)
+			activeReactionBits[static_cast<std::size_t>(r) >> 6] |=
+				(std::uint64_t(1) << (r & 63));
 	}
 	return Atot;
 }
@@ -50,6 +89,27 @@ double DirectSelector::update(ReactionClass *r,double oldA, double newA)
 {
 	Atot-=oldA;
 	Atot+=newA;
+	if (sparseSelectionSafe) {
+		int reaction = r->getRxnId();
+		if (reaction < 0 || reaction >= n_reactions ||
+				reactionClassList[reaction] != r) {
+			/* System::prepareForSimulation() assigns the global reaction id
+			 * before any runtime update.  Retain a cold fallback for callers
+			 * that construct a selector directly in tests. */
+			for (reaction = 0; reaction < n_reactions; ++reaction) {
+				if (reactionClassList[reaction] == r) break;
+			}
+		}
+		if (reaction < n_reactions) {
+			std::uint64_t &word =
+				activeReactionBits[static_cast<std::size_t>(reaction) >> 6];
+			std::uint64_t bit = std::uint64_t(1) << (reaction & 63);
+			if (newA != 0.0)
+				word |= bit;
+			else
+				word &= ~bit;
+		}
+	}
 	return Atot;
 }
 
@@ -64,14 +124,33 @@ double DirectSelector::getNextReactionClass(ReactionClass *&rc)
 	//WARNING - DO NOT USE THE DEFAULT C++ RANDOM NUMBER GENERATOR FOR THIS STEP
 	// - IT INTRODUCES SMALL NUMERICAL ERRORS CAUSING THE ORDER OF RXNS TO
 	//   AFFECT SIMULATION RESULTS
-	for(int r=0; r<n_reactions; r++) {
-		a_sum += reactionClassList[r]->get_a();
-		if(randNum <= a_sum)
-		{
-			rc = reactionClassList[r];
-			return (randNum-last_a_sum);
+	if (sparseSelectionSafe) {
+		for(std::size_t wordIndex=0; wordIndex<activeReactionBits.size();
+				++wordIndex) {
+			std::uint64_t active = activeReactionBits[wordIndex];
+			while (active != 0) {
+				unsigned int bit = directSelectorTrailingZeroCount(active);
+				unsigned int r = static_cast<unsigned int>((wordIndex << 6) + bit);
+				active &= active - 1;
+				a_sum += reactionClassList[r]->get_a();
+				if(randNum <= a_sum)
+				{
+					rc = reactionClassList[r];
+					return (randNum-last_a_sum);
+				}
+				last_a_sum = a_sum;
+			}
 		}
-		last_a_sum = a_sum;
+	} else {
+		for(int r=0; r<n_reactions; r++) {
+			a_sum += reactionClassList[r]->get_a();
+			if(randNum <= a_sum)
+			{
+				rc = reactionClassList[r];
+				return (randNum-last_a_sum);
+			}
+			last_a_sum = a_sum;
+		}
 	}
 
 	this->refactorPropensities();
@@ -84,4 +163,3 @@ double DirectSelector::getAtot()
 {
 	return Atot;
 }
-

@@ -215,6 +215,9 @@ namespace NFcore
 					System *s);
 			virtual ~EnergyRxnClass();
 			virtual bool usesIncrementalMembership() const { return simpleMembership; }
+			virtual bool supportsSparseSelection() const {
+				return simpleMembership;
+			}
 			virtual bool membershipDecisionIsTypeInvariant() const {
 				return simpleMembership;
 			}

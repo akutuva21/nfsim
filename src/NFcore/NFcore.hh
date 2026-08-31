@@ -1860,6 +1860,10 @@ namespace NFcore
 			/* Whether this reaction can use a conservative, endpoint-local
 			 * membership refresh after it fires. */
 			virtual bool usesIncrementalMembership() const { return false; }
+			/* Whether propensity-zero entries can be omitted from an
+			 * order-preserving direct-selector scan.  Reaction classes with
+			 * unusual update paths keep the legacy selector behavior. */
+			virtual bool supportsSparseSelection() const { return false; }
 			/* Whether the product list can be limited to explicitly mapped
 			 * molecules for this firing. */
 			virtual bool canUseDirectProductList() const { return false; }
