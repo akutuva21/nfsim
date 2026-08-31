@@ -66,6 +66,8 @@ namespace NFcore
 			ReactionClass ** reactionClassList;
 			bool sparseSelectionSafe;
 			vector<std::uint64_t> activeReactionBits;
+			unsigned int selectionBlockSize;
+			vector<double> selectionBlockPropensities;
 
 	};
 
