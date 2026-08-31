@@ -254,6 +254,8 @@ namespace NFcore
 					ReactionClass *firedReaction) const;
 			virtual bool checkPreFireConditions(
 					MappingSet **mappingSets) const;
+			virtual void notifyRateFactorChange(
+					Molecule *m, int reactantIndex, int rxnListIndex);
 			virtual bool shouldUpdateMembership(Molecule *m,
 					ReactionClass *firedReaction,
 					bool directProduct) const;
@@ -290,12 +292,14 @@ namespace NFcore
 			double conditionedEnergyRateFactor;
 			bool multiConditionalTermFastPath;
 			std::vector<double> conditionalRateFactors;
+			double compactRateFactor;
 			unsigned int minimumConditionalBits;
 			mutable bool directProductListDecisionKnown;
 			mutable bool directProductListSafe;
 
 			bool tryToAddCompact(Molecule *m, unsigned int reactantPos,
 					int rxnIndex = -1);
+			void refreshCompactRateFactor();
 
 			bool dependsOnEndpoint(MoleculeType *targetMoleculeType,
 					MoleculeType *changedMoleculeType,

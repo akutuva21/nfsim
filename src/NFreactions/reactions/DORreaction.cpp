@@ -890,6 +890,7 @@ EnergyRxnClass::EnergyRxnClass(
 	conditionedEnergyRateFactor(0.0),
 	multiConditionalTermFastPath(false),
 	conditionalRateFactors(),
+	compactRateFactor(0.0),
 	minimumConditionalBits(0),
 	directProductListDecisionKnown(false),
 	directProductListSafe(false)
@@ -1073,6 +1074,12 @@ EnergyRxnClass::~EnergyRxnClass()
 	compactPartnerMappingSet = 0;
 }
 
+void EnergyRxnClass::refreshCompactRateFactor()
+{
+	if (compactFactorizedPropensity)
+		compactRateFactor = reactantTree->getRateFactorSum();
+}
+
 double EnergyRxnClass::update_a()
 {
 	/* The compact representation has a factored propensity: the weighted
@@ -1082,12 +1089,12 @@ double EnergyRxnClass::update_a()
 	 * counting modes that require complex deduplication. */
 	if (compactFactorizedPropensity && !useRuleMonkey) {
 		if (compactForwardPartnerPropensity) {
-			a = baseRate * reactantTree->getRateFactorSum() *
+			a = baseRate * compactRateFactor *
 					static_cast<double>(partnerPool->size());
 			return a;
 		}
 		if (compactReversePropensity) {
-			a = baseRate * reactantTree->getRateFactorSum();
+			a = baseRate * compactRateFactor;
 			return a;
 		}
 	}
@@ -1175,6 +1182,8 @@ bool EnergyRxnClass::tryToAddCompact(
 			m->deleteRxnListMappingId(rxnIndex, mappingId);
 			reactantTree->removeMappingSet(mappingId);
 		}
+		if (changed)
+			refreshCompactRateFactor();
 		return changed;
 	}
 
@@ -1196,6 +1205,7 @@ bool EnergyRxnClass::tryToAddCompact(
 				}
 				bool rateChanged = reactantTree->updateValue(
 						mappingId, evaluateLocalFunctions(mappingSet));
+				refreshCompactRateFactor();
 				return mappingChanged || rateChanged;
 			}
 		}
@@ -1215,6 +1225,7 @@ bool EnergyRxnClass::tryToAddCompact(
 						*it, evaluateLocalFunctions(mappingSet)))
 				changed = true;
 		}
+		refreshCompactRateFactor();
 		return changed;
 	}
 
@@ -1224,7 +1235,15 @@ bool EnergyRxnClass::tryToAddCompact(
 	reactantTree->confirmPush(
 				mappingSet->getId(), evaluateLocalFunctions(mappingSet));
 	m->setRxnListMappingId(rxnIndex, mappingSet->getId());
+	refreshCompactRateFactor();
 	return true;
+}
+
+void EnergyRxnClass::notifyRateFactorChange(
+		Molecule *m, int reactantIndex, int rxnListIndex)
+{
+	DORRxnClass::notifyRateFactorChange(m, reactantIndex, rxnListIndex);
+	refreshCompactRateFactor();
 }
 
 void EnergyRxnClass::remove(Molecule *m, unsigned int reactantPos)
@@ -1236,6 +1255,7 @@ void EnergyRxnClass::remove(Molecule *m, unsigned int reactantPos)
 		return;
 	}
 	DORRxnClass::remove(m, reactantPos);
+	refreshCompactRateFactor();
 }
 
 int EnergyRxnClass::getReactantCount(unsigned int reactantIndex) const
