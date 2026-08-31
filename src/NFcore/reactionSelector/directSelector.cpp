@@ -73,10 +73,12 @@ DirectSelector::DirectSelector(vector <ReactionClass *> &rxns, System *sys) :
 	this->selectionBlockPropensities.assign(
 			(static_cast<std::size_t>(n_reactions) + selectionBlockSize - 1) /
 					selectionBlockSize, 0.0);
+	this->reactionPropensities.assign(static_cast<std::size_t>(n_reactions), 0.0);
 	this->sparseSelectionSafe = n_reactions > 0;
 	for(int r=0; r<n_reactions; r++) {
 		reactionClassList[r] = rxns.at(r);
 		double propensity = reactionClassList[r]->get_a();
+		reactionPropensities[static_cast<std::size_t>(r)] = propensity;
 		Atot += propensity;
 		selectionBlockPropensities[static_cast<std::size_t>(r) /
 				selectionBlockSize] += propensity;
@@ -87,10 +89,12 @@ DirectSelector::DirectSelector(vector <ReactionClass *> &rxns, System *sys) :
 		activeReactionBits.assign(
 				(static_cast<std::size_t>(n_reactions) + 63) / 64, 0);
 		for (int r=0; r<n_reactions; r++) {
-			if (reactionClassList[r]->get_a() != 0.0)
+			if (reactionPropensities[static_cast<std::size_t>(r)] != 0.0)
 				activeReactionBits[static_cast<std::size_t>(r) >> 6] |=
 					(std::uint64_t(1) << (r & 63));
 		}
+	} else {
+		vector<double>().swap(reactionPropensities);
 	}
 }
 
@@ -103,6 +107,7 @@ DirectSelector::~DirectSelector()
 	delete [] reactionClassList;
 	sparseSelectionSafe = false;
 	activeReactionBits.clear();
+	reactionPropensities.clear();
 }
 
 double DirectSelector::refactorPropensities()
@@ -114,6 +119,8 @@ double DirectSelector::refactorPropensities()
 		std::fill(activeReactionBits.begin(), activeReactionBits.end(), 0);
 	for(int r=0; r<n_reactions; r++) {
 		double propensity = reactionClassList[r]->update_a();
+		if (sparseSelectionSafe)
+			reactionPropensities[static_cast<std::size_t>(r)] = propensity;
 		Atot += propensity;
 		selectionBlockPropensities[static_cast<std::size_t>(r) /
 				selectionBlockSize] += propensity;
@@ -153,6 +160,8 @@ double DirectSelector::update(ReactionClass *r,double oldA, double newA)
 				selectionBlockSize;
 		selectionBlockPropensities[block] -= oldA;
 		selectionBlockPropensities[block] += newA;
+		if (sparseSelectionSafe)
+			reactionPropensities[static_cast<std::size_t>(reaction)] = newA;
 	}
 	if (sparseSelectionSafe) {
 		if (reaction < n_reactions) {
@@ -200,6 +209,8 @@ double DirectSelector::updateBatch(vector<ReactionClass *> &rxns)
 				selectionBlockSize;
 		selectionBlockPropensities[block] -= oldA;
 		selectionBlockPropensities[block] += newA;
+		if (sparseSelectionSafe)
+			reactionPropensities[static_cast<std::size_t>(reaction)] = newA;
 		if (sparseSelectionSafe) {
 			std::uint64_t &word =
 				activeReactionBits[static_cast<std::size_t>(reaction) >> 6];
@@ -248,7 +259,7 @@ double DirectSelector::getNextReactionClass(ReactionClass *&rc)
 						unsigned int bit = directSelectorTrailingZeroCount(active);
 						std::size_t r = first + bit;
 						active &= active - 1;
-						a_sum += reactionClassList[r]->get_a();
+						a_sum += reactionPropensities[r];
 						if (randNum <= a_sum) {
 							rc = reactionClassList[r];
 							return (randNum-last_a_sum);
@@ -261,7 +272,7 @@ double DirectSelector::getNextReactionClass(ReactionClass *&rc)
 								(activeReactionBits[r >> 6] &
 										(std::uint64_t(1) << (r & 63))) == 0)
 							continue;
-						a_sum += reactionClassList[r]->get_a();
+						a_sum += reactionPropensities[r];
 						if (randNum <= a_sum) {
 							rc = reactionClassList[r];
 							return (randNum-last_a_sum);
@@ -293,7 +304,7 @@ double DirectSelector::getNextReactionClass(ReactionClass *&rc)
 				unsigned int bit = directSelectorTrailingZeroCount(active);
 				unsigned int r = static_cast<unsigned int>((wordIndex << 6) + bit);
 				active &= active - 1;
-				a_sum += reactionClassList[r]->get_a();
+					a_sum += reactionPropensities[r];
 				if(randNum <= a_sum)
 				{
 					rc = reactionClassList[r];

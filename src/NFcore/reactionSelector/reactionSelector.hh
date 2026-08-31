@@ -73,8 +73,12 @@ namespace NFcore
 			vector<std::uint64_t> activeReactionBits;
 			unsigned int selectionBlockSize;
 			vector<double> selectionBlockPropensities;
+			/* Sparse EnergyPattern selectors read propensities much more often
+			 * than they mutate reaction objects.  Keep a contiguous mirror for
+			 * the selection scan; dense legacy selectors retain the object read. */
+			vector<double> reactionPropensities;
 
-	};
+		};
 
 
 	class LogClassSelector : public ReactionSelector {
