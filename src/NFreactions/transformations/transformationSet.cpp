@@ -13,6 +13,7 @@ void TransformationSet::initCommon()
 {
 	this->hasSymUnbinding = false;
 	this->hasSymBinding = false;
+	this->topologyChanging = false;
 
 	// complex bookkeeping is off by default
 	this->complex_bookkeeping = false;
@@ -288,6 +289,7 @@ bool TransformationSet::addBindingTransformImpl(TemplateMolecule *t1, string bSi
 	transformations[reactantIndex2].push_back(transformation2);
 	MapGenerator *mg2 = new MapGenerator(transformations[reactantIndex2].size()-1);
 	t2->addMapGenerator(mg2);
+	topologyChanging = true;
 
 	return true;
 }
@@ -359,6 +361,7 @@ bool TransformationSet::addUnbindingTransform(TemplateMolecule *t, string bSiteN
 		MapGenerator *mg = new MapGenerator(transformations[reactantIndex].size()-1);
 		t2->addMapGenerator(mg);
 	}
+	topologyChanging = true;
 
 
 	return true;
@@ -390,6 +393,7 @@ bool TransformationSet::addDeleteMolecule(TemplateMolecule *t, int deletionType)
 	// 3) Create a MapGenerator object and add it to the templateMolecule
 	MapGenerator *mg = new MapGenerator(transformations[reactantIndex].size()-1);
 	t->addMapGenerator(mg);
+	topologyChanging = true;
 	return true;
 }
 
@@ -451,6 +455,7 @@ bool TransformationSet::addAddSpecies( SpeciesCreator *sc )
 	addSpeciesTransformations.push_back( transformation );
 
 	// 3) No map generators needed for an add species!
+	topologyChanging = true;
 	return true;
 }
 
@@ -468,6 +473,7 @@ bool TransformationSet::addAddMolecule( MoleculeCreator *mc )
 	addMoleculeTransformations.push_back( transformation );
 
 	// 3) No map generators needed for an add molecule!
+	topologyChanging = true;
 	return true;
 }
 
@@ -590,6 +596,14 @@ string TransformationSet::transform(MappingSet **mappingSets)
 string TransformationSet::transform(MappingSet **mappingSets, bool tracking)
 {
 	if(!finalized) { cerr<<"TransformationSet cannot apply a transform if it is not finalized!"<<endl; exit(1); }
+	System *profileSystem = 0;
+	if (n_reactants > 0 && reactants[0] != 0 &&
+			reactants[0]->getMoleculeType() != 0)
+		profileSystem = reactants[0]->getMoleculeType()->getSystem();
+	bool profile = profileSystem != 0 && profileSystem->isProfileReactionActive();
+	ProfileConnectivityScope profileConnectivityScope(
+		profileSystem, PROFILE_CONNECTIVITY_TRANSFORMATION);
+	ProfileTime profileStart = profile ? profileNow() : ProfileTime();
 
 	/*
 	 * NOTE: Check for "null conditions" was moved to ReactionClass::fire. This allows rejection of a reaction 
@@ -687,6 +701,8 @@ string TransformationSet::transform(MappingSet **mappingSets, bool tracking)
 			logstr += "        ]\n";
 		}
 	}
+	if (profile)
+		profileSystem->recordProfileTransformation(profileElapsedSeconds(profileStart));
 	return logstr;
 }
 
@@ -804,8 +820,20 @@ bool TransformationSet::checkMolecularity( MappingSet ** mappingSets )
 }
 
 
-bool TransformationSet::getListOfProducts(MappingSet **mappingSets, list <Molecule *> &products, int traversalLimit)
+bool TransformationSet::getListOfProducts(
+		MappingSet **mappingSets, list <Molecule *> &products, int traversalLimit,
+		vector <unsigned int> *componentSizes, bool *componentsTruncated)
 {
+	System *profileSystem = 0;
+	if (n_reactants > 0 && reactants[0] != 0 &&
+			reactants[0]->getMoleculeType() != 0)
+		profileSystem = reactants[0]->getMoleculeType()->getSystem();
+	bool profile = profileSystem != 0 && profileSystem->isProfileReactionActive();
+	ProfileConnectivityScope profileConnectivityScope(
+		profileSystem, PROFILE_CONNECTIVITY_PRODUCT_PREPARATION);
+	unsigned long long productsBefore = profile
+		? static_cast<unsigned long long>(products.size()) : 0;
+	ProfileTime profileStart = profile ? profileNow() : ProfileTime();
 	std::unordered_set<Molecule*> product_set(products.begin(), products.end());
 	list <Molecule *>::iterator molIter;
 	for(unsigned int r=0; r<n_reactants; r++)
@@ -837,8 +865,15 @@ bool TransformationSet::getListOfProducts(MappingSet **mappingSets, list <Molecu
 			if ( product_set.find( molecule ) == product_set.end() )
 			{	// Traverse neighbor and add molecules to list
 				bool was_empty = products.empty();
+				unsigned int productsBeforeTraversal = products.size();
 				auto last = was_empty ? products.end() : std::prev(products.end());
-				molecule->traverseBondedNeighborhood(products, traversalLimit);
+				bool traversalTruncated = molecule->traverseBondedNeighborhood(
+						products, traversalLimit);
+				if (traversalTruncated && componentsTruncated != 0)
+					*componentsTruncated = true;
+				if (componentSizes != 0)
+					componentSizes->push_back(
+						static_cast<unsigned int>(products.size() - productsBeforeTraversal));
 				// Sync only newly appended molecules into the set
 				auto it = was_empty ? products.begin() : std::next(last);
 				for (; it != products.end(); ++it) {
@@ -868,10 +903,16 @@ bool TransformationSet::getListOfProducts(MappingSet **mappingSets, list <Molecu
 		{	// Add molecule to list
 			products.push_back( molecule );
 			product_set.insert( molecule );
+			if (componentSizes != 0)
+				componentSizes->push_back(1);
 		}
 	}
 
 	//cout<<"All together, we have: "<<products.size()<<endl;
+	if (profile)
+		profileSystem->recordProfileProductPreparation(
+				profileElapsedSeconds(profileStart),
+				static_cast<unsigned long long>(products.size()) - productsBefore);
 	return true;
 }
 
@@ -885,6 +926,19 @@ Molecule * TransformationSet::getPopulationPointer( unsigned int r ) const
 
 bool TransformationSet::getListOfAddedMolecules(MappingSet **mappingSets, list <Molecule *> &products, int traversalLimit)
 {
+	System *profileSystem = 0;
+	if (n_reactants > 0 && reactants[0] != 0 &&
+			reactants[0]->getMoleculeType() != 0)
+		profileSystem = reactants[0]->getMoleculeType()->getSystem();
+	bool profile = profileSystem != 0 && profileSystem->isProfileReactionActive();
+	unsigned long long productsBefore = profile
+		? static_cast<unsigned long long>(products.size()) : 0;
+	ProfileTime profileStart = profile ? profileNow() : ProfileTime();
+	if (addMoleculeTransformations.empty()) {
+		if (profile)
+			profileSystem->recordProfileProductCollection(0.0, 0);
+		return true;
+	}
 	std::unordered_set<Molecule*> product_set(products.begin(), products.end());
 
 	// Add new molecules (particle type) to the list of products
@@ -907,6 +961,10 @@ bool TransformationSet::getListOfAddedMolecules(MappingSet **mappingSets, list <
 			//  list separately and old molecules that bind to new molecules will be traversed elsewhere
 		}
 	}
+	if (profile)
+		profileSystem->recordProfileProductCollection(
+				profileElapsedSeconds(profileStart),
+				static_cast<unsigned long long>(products.size()) - productsBefore);
 
 	return true;
 }
