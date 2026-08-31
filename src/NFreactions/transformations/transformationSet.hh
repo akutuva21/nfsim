@@ -421,7 +421,7 @@ namespace NFcore
 			/*!	keeps track if this set has a symmetric binding reaction	*/
 			bool hasSymBinding;
 
-			/*!	Whether this rule can change molecular connectivity. */
+			/*! Whether this rule can change molecular connectivity. */
 			bool topologyChanging;
 
 			/*! are we using the new general method for symmetry handling	*/
