@@ -126,6 +126,22 @@ void NFtest_reactantTree::run()
 
     tree.removeMappingSet(firstId);
 
+    ReactantTree oneLeafTree(0, &ts, 1);
+    MappingSet *oneLeafFirst = oneLeafTree.pushNextAvailableMappingSet();
+    unsigned int oneLeafFirstId = oneLeafFirst->getId();
+    oneLeafTree.confirmPush(oneLeafFirstId, 2.0);
+    MappingSet *oneLeafSecond = oneLeafTree.pushNextAvailableMappingSet();
+    unsigned int oneLeafSecondId = oneLeafSecond->getId();
+    oneLeafTree.confirmPush(oneLeafSecondId, 5.0);
+    oneLeafTree.pickReactantFromValue(picked, 4.0, 1.0);
+    if (oneLeafTree.size() != 2 || oneLeafTree.getRateFactorSum() != 7.0 ||
+            picked != oneLeafSecond) {
+        cout << "    Failure: one-leaf tree expansion is incorrect." << endl;
+        failCount++;
+    }
+    oneLeafTree.removeMappingSet(oneLeafSecondId);
+    oneLeafTree.removeMappingSet(oneLeafFirstId);
+
     ReactantTree expansionTree(0, &ts, 4);
     vector<unsigned int> expansionIds;
     double expansionRateSum = 0.0;

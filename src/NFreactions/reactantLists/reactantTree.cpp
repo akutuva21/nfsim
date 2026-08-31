@@ -25,9 +25,15 @@ ReactantTree::ReactantTree(
 	this->ts=ts;
 	this->system=system;
 
-	//set the initial size of the tree
-	if(init_capacity<4) maxElementCount=4;
-	else maxElementCount = init_capacity;
+	//set the initial size of the tree.  Compact EnergyPattern reactions have a
+	//single weighted mapping in the common case; let them start with one leaf
+	//and expand on demand.  Preserve the historical minimum for other callers.
+	if (init_capacity == 1)
+		maxElementCount = 1;
+	else if(init_capacity<4)
+		maxElementCount = 4;
+	else
+		maxElementCount = init_capacity;
 
 	//Get the depth of the tree, (can cast here because depth will always be a small integer)
 	this->treeDepth = (unsigned int)ceil((double)log((double)maxElementCount)/(double)log((double)2)) ;

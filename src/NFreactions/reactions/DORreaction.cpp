@@ -865,7 +865,7 @@ EnergyRxnClass::EnergyRxnClass(
 	 * geometric list growth; reverse rules have no ordinary partner list.  The
 	 * weighted tree stays deliberately small and expands for unusual contexts. */
 	DORRxnClass(name,baseRate,baseRateName,transformationSet,dorReactantIndex,s,
-			compactReactantListInitialCapacity(transformationSet, dorReactantIndex), 4,
+			compactReactantListInitialCapacity(transformationSet, dorReactantIndex), 1,
 			false),
 	conditionalTerms(context.conditionalTerms),
 	componentMaskFastPath(true),
