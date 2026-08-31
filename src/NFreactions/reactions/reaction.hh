@@ -220,6 +220,11 @@ namespace NFcore
 			}
 			virtual bool getIncrementalMembershipChange(
 					IncrementalMembershipChange &change) const;
+			virtual bool getCompactMembershipIndexInfo(
+					unsigned int reactantPos,
+					int &reactionCenterComponent,
+					std::uint64_t &contextComponentMask,
+					unsigned int &minimumContextComponents) const;
 			virtual bool shouldUpdateMembershipForChange(
 					Molecule *m,
 					const IncrementalMembershipChange &change) const;
@@ -268,6 +273,7 @@ namespace NFcore
 			bool singleConditionalTermFastPath;
 			double baseEnergyRateFactor;
 			double conditionedEnergyRateFactor;
+			unsigned int minimumConditionalBits;
 			mutable bool directProductListDecisionKnown;
 			mutable bool directProductListSafe;
 

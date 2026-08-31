@@ -884,6 +884,7 @@ EnergyRxnClass::EnergyRxnClass(
 	singleConditionalTermFastPath(false),
 	baseEnergyRateFactor(0.0),
 	conditionedEnergyRateFactor(0.0),
+	minimumConditionalBits(0),
 	directProductListDecisionKnown(false),
 	directProductListSafe(false)
 {
@@ -926,6 +927,21 @@ EnergyRxnClass::EnergyRxnClass(
 					(std::uint64_t(1) << componentIndex);
 		}
 		conditionalComponentMasks.push_back(componentMask);
+	}
+	if (componentMaskFastPath && !conditionalComponentMasks.empty()) {
+		minimumConditionalBits = 64;
+		for (unsigned int ti = 0; ti < conditionalComponentMasks.size(); ++ti) {
+			std::uint64_t mask = conditionalComponentMasks[ti];
+			unsigned int bits = 0;
+			while (mask != 0) {
+				mask &= (mask - 1);
+				++bits;
+			}
+			if (bits < minimumConditionalBits)
+				minimumConditionalBits = bits;
+		}
+		if (minimumConditionalBits == 64)
+			minimumConditionalBits = 0;
 	}
 
 	/* Compact input creates only a reaction-center constraint on the weighted
@@ -1255,6 +1271,31 @@ bool EnergyRxnClass::getIncrementalMembershipChange(
 	change.moleculeType2 = partnerMoleculeType;
 	change.componentIndex2 = partnerComponentIndex;
 	change.isBoundAfter2 = isForward;
+	return true;
+}
+
+bool EnergyRxnClass::getCompactMembershipIndexInfo(
+		unsigned int reactantPos,
+		int &reactionCenterComponent,
+		std::uint64_t &contextComponentMask,
+		unsigned int &minimumContextComponents) const
+{
+	/* Only the weighted side has mapping membership that can be filtered by
+	 * the changed occupancy mask.  Partner-side membership is a shared pool
+	 * count and must continue through the normal reaction list. */
+	if (!simpleMembership || reactantPos != (unsigned int)DORreactantIndex ||
+			!componentMaskFastPath || reactionCenterComponentIndex < 0)
+		return false;
+
+	contextComponentMask = 0;
+	for (unsigned int ci = 0; ci < conditionComponentIndices.size(); ++ci) {
+		int componentIndex = conditionComponentIndices[ci];
+		if (componentIndex < 0 || componentIndex >= 64)
+			return false;
+		contextComponentMask |= (std::uint64_t(1) << componentIndex);
+	}
+	reactionCenterComponent = reactionCenterComponentIndex;
+	minimumContextComponents = minimumConditionalBits;
 	return true;
 }
 

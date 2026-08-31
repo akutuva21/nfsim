@@ -1440,6 +1440,16 @@ namespace NFcore
 			 * keeps generic reaction lists on the existing per-molecule path. */
 			std::unordered_map<ReactionClass *, bool>
 				directMembershipDecisionCacheSafe;
+			/* Static candidate index for weighted simple EnergyPattern reactions.
+			 * The updater walks the native reaction order after marking candidates,
+			 * so this cannot change mutation ordering or floating-point accumulation. */
+			vector<vector<unsigned int> > compactEnergyCenterReactionIndices;
+			vector<vector<unsigned int> > compactEnergyContextReactionIndices;
+			vector<unsigned int> compactEnergyContextMinimumRequiredBits;
+			vector<unsigned int> nonCompactMembershipReactionIndices;
+			vector<unsigned int> compactMembershipCandidateGeneration;
+			unsigned int compactMembershipGeneration;
+			bool hasCompactEnergyMembershipIndex;
 
 
 
@@ -1838,6 +1848,21 @@ namespace NFcore
 			/* Describe the endpoint changes made by a compact EnergyPattern fire. */
 			virtual bool getIncrementalMembershipChange(
 					IncrementalMembershipChange &change) const { return false; }
+			/* Supply static information for the compact EnergyPattern membership
+			 * index maintained by MoleculeType.  The index is only an optional
+			 * candidate filter; the normal virtual predicates still decide each
+			 * selected reaction. */
+			virtual bool getCompactMembershipIndexInfo(
+					unsigned int reactantPos,
+					int &reactionCenterComponent,
+					std::uint64_t &contextComponentMask,
+					unsigned int &minimumContextComponents) const {
+				(void)reactantPos;
+				(void)reactionCenterComponent;
+				(void)contextComponentMask;
+				(void)minimumContextComponents;
+				return false;
+			}
 			/* Refine an endpoint-local membership decision using the current
 			 * post-event molecule state.  Called only after shouldUpdateMembership()
 			 * has accepted the candidate; the default preserves legacy behavior. */
