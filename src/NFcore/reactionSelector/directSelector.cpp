@@ -231,17 +231,43 @@ double DirectSelector::getNextReactionClass(ReactionClass *&rc)
 				std::size_t last = std::min<std::size_t>(
 						first + selectionBlockSize,
 						static_cast<std::size_t>(n_reactions));
-				for (std::size_t r = first; r < last; ++r) {
-					if (sparseSelectionSafe &&
-							(activeReactionBits[r >> 6] &
-									(std::uint64_t(1) << (r & 63))) == 0)
-						continue;
-					a_sum += reactionClassList[r]->get_a();
-					if (randNum <= a_sum) {
-						rc = reactionClassList[r];
-						return (randNum-last_a_sum);
+				/* Enumerate only active rules in the selected block.  The normal
+				 * compact selector uses 16-rule blocks, so a block fits in one
+				 * active-bit word and ctz preserves the legacy reaction order while
+				 * avoiding a branch for every inactive rule. */
+				if (sparseSelectionSafe && selectionBlockSize <= 64 &&
+						(first >> 6) == ((last - 1) >> 6)) {
+					unsigned int bitOffset =
+						static_cast<unsigned int>(first & 63);
+					std::uint64_t active = activeReactionBits[first >> 6] >> bitOffset;
+					unsigned int bitCount =
+						static_cast<unsigned int>(last - first);
+					if (bitCount < 64)
+						active &= (std::uint64_t(1) << bitCount) - 1;
+					while (active != 0) {
+						unsigned int bit = directSelectorTrailingZeroCount(active);
+						std::size_t r = first + bit;
+						active &= active - 1;
+						a_sum += reactionClassList[r]->get_a();
+						if (randNum <= a_sum) {
+							rc = reactionClassList[r];
+							return (randNum-last_a_sum);
+						}
+						last_a_sum = a_sum;
 					}
-					last_a_sum = a_sum;
+				} else {
+					for (std::size_t r = first; r < last; ++r) {
+						if (sparseSelectionSafe &&
+								(activeReactionBits[r >> 6] &
+										(std::uint64_t(1) << (r & 63))) == 0)
+							continue;
+						a_sum += reactionClassList[r]->get_a();
+						if (randNum <= a_sum) {
+							rc = reactionClassList[r];
+							return (randNum-last_a_sum);
+						}
+						last_a_sum = a_sum;
+					}
 				}
 				/* A block sum can differ from the scalar prefix by one ulp
 				 * after many incremental updates.  Continue from the exact
