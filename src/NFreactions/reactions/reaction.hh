@@ -274,6 +274,7 @@ namespace NFcore
 			double RT;
 			bool isForward;
 			bool simpleMembership;
+			bool preFireBindingFastPath;
 			int reactionCenterComponentIndex;
 			int partnerComponentIndex;
 			MoleculeType *partnerMoleculeType;

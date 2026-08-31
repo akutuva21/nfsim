@@ -874,6 +874,7 @@ EnergyRxnClass::EnergyRxnClass(
 	RT(RT),
 	isForward(isForward),
 	simpleMembership(false),
+	preFireBindingFastPath(false),
 	reactionCenterComponentIndex(-1),
 	partnerComponentIndex(-1),
 	partnerMoleculeType(0),
@@ -982,6 +983,10 @@ EnergyRxnClass::EnergyRxnClass(
 				partnerTemplate->getN_connectedTo() == 0;
 		}
 	}
+	preFireBindingFastPath = simpleMembership && isForward &&
+		n_reactants == 2 &&
+		transformationSet->getNumOfTransformations(0) == 1 &&
+		transformationSet->getNumOfTransformations(1) == 1;
 
 	if (simpleMembership && isForward && n_reactants == 2) {
 		partnerPool = partnerMoleculeType->getOrCreateCompactPartnerPool(
@@ -1475,10 +1480,7 @@ bool EnergyRxnClass::checkPreFireConditions(
 	 * reactant 0 and one empty partner mapping on reactant 1.  If either site
 	 * became occupied after membership was indexed, the transformation would
 	 * reject the event later; reject it here before the generic fire pipeline. */
-	if (!(simpleMembership && isForward && n_reactants == 2 &&
-			transformationSet != 0 &&
-			transformationSet->getNumOfTransformations(0) == 1 &&
-			transformationSet->getNumOfTransformations(1) == 1) ||
+	if (!preFireBindingFastPath ||
 			mappingSets == 0 || mappingSets[0] == 0 || mappingSets[1] == 0)
 		return true;
 	Mapping *weightedMapping = mappingSets[0]->get(0);
@@ -1489,6 +1491,16 @@ bool EnergyRxnClass::checkPreFireConditions(
 	Molecule *partnerMolecule = partnerMapping->getMolecule();
 	if (weightedMolecule == 0 || partnerMolecule == 0)
 		return true;
+	if (reactionCenterComponentIndex >= 0 &&
+			reactionCenterComponentIndex < 64 && partnerComponentIndex >= 0 &&
+			partnerComponentIndex < 64) {
+		std::uint64_t weightedBit =
+				(std::uint64_t(1) << reactionCenterComponentIndex);
+		std::uint64_t partnerBit =
+				(std::uint64_t(1) << partnerComponentIndex);
+		return (weightedMolecule->getBoundComponentMask() & weightedBit) == 0 &&
+				(partnerMolecule->getBoundComponentMask() & partnerBit) == 0;
+	}
 	return !weightedMolecule->isBindingSiteBonded(weightedMapping->getIndex()) &&
 			!partnerMolecule->isBindingSiteBonded(partnerMapping->getIndex());
 }
