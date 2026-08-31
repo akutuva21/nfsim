@@ -37,6 +37,7 @@ namespace NFcore
 
 
 			virtual double update(ReactionClass *r,double oldA, double newA) = 0;
+			virtual double updateBatch(vector<ReactionClass *> &rxns);
 			virtual double getNextReactionClass(ReactionClass *&rc) = 0;
 			virtual double getAtot() = 0;
 
@@ -56,6 +57,7 @@ namespace NFcore
 
 
 			virtual double update(ReactionClass *r,double oldA, double newA);
+			virtual double updateBatch(vector<ReactionClass *> &rxns);
 			virtual double getNextReactionClass(ReactionClass *&rc);
 			virtual double getAtot();
 

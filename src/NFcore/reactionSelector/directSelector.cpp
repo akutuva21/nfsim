@@ -32,6 +32,19 @@ unsigned int directSelectorTrailingZeroCount(std::uint64_t value)
 }
 
 
+double ReactionSelector::updateBatch(vector<ReactionClass *> &rxns)
+{
+	for (vector<ReactionClass *>::const_iterator it = rxns.begin();
+			it != rxns.end(); ++it) {
+		ReactionClass *r = *it;
+		double oldA = r->get_a();
+		double newA = r->update_a();
+		update(r, oldA, newA);
+	}
+	return getAtot();
+}
+
+
 
 
 DirectSelector::DirectSelector(vector <ReactionClass *> &rxns, System *sys) :
@@ -121,6 +134,45 @@ double DirectSelector::update(ReactionClass *r,double oldA, double newA)
 			std::uint64_t &word =
 				activeReactionBits[static_cast<std::size_t>(reaction) >> 6];
 			std::uint64_t bit = std::uint64_t(1) << (reaction & 63);
+			if (newA != 0.0)
+				word |= bit;
+			else
+				word &= ~bit;
+		}
+	}
+	return Atot;
+}
+
+double DirectSelector::updateBatch(vector<ReactionClass *> &rxns)
+{
+	for (vector<ReactionClass *>::const_iterator it = rxns.begin();
+			it != rxns.end(); ++it) {
+		ReactionClass *r = *it;
+		double oldA = r->get_a();
+		double newA = r->update_a();
+		Atot -= oldA;
+		Atot += newA;
+
+		int reaction = r->getRxnId();
+		if (reaction < 0 || reaction >= n_reactions ||
+				reactionClassList[reaction] != r) {
+			/* System::prepareForSimulation() assigns the global reaction id
+			 * before any runtime update.  Retain a cold fallback for callers
+			 * that construct a selector directly in tests. */
+			for (reaction = 0; reaction < n_reactions; ++reaction) {
+				if (reactionClassList[reaction] == r) break;
+			}
+		}
+		if (reaction < 0 || reaction >= n_reactions) continue;
+		std::size_t block = static_cast<std::size_t>(reaction) /
+				selectionBlockSize;
+		selectionBlockPropensities[block] -= oldA;
+		selectionBlockPropensities[block] += newA;
+		if (sparseSelectionSafe) {
+			std::uint64_t &word =
+					activeReactionBits[static_cast<std::size_t>(reaction) >> 6];
+			std::uint64_t bit =
+					std::uint64_t(1) << (reaction & 63);
 			if (newA != 0.0)
 				word |= bit;
 			else

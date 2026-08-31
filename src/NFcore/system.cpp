@@ -920,14 +920,7 @@ void System::endDeferredMembershipPropensityUpdates()
 	/* Reset the guard before calling update_A_tot so any nested update follows
 	 * the normal selector path. */
 	deferringMembershipPropensityUpdates = false;
-	for (vector<ReactionClass *>::const_iterator it =
-			deferredMembershipReactions.begin();
-			it != deferredMembershipReactions.end(); ++it) {
-		ReactionClass *r = *it;
-		double oldA = r->get_a();
-		double newA = r->update_a();
-		update_A_tot(r, oldA, newA);
-	}
+	a_tot = selector->updateBatch(deferredMembershipReactions);
 	deferredMembershipReactions.clear();
 }
 
