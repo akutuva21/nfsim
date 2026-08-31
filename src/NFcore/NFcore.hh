@@ -1441,14 +1441,12 @@ namespace NFcore
 			std::unordered_map<ReactionClass *, bool>
 				directMembershipDecisionCacheSafe;
 			/* Static candidate index for weighted simple EnergyPattern reactions.
-			 * The updater walks the native reaction order after marking candidates,
-			 * so this cannot change mutation ordering or floating-point accumulation. */
-			vector<vector<unsigned int> > compactEnergyCenterReactionIndices;
-			vector<vector<unsigned int> > compactEnergyContextReactionIndices;
+			 * Each bitset is ordered by reaction index, so iterating set bits keeps
+			 * the native reaction order without scanning every registered reaction. */
+			vector<vector<std::uint64_t> > compactEnergyCenterCandidateBits;
+			vector<vector<std::uint64_t> > compactEnergyContextCandidateBits;
 			vector<unsigned int> compactEnergyContextMinimumRequiredBits;
-			vector<unsigned int> nonCompactMembershipReactionIndices;
-			vector<unsigned int> compactMembershipCandidateGeneration;
-			unsigned int compactMembershipGeneration;
+			vector<std::uint64_t> nonCompactMembershipCandidateBits;
 			bool hasCompactEnergyMembershipIndex;
 
 

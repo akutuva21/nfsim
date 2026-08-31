@@ -1,6 +1,10 @@
 #include <iostream>
 #include "NFcore.hh"
 
+#if defined(_MSC_VER)
+#include <intrin.h>
+#endif
+
 
 using namespace std;
 using namespace NFcore;
@@ -15,6 +19,27 @@ unsigned int compactMembershipBitCount(std::uint64_t value)
 		++count;
 	}
 	return count;
+}
+
+void setCompactMembershipCandidateBit(
+		vector<std::uint64_t> &bits, unsigned int reactionIndex)
+{
+	const std::size_t wordIndex = reactionIndex >> 6;
+	if (bits.size() <= wordIndex)
+		bits.resize(wordIndex + 1, 0);
+	bits[wordIndex] |=
+			(std::uint64_t(1) << (reactionIndex & 63));
+}
+
+unsigned int compactMembershipTrailingZeroCount(std::uint64_t value)
+{
+#if defined(_MSC_VER)
+	unsigned long bit = 0;
+	_BitScanForward64(&bit, value);
+	return static_cast<unsigned int>(bit);
+#else
+	return static_cast<unsigned int>(__builtin_ctzll(value));
+#endif
 }
 
 }
@@ -168,13 +193,12 @@ void MoleculeType::init(
 	this->type_id = this->system->addMoleculeType(this);
 	compactPartnerPools.assign(numOfComponents,
 			static_cast<CompactPartnerPool *>(0));
-	compactEnergyCenterReactionIndices.assign(
-			numOfComponents, vector<unsigned int>());
-	compactEnergyContextReactionIndices.assign(
-			numOfComponents, vector<unsigned int>());
+	compactEnergyCenterCandidateBits.assign(
+			numOfComponents, vector<std::uint64_t>());
+	compactEnergyContextCandidateBits.assign(
+			numOfComponents, vector<std::uint64_t>());
 	compactEnergyContextMinimumRequiredBits.assign(numOfComponents, 0);
-	compactMembershipCandidateGeneration.clear();
-	compactMembershipGeneration = 0;
+	nonCompactMembershipCandidateBits.clear();
 	hasCompactEnergyMembershipIndex = false;
 
 
@@ -534,7 +558,6 @@ void MoleculeType::addReactionClass(ReactionClass * r, int rPosition)
 	unsigned int reactionIndex = static_cast<unsigned int>(reactions.size());
 	this->reactions.push_back(r);
 	this->reactionPositions.push_back(rPosition);
-	compactMembershipCandidateGeneration.push_back(0);
 
 	int reactionCenterComponent = -1;
 	std::uint64_t contextComponentMask = 0;
@@ -546,15 +569,17 @@ void MoleculeType::addReactionClass(ReactionClass * r, int rPosition)
 			reactionCenterComponent < numOfComponents;
 	if (indexed) {
 		hasCompactEnergyMembershipIndex = true;
-		compactEnergyCenterReactionIndices[reactionCenterComponent].push_back(
-			reactionIndex);
+		setCompactMembershipCandidateBit(
+				compactEnergyCenterCandidateBits[reactionCenterComponent],
+				reactionIndex);
 		for (int componentIndex = 0;
 				componentIndex < numOfComponents && componentIndex < 64;
 				++componentIndex) {
 			if ((contextComponentMask &
 					(std::uint64_t(1) << componentIndex)) == 0)
 				continue;
-			compactEnergyContextReactionIndices[componentIndex].push_back(
+			setCompactMembershipCandidateBit(
+					compactEnergyContextCandidateBits[componentIndex],
 					reactionIndex);
 			unsigned int &minimum =
 					compactEnergyContextMinimumRequiredBits[componentIndex];
@@ -562,7 +587,8 @@ void MoleculeType::addReactionClass(ReactionClass * r, int rPosition)
 				minimum = minimumContextComponents;
 		}
 	} else {
-		nonCompactMembershipReactionIndices.push_back(reactionIndex);
+		setCompactMembershipCandidateBit(
+				nonCompactMembershipCandidateBits, reactionIndex);
 	}
 
 	//We also have to check to make sure that if the reaction is a DOR reaction,
@@ -694,9 +720,9 @@ void MoleculeType::updateRxnMembership(Molecule * m,
 			membershipChange.componentIndex1 >= 0 &&
 			membershipChange.componentIndex1 < 64 &&
 			static_cast<unsigned int>(membershipChange.componentIndex1) <
-				compactEnergyCenterReactionIndices.size() &&
+				compactEnergyCenterCandidateBits.size() &&
 			static_cast<unsigned int>(membershipChange.componentIndex1) <
-				compactEnergyContextReactionIndices.size() &&
+				compactEnergyContextCandidateBits.size() &&
 			hasCompactEnergyMembershipIndex;
 	if (directProduct && firedReaction != 0 &&
 		firedReaction->usesIncrementalMembership()) {
@@ -783,79 +809,67 @@ void MoleculeType::updateRxnMembership(Molecule * m,
 	}
 
 	if (useCompactMembershipIndex) {
-		/* Mark a conservative candidate set, then walk the native reaction
-		 * order below.  The generation stamp avoids clearing one marker per
-		 * event while preserving the exact mutation and propensity order. */
-		++compactMembershipGeneration;
-		if (compactMembershipGeneration == 0) {
-			std::fill(compactMembershipCandidateGeneration.begin(),
-					compactMembershipCandidateGeneration.end(), 0);
-			compactMembershipGeneration = 1;
-		}
-		unsigned int generation = compactMembershipGeneration;
-		for (vector<unsigned int>::const_iterator it =
-				nonCompactMembershipReactionIndices.begin();
-				it != nonCompactMembershipReactionIndices.end(); ++it)
-			compactMembershipCandidateGeneration[*it] = generation;
-
 		int changedComponent = membershipChange.componentIndex1;
-		const vector<unsigned int> &centerCandidates =
-				compactEnergyCenterReactionIndices[changedComponent];
-		for (vector<unsigned int>::const_iterator it =
-				centerCandidates.begin(); it != centerCandidates.end(); ++it)
-			compactMembershipCandidateGeneration[*it] = generation;
-
 		std::uint64_t changedBit = std::uint64_t(1) << changedComponent;
 		std::uint64_t newMask = m->getBoundComponentMask();
 		std::uint64_t oldMask = membershipChange.isBoundAfter1
 				? (newMask & ~changedBit) : (newMask | changedBit);
-		const vector<unsigned int> &contextCandidates =
-				compactEnergyContextReactionIndices[changedComponent];
 		unsigned int minimumContextBits =
 				compactEnergyContextMinimumRequiredBits[changedComponent];
-		if (!contextCandidates.empty() &&
-				(minimumContextBits == 0 ||
-				 compactMembershipBitCount(newMask | oldMask) >=
-					minimumContextBits)) {
-			for (vector<unsigned int>::const_iterator it =
-					contextCandidates.begin();
-					it != contextCandidates.end(); ++it)
-				compactMembershipCandidateGeneration[*it] = generation;
-		}
+		bool includeContext = minimumContextBits == 0 ||
+			compactMembershipBitCount(newMask | oldMask) >= minimumContextBits;
+		const vector<std::uint64_t> &centerCandidates =
+				compactEnergyCenterCandidateBits[changedComponent];
+		const vector<std::uint64_t> &contextCandidates =
+				compactEnergyContextCandidateBits[changedComponent];
+		const std::size_t wordCount = std::max(
+				nonCompactMembershipCandidateBits.size(),
+				std::max(centerCandidates.size(),
+						includeContext ? contextCandidates.size() : std::size_t(0)));
 
-		for (unsigned int r = 0; r < reactions.size(); ++r) {
-			if (compactMembershipCandidateGeneration[r] != generation)
-				continue;
-			ReactionClass *rxn = reactions[r];
-			if (cachedDecisions != 0) {
-				if (!(*cachedDecisions)[r]) continue;
-			} else if (!rxn->shouldUpdateMembership(
-					m, firedReaction, directProduct))
-				continue;
-			if (refineMembershipChange &&
-					!rxn->shouldUpdateMembershipForChange(
-							m, membershipChange))
-				continue;
-			bool useIndexedMembership =
-				rxn->supportsDeferredMembershipUpdate();
-			bool defer = this->system->isDeferringMembershipPropensityUpdates() &&
-					useIndexedMembership;
-			if (defer) {
-				bool changed = useIndexedMembership
-					? rxn->tryToAddAndReportChangeWithIndex(
-							m, reactionPositions[r], r)
-					: rxn->tryToAddAndReportChange(
-							m, reactionPositions[r]);
-				if (changed)
-					this->system->deferMembershipPropensityUpdate(rxn);
-			} else {
-				double oldA = rxn->get_a();
-				if (useIndexedMembership)
-					rxn->tryToAddWithIndex(m, reactionPositions[r], r);
-				else
-					rxn->tryToAdd(m, reactionPositions[r]);
-				double newA = rxn->update_a();
-				this->system->update_A_tot(rxn, oldA, newA);
+		for (std::size_t wordIndex = 0; wordIndex < wordCount; ++wordIndex) {
+			std::uint64_t candidates = wordIndex <
+					nonCompactMembershipCandidateBits.size()
+				? nonCompactMembershipCandidateBits[wordIndex] : 0;
+			if (wordIndex < centerCandidates.size())
+				candidates |= centerCandidates[wordIndex];
+			if (includeContext && wordIndex < contextCandidates.size())
+				candidates |= contextCandidates[wordIndex];
+			while (candidates != 0) {
+				unsigned int bit = compactMembershipTrailingZeroCount(candidates);
+				unsigned int r = static_cast<unsigned int>((wordIndex << 6) + bit);
+				candidates &= candidates - 1;
+				ReactionClass *rxn = reactions[r];
+				if (cachedDecisions != 0) {
+					if (!(*cachedDecisions)[r]) continue;
+				} else if (!rxn->shouldUpdateMembership(
+						m, firedReaction, directProduct))
+					continue;
+				if (refineMembershipChange &&
+						!rxn->shouldUpdateMembershipForChange(
+								m, membershipChange))
+					continue;
+				bool useIndexedMembership =
+					rxn->supportsDeferredMembershipUpdate();
+				bool defer = this->system->isDeferringMembershipPropensityUpdates() &&
+						useIndexedMembership;
+				if (defer) {
+					bool changed = useIndexedMembership
+						? rxn->tryToAddAndReportChangeWithIndex(
+								m, reactionPositions[r], r)
+						: rxn->tryToAddAndReportChange(
+								m, reactionPositions[r]);
+					if (changed)
+						this->system->deferMembershipPropensityUpdate(rxn);
+				} else {
+					double oldA = rxn->get_a();
+					if (useIndexedMembership)
+						rxn->tryToAddWithIndex(m, reactionPositions[r], r);
+					else
+						rxn->tryToAdd(m, reactionPositions[r]);
+					double newA = rxn->update_a();
+					this->system->update_A_tot(rxn, oldA, newA);
+				}
 			}
 		}
 		return;
