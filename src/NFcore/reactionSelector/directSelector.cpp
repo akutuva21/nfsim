@@ -53,7 +53,7 @@ DirectSelector::DirectSelector(vector <ReactionClass *> &rxns, System *sys) :
 	this->Atot = 0;
 	this->n_reactions = rxns.size();
 	this->reactionClassList = new ReactionClass *[n_reactions];
-	this->selectionBlockSize = 8;
+	this->selectionBlockSize = 16;
 	this->selectionBlockPropensities.assign(
 			(static_cast<std::size_t>(n_reactions) + selectionBlockSize - 1) /
 					selectionBlockSize, 0.0);
