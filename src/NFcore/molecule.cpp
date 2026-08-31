@@ -101,7 +101,9 @@ void Molecule::prepareForSimulation()
 {
 	if(isPrepared) return;
 	nReactions = parentMoleculeType->getReactionCount();
-	this->rxnListMappingId2 = new MappingIdSet[nReactions];
+	int mappingCount = parentMoleculeType->getReactionMappingCount();
+	this->rxnListMappingId2 = mappingCount > 0
+			? new MappingIdSet[mappingCount] : 0;
 
 	isPrepared = true;
 

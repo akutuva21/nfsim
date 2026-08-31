@@ -1264,6 +1264,15 @@ namespace NFcore
 			int getMoleculeCount() const;
 
 			int getReactionCount() const { return reactions.size(); };
+			/* Mapping storage is dense only over reaction registrations that can
+			 * actually attach a MappingSet to a molecule.  Compact EnergyPattern
+			 * partner-side registrations use a shared pool instead. */
+			int getReactionMappingIndex(int reactionIndex) const {
+				return reactionMappingIndices[reactionIndex];
+			};
+			int getReactionMappingCount() const {
+				return reactionMappingCount;
+			};
 			bool canSkipIndirectMembership(ReactionClass *firedReaction) const;
 			int getRxnIndex(ReactionClass * rxn, int rxnPosition);
 			CompactPartnerPool *getOrCreateCompactPartnerPool(int componentIndex);
@@ -1413,6 +1422,8 @@ namespace NFcore
 
 			vector <ReactionClass *> reactions; /* List of reactions that this type can be involved with */
 			vector <int> reactionPositions;   /* the position in the reaction for this type of molecule */
+			vector <int> reactionMappingIndices;
+			int reactionMappingCount;
 			vector <CompactPartnerPool *> compactPartnerPools;
 
 			vector <int> indexOfDORrxns;
@@ -1544,24 +1555,36 @@ namespace NFcore
 
 			int getRxnListMappingId(int rxnIndex) { 
 				//return rxnListMappingId[rxnIndex];
-				MappingIdSet &mappingIds = rxnListMappingId2[rxnIndex];
+				int mappingIndex = parentMoleculeType->getReactionMappingIndex(
+						rxnIndex);
+				if (mappingIndex < 0) return -1;
+				MappingIdSet &mappingIds = rxnListMappingId2[mappingIndex];
 				return (mappingIds.size() > 0) ?
 					*mappingIds.begin() : -1;  //JJT: changing to handle multiple mappings per reaction
 			};
 
 			const MappingIdSet& getRxnListMappingSet(int rxnIndex) const {
-				return rxnListMappingId2[rxnIndex];
+				int mappingIndex = parentMoleculeType->getReactionMappingIndex(
+						rxnIndex);
+				if (mappingIndex < 0) {
+					static const MappingIdSet emptyMappingSet;
+					return emptyMappingSet;
+				}
+				return rxnListMappingId2[mappingIndex];
 			}
 
 			bool setRxnListMappingId(int rxnIndex, int rxnListMappingId) {
-					if(rxnListMappingId == -1){
-						this->rxnListMappingId2[rxnIndex].clear();
+				int mappingIndex = parentMoleculeType->getReactionMappingIndex(
+						rxnIndex);
+				if (mappingIndex < 0) return rxnListMappingId == -1;
+				if(rxnListMappingId == -1){
+						this->rxnListMappingId2[mappingIndex].clear();
 						//this->rxnListMappingId3[rxnIndex].clear();
 						return true;
 					}
 					else{
 						pair<MappingIdSet::iterator,bool> it =
-							this->rxnListMappingId2[rxnIndex].insert(rxnListMappingId); //JJT: using a set* instead of int* to deal with multiple mappings per reaction
+							this->rxnListMappingId2[mappingIndex].insert(rxnListMappingId); //JJT: using a set* instead of int* to deal with multiple mappings per reaction
 						return it.second; //JJT:  return whether it is a new insert or not
 					}
 			};
@@ -1569,7 +1592,10 @@ namespace NFcore
 
 
 			void deleteRxnListMappingId(int rxnIndex, int rxnListMappingId){
-				rxnListMappingId2[rxnIndex].erase(rxnListMappingId);
+				int mappingIndex = parentMoleculeType->getReactionMappingIndex(
+						rxnIndex);
+				if (mappingIndex >= 0)
+					rxnListMappingId2[mappingIndex].erase(rxnListMappingId);
 			}
 
 			/* set functions for states, bonds, and complexes */

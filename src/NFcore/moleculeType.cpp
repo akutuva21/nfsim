@@ -197,6 +197,9 @@ void MoleculeType::init(
 	}
 
 
+	reactionMappingIndices.clear();
+	reactionMappingCount = 0;
+
 	//Register myself with the system, and get an ID number
 	this->system = system;
 	this->type_id = this->system->addMoleculeType(this);
@@ -571,6 +574,12 @@ void MoleculeType::addReactionClass(ReactionClass * r, int rPosition)
 	unsigned int reactionIndex = static_cast<unsigned int>(reactions.size());
 	this->reactions.push_back(r);
 	this->reactionPositions.push_back(rPosition);
+	int partnerComponent = -1;
+	bool compactPartnerRegistration =
+		r->getCompactPartnerPoolInfo(rPosition, partnerComponent) &&
+		partnerComponent >= 0 && partnerComponent < numOfComponents;
+	reactionMappingIndices.push_back(compactPartnerRegistration
+			? -1 : reactionMappingCount++);
 
 	int reactionCenterComponent = -1;
 	std::uint64_t contextComponentMask = 0;
@@ -603,9 +612,7 @@ void MoleculeType::addReactionClass(ReactionClass * r, int rPosition)
 		setCompactMembershipCandidateBit(
 				nonCompactMembershipCandidateBits, reactionIndex);
 	}
-	int partnerComponent = -1;
-	if (r->getCompactPartnerPoolInfo(rPosition, partnerComponent) &&
-			partnerComponent >= 0 && partnerComponent < numOfComponents) {
+	if (compactPartnerRegistration) {
 		setCompactMembershipCandidateBit(
 				compactPartnerCandidateBits[partnerComponent], reactionIndex);
 		compactPartnerReactionIndices[partnerComponent].push_back(reactionIndex);
