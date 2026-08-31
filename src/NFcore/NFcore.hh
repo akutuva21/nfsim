@@ -103,93 +103,7 @@ namespace NFcore
 	 * eligibility once per molecule type instead of allocating one MappingSet
 	 * and one pointer list per reaction.  MappingSets used by the reaction
 	 * transformation itself remain per-reaction scratch objects. */
-	class CompactPartnerPool {
-		public:
-			CompactPartnerPool() : molecules(), positions(), moleculeSlots(),
-					lastRefreshedMolecule(0), lastRefreshMatches(false),
-					hasLastRefresh(false) {}
-
-			int size() const { return static_cast<int>(molecules.size()); }
-			Molecule *getByIndex(unsigned int index) const {
-				return index < molecules.size() ? molecules[index] : 0;
-			}
-			bool contains(Molecule *molecule, unsigned int moleculeSlot) const {
-				if (moleculeSlot >= positions.size()) return false;
-				int position = positions[moleculeSlot];
-				return position >= 0 &&
-						static_cast<unsigned int>(position) < molecules.size() &&
-						molecules[position] == molecule;
-			}
-			bool add(Molecule *molecule, unsigned int moleculeSlot) {
-				invalidateRefreshCache();
-				return addRaw(molecule, moleculeSlot);
-			}
-			bool remove(Molecule *molecule, unsigned int moleculeSlot) {
-				invalidateRefreshCache();
-				return removeRaw(molecule, moleculeSlot);
-			}
-			bool refresh(Molecule *molecule, unsigned int moleculeSlot,
-					bool matches) {
-				if (molecule == 0) return false;
-				if (hasLastRefresh && lastRefreshedMolecule == molecule &&
-						lastRefreshMatches == matches)
-					return false;
-				lastRefreshedMolecule = molecule;
-				lastRefreshMatches = matches;
-				hasLastRefresh = true;
-				return matches ? addRaw(molecule, moleculeSlot)
-						: removeRaw(molecule, moleculeSlot);
-			}
-
-		private:
-			void invalidateRefreshCache() {
-				hasLastRefresh = false;
-				lastRefreshedMolecule = 0;
-			}
-			void ensurePositionCapacity(unsigned int moleculeSlot) {
-				if (moleculeSlot >= positions.size())
-					positions.resize(static_cast<size_t>(moleculeSlot) + 1, -1);
-			}
-			bool addRaw(Molecule *molecule, unsigned int moleculeSlot) {
-				if (molecule == 0) return false;
-				ensurePositionCapacity(moleculeSlot);
-				int position = positions[moleculeSlot];
-				if (position >= 0) return false;
-				positions[moleculeSlot] = static_cast<int>(molecules.size());
-				molecules.push_back(molecule);
-				moleculeSlots.push_back(moleculeSlot);
-				return true;
-			}
-			bool removeRaw(Molecule *molecule, unsigned int moleculeSlot) {
-				if (moleculeSlot >= positions.size()) return false;
-				int storedPosition = positions[moleculeSlot];
-				if (storedPosition < 0 ||
-						static_cast<unsigned int>(storedPosition) >= molecules.size() ||
-						molecules[storedPosition] != molecule)
-					return false;
-				unsigned int position = static_cast<unsigned int>(storedPosition);
-				unsigned int last = static_cast<unsigned int>(molecules.size() - 1);
-				if (position != last) {
-					Molecule *replacement = molecules[last];
-					molecules[position] = replacement;
-					moleculeSlots[position] = moleculeSlots[last];
-					positions[moleculeSlots[last]] = static_cast<int>(position);
-				}
-				molecules.pop_back();
-				moleculeSlots.pop_back();
-				positions[moleculeSlot] = -1;
-				return true;
-			}
-			std::vector<Molecule *> molecules;
-			/* MoleculeList assigns a stable slot ID to every molecule object.  A
-			 * dense reverse index avoids one unordered_map node and allocation per
-			 * eligible partner while retaining O(1) membership updates. */
-			std::vector<int> positions;
-			std::vector<unsigned int> moleculeSlots;
-			Molecule *lastRefreshedMolecule;
-			bool lastRefreshMatches;
-			bool hasLastRefresh;
-	};
+	class CompactPartnerPool;
 
 	/* Endpoint state changes exposed by compact EnergyPattern reactions.  The
 	 * descriptor is built once per fired reaction and reused while its direct
@@ -1749,6 +1663,97 @@ namespace NFcore
 
 
 
+
+
+	/* Simple compact EnergyPattern forward rules with the same partner
+	 * molecule/component have identical partner-side eligibility.  Keep that
+	 * eligibility once per molecule type instead of allocating one MappingSet
+	 * and one pointer list per reaction.  MappingSets used by the reaction
+	 * transformation itself remain per-reaction scratch objects. */
+	class CompactPartnerPool {
+		public:
+			CompactPartnerPool() : molecules(), positions(),
+					lastRefreshedMolecule(0), lastRefreshMatches(false),
+					hasLastRefresh(false) {}
+
+			int size() const { return static_cast<int>(molecules.size()); }
+			Molecule *getByIndex(unsigned int index) const {
+				return index < molecules.size() ? molecules[index] : 0;
+			}
+			bool contains(Molecule *molecule, unsigned int moleculeSlot) const {
+				if (moleculeSlot >= positions.size()) return false;
+				int position = positions[moleculeSlot];
+				return position >= 0 &&
+						static_cast<unsigned int>(position) < molecules.size() &&
+						molecules[position] == molecule;
+			}
+			bool add(Molecule *molecule, unsigned int moleculeSlot) {
+				invalidateRefreshCache();
+				return addRaw(molecule, moleculeSlot);
+			}
+			bool remove(Molecule *molecule, unsigned int moleculeSlot) {
+				invalidateRefreshCache();
+				return removeRaw(molecule, moleculeSlot);
+			}
+			bool refresh(Molecule *molecule, unsigned int moleculeSlot,
+					bool matches) {
+				if (molecule == 0) return false;
+				if (hasLastRefresh && lastRefreshedMolecule == molecule &&
+						lastRefreshMatches == matches)
+					return false;
+				lastRefreshedMolecule = molecule;
+				lastRefreshMatches = matches;
+				hasLastRefresh = true;
+				return matches ? addRaw(molecule, moleculeSlot)
+						: removeRaw(molecule, moleculeSlot);
+			}
+
+		private:
+			void invalidateRefreshCache() {
+				hasLastRefresh = false;
+				lastRefreshedMolecule = 0;
+			}
+			void ensurePositionCapacity(unsigned int moleculeSlot) {
+				if (moleculeSlot >= positions.size())
+					positions.resize(static_cast<size_t>(moleculeSlot) + 1, -1);
+			}
+			bool addRaw(Molecule *molecule, unsigned int moleculeSlot) {
+				if (molecule == 0) return false;
+				ensurePositionCapacity(moleculeSlot);
+				int position = positions[moleculeSlot];
+				if (position >= 0) return false;
+				positions[moleculeSlot] = static_cast<int>(molecules.size());
+				molecules.push_back(molecule);
+				return true;
+			}
+			bool removeRaw(Molecule *molecule, unsigned int moleculeSlot) {
+				if (moleculeSlot >= positions.size()) return false;
+				int storedPosition = positions[moleculeSlot];
+				if (storedPosition < 0 ||
+						static_cast<unsigned int>(storedPosition) >= molecules.size() ||
+						molecules[storedPosition] != molecule)
+					return false;
+				unsigned int position = static_cast<unsigned int>(storedPosition);
+				unsigned int last = static_cast<unsigned int>(molecules.size() - 1);
+				if (position != last) {
+					Molecule *replacement = molecules[last];
+					molecules[position] = replacement;
+					positions[static_cast<unsigned int>(replacement->getMolListId())] =
+							static_cast<int>(position);
+				}
+				molecules.pop_back();
+				positions[moleculeSlot] = -1;
+				return true;
+			}
+			std::vector<Molecule *> molecules;
+			/* MoleculeList assigns a stable slot ID to every molecule object.  A
+			 * dense reverse index avoids one unordered_map node and allocation per
+			 * eligible partner while retaining O(1) membership updates. */
+			std::vector<int> positions;
+			Molecule *lastRefreshedMolecule;
+			bool lastRefreshMatches;
+			bool hasLastRefresh;
+	};
 
 
 	//!  Abstract Base Class that defines the interface for all reaction rules.
