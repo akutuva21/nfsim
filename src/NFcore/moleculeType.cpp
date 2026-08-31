@@ -760,6 +760,15 @@ void MoleculeType::updateRxnMembership(Molecule * m,
 			static_cast<unsigned int>(membershipChange.componentIndex2) <
 				compactPartnerReactionIndices.size() &&
 			!compactPartnerReactionIndices[membershipChange.componentIndex2].empty();
+	/* The compact weighted-side candidate index contains exactly the endpoint
+	 * dependencies for simple EnergyPattern rules.  When every registered
+	 * reaction on this type uses that index, the generic per-fire decision cache
+	 * would only repeat the same dependency test.  Keep the fallback for mixed
+	 * molecule types and same-type binding, where the partner endpoint can also
+	 * be represented by this molecule type. */
+	bool compactMembershipDecisionsComplete = useCompactMembershipIndex &&
+		membershipChange.moleculeType1 != membershipChange.moleculeType2 &&
+		nonCompactMembershipCandidateBits.empty();
 	bool compactPartnerPoolChanged = false;
 	const vector<std::uint64_t> *partnerCandidates = 0;
 	if (useCompactPartnerPoolIndex) {
@@ -795,7 +804,7 @@ void MoleculeType::updateRxnMembership(Molecule * m,
 		}
 		return;
 	}
-	if (directProduct && firedReaction != 0 &&
+	if (!compactMembershipDecisionsComplete && directProduct && firedReaction != 0 &&
 		firedReaction->usesIncrementalMembership()) {
 		unordered_map<ReactionClass *, bool>::iterator safe =
 				directMembershipDecisionCacheSafe.find(firedReaction);
@@ -951,11 +960,13 @@ void MoleculeType::updateRxnMembership(Molecule * m,
 					}
 					continue;
 				}
-				if (cachedDecisions != 0) {
-					if (!(*cachedDecisions)[r]) continue;
-				} else if (!rxn->shouldUpdateMembership(
-						m, firedReaction, directProduct))
-					continue;
+				if (!compactMembershipDecisionsComplete) {
+					if (cachedDecisions != 0) {
+						if (!(*cachedDecisions)[r]) continue;
+					} else if (!rxn->shouldUpdateMembership(
+							m, firedReaction, directProduct))
+						continue;
+				}
 				if (refineMembershipChange &&
 						!rxn->shouldUpdateMembershipForChange(
 								m, membershipChange))
@@ -1002,11 +1013,13 @@ void MoleculeType::updateRxnMembership(Molecule * m,
 			}
 			continue;
 		}
-		if (cachedDecisions != 0) {
-			if (!(*cachedDecisions)[r]) continue;
+		if (!compactMembershipDecisionsComplete) {
+			if (cachedDecisions != 0) {
+				if (!(*cachedDecisions)[r]) continue;
+			}
+			else if (!rxn->shouldUpdateMembership(m, firedReaction, directProduct))
+				continue;
 		}
-		else if (!rxn->shouldUpdateMembership(m, firedReaction, directProduct))
-			continue;
 		if (refineMembershipChange &&
 				!rxn->shouldUpdateMembershipForChange(m, membershipChange))
 			continue;
