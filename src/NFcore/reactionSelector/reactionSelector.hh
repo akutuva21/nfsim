@@ -21,6 +21,7 @@ namespace NFcore
 {
 	//Forward Declarations
 	class ReactionClass;
+	class CompactPartnerPool;
 
 
 	// Abstract Interface Class for the Reaction Selection Algorithm
@@ -71,6 +72,24 @@ namespace NFcore
 
 
 		protected:
+			struct CompactPoolSelectionGroup {
+				CompactPoolSelectionGroup() : pool(0), poolSize(0),
+						totalCoefficient(0.0), blockCoefficients(), reactionIndices() {}
+				CompactPartnerPool *pool;
+				int poolSize;
+				double totalCoefficient;
+				vector<double> blockCoefficients;
+				vector<int> reactionIndices;
+			};
+
+			int findCompactPoolGroup(CompactPartnerPool *pool) const;
+			void applyCompactPoolGroupSize(int groupIndex, int newPoolSize);
+			void synchronizeCompactPoolGroup(int groupIndex);
+			void updateCompactPoolActiveBits(
+					const CompactPoolSelectionGroup &group,
+					bool active);
+			double getSelectionPropensity(std::size_t reaction) const;
+
 			double Atot;
 			int n_reactions;
 			ReactionClass ** reactionClassList;
@@ -81,10 +100,16 @@ namespace NFcore
 			vector<std::uint64_t> activeReactionBits;
 			unsigned int selectionBlockSize;
 			vector<double> selectionBlockPropensities;
-			/* Sparse EnergyPattern selectors read propensities much more often
-			 * than they mutate reaction objects.  Keep a contiguous mirror for
-			 * the selection scan; dense legacy selectors retain the object read. */
+			/* Keep a contiguous actual-propensity mirror for non-group entries and
+			 * diagnostics.  Grouped compact selection derives each value from its
+			 * stored coefficient and shared pool size; dense legacy selectors retain
+			 * the reaction-object read. */
 			vector<double> reactionPropensities;
+			/* For factorized compact forward rules, retain the weighted-side
+			 * coefficient while the shared partner-pool size is selector state. */
+			vector<int> compactPoolGroupByReaction;
+			vector<double> compactPoolCoefficients;
+			vector<CompactPoolSelectionGroup> compactPoolSelectionGroups;
 
 		};
 

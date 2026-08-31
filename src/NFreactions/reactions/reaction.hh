@@ -236,9 +236,13 @@ namespace NFcore
 			virtual bool supportsCompactPartnerPoolUpdate() const {
 				return compactForwardPartnerPropensity;
 			}
+			virtual bool supportsCompactPartnerPoolScale() const {
+				return compactForwardPartnerPropensity && !useRuleMonkey;
+			}
 			virtual CompactPartnerPool *getCompactPartnerPool() const {
 				return partnerPool;
 			}
+			virtual double getCompactPartnerPoolCoefficient() const;
 			virtual double update_a_for_compact_partner_pool(int poolSize);
 			virtual bool shouldUpdateMembershipForChange(
 					Molecule *m,
@@ -246,6 +250,7 @@ namespace NFcore
 			virtual bool supportsDeferredMembershipUpdate() const {
 				return simpleMembership;
 			}
+			virtual double get_a() const;
 			virtual bool tryToAddAndReportChange(
 					Molecule *m, unsigned int reactantPos);
 			virtual bool tryToAddWithIndex(

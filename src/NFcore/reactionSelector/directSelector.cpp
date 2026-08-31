@@ -115,6 +115,39 @@ DirectSelector::DirectSelector(vector <ReactionClass *> &rxns, System *sys) :
 	} else {
 		vector<double>().swap(reactionPropensities);
 	}
+	compactPoolGroupByReaction.assign(static_cast<std::size_t>(n_reactions), -1);
+	compactPoolCoefficients.assign(static_cast<std::size_t>(n_reactions), 0.0);
+	if (sparseSelectionSafe) {
+		for (int r = 0; r < n_reactions; ++r) {
+			ReactionClass *reaction = reactionClassList[r];
+			if (!reaction->supportsCompactPartnerPoolScale()) continue;
+			CompactPartnerPool *pool = reaction->getCompactPartnerPool();
+			if (pool == 0 || !pool->supportsBatchUpdate()) continue;
+			bool everyRegisteredReactionSupportsScale = true;
+			const vector<ReactionClass *> &registered =
+					pool->getRegisteredReactions();
+			for (vector<ReactionClass *>::const_iterator it = registered.begin();
+					it != registered.end(); ++it) {
+				if (*it == 0 || !(*it)->supportsCompactPartnerPoolScale()) {
+					everyRegisteredReactionSupportsScale = false;
+					break;
+				}
+			}
+			if (!everyRegisteredReactionSupportsScale) continue;
+			int groupIndex = findCompactPoolGroup(pool);
+			if (groupIndex < 0) {
+				CompactPoolSelectionGroup group;
+				group.pool = pool;
+				group.poolSize = pool->size();
+				group.blockCoefficients.assign(
+						selectionBlockPropensities.size(), 0.0);
+				compactPoolSelectionGroups.push_back(group);
+				groupIndex = static_cast<int>(compactPoolSelectionGroups.size() - 1);
+			}
+			compactPoolGroupByReaction[static_cast<std::size_t>(r)] = groupIndex;
+			compactPoolSelectionGroups[groupIndex].reactionIndices.push_back(r);
+		}
+	}
 }
 
 
@@ -127,6 +160,75 @@ DirectSelector::~DirectSelector()
 	sparseSelectionSafe = false;
 	activeReactionBits.clear();
 	reactionPropensities.clear();
+	compactPoolGroupByReaction.clear();
+	compactPoolCoefficients.clear();
+	compactPoolSelectionGroups.clear();
+}
+
+int DirectSelector::findCompactPoolGroup(CompactPartnerPool *pool) const
+{
+	if (pool == 0) return -1;
+	for (std::size_t i = 0; i < compactPoolSelectionGroups.size(); ++i) {
+		if (compactPoolSelectionGroups[i].pool == pool)
+			return static_cast<int>(i);
+	}
+	return -1;
+}
+
+void DirectSelector::updateCompactPoolActiveBits(
+		const CompactPoolSelectionGroup &group, bool active)
+{
+	if (!sparseSelectionSafe) return;
+	for (vector<int>::const_iterator it = group.reactionIndices.begin();
+			it != group.reactionIndices.end(); ++it) {
+		int reaction = *it;
+		bool isActive = active &&
+				compactPoolCoefficients[static_cast<std::size_t>(reaction)] != 0.0;
+		std::uint64_t &word =
+				activeReactionBits[static_cast<std::size_t>(reaction) >> 6];
+		std::uint64_t bit = std::uint64_t(1) << (reaction & 63);
+		if (isActive)
+			word |= bit;
+		else
+			word &= ~bit;
+	}
+}
+
+void DirectSelector::applyCompactPoolGroupSize(
+		int groupIndex, int newPoolSize)
+{
+	CompactPoolSelectionGroup &group =
+			compactPoolSelectionGroups[static_cast<std::size_t>(groupIndex)];
+	if (group.poolSize == newPoolSize) return;
+	double delta = static_cast<double>(newPoolSize - group.poolSize);
+	Atot += group.totalCoefficient * delta;
+	for (std::size_t block = 0; block < group.blockCoefficients.size(); ++block)
+		selectionBlockPropensities[block] +=
+				group.blockCoefficients[block] * delta;
+	bool crossedZero = (group.poolSize == 0) != (newPoolSize == 0);
+	group.poolSize = newPoolSize;
+	if (crossedZero)
+		updateCompactPoolActiveBits(group, newPoolSize != 0);
+}
+
+void DirectSelector::synchronizeCompactPoolGroup(int groupIndex)
+{
+	CompactPoolSelectionGroup &group =
+			compactPoolSelectionGroups[static_cast<std::size_t>(groupIndex)];
+	if (group.pool != 0)
+		applyCompactPoolGroupSize(groupIndex, group.pool->size());
+}
+
+double DirectSelector::getSelectionPropensity(std::size_t reaction) const
+{
+	if (reaction < compactPoolGroupByReaction.size()) {
+		int groupIndex = compactPoolGroupByReaction[reaction];
+		if (groupIndex >= 0)
+			return compactPoolCoefficients[reaction] *
+					static_cast<double>(compactPoolSelectionGroups[
+							static_cast<std::size_t>(groupIndex)].poolSize);
+	}
+	return reactionPropensities[reaction];
 }
 
 double DirectSelector::refactorPropensities()
@@ -136,10 +238,31 @@ double DirectSelector::refactorPropensities()
 			selectionBlockPropensities.end(), 0.0);
 	if (sparseSelectionSafe)
 		std::fill(activeReactionBits.begin(), activeReactionBits.end(), 0);
+	for (vector<CompactPoolSelectionGroup>::iterator it =
+			compactPoolSelectionGroups.begin();
+			it != compactPoolSelectionGroups.end(); ++it) {
+		it->poolSize = it->pool == 0 ? 0 : it->pool->size();
+		it->totalCoefficient = 0.0;
+		std::fill(it->blockCoefficients.begin(),
+				it->blockCoefficients.end(), 0.0);
+	}
 	for(int r=0; r<n_reactions; r++) {
 		double propensity = reactionClassList[r]->update_a();
-		if (sparseSelectionSafe)
+		if (sparseSelectionSafe) {
 			reactionPropensities[static_cast<std::size_t>(r)] = propensity;
+			int groupIndex = compactPoolGroupByReaction[
+					static_cast<std::size_t>(r)];
+			if (groupIndex >= 0) {
+				double coefficient = reactionClassList[r]->
+						getCompactPartnerPoolCoefficient();
+				compactPoolCoefficients[static_cast<std::size_t>(r)] = coefficient;
+				CompactPoolSelectionGroup &group = compactPoolSelectionGroups[
+						static_cast<std::size_t>(groupIndex)];
+				group.totalCoefficient += coefficient;
+				group.blockCoefficients[static_cast<std::size_t>(r) /
+						selectionBlockSize] += coefficient;
+			}
+		}
 		Atot += propensity;
 		selectionBlockPropensities[static_cast<std::size_t>(r) /
 				selectionBlockSize] += propensity;
@@ -153,8 +276,6 @@ double DirectSelector::refactorPropensities()
 
 double DirectSelector::update(ReactionClass *r,double oldA, double newA)
 {
-	Atot-=oldA;
-	Atot+=newA;
 	if (reactionIndexMode < 0) {
 		reactionIndexMode = 1;
 		for (int i = 0; i < n_reactions; ++i) {
@@ -174,6 +295,38 @@ double DirectSelector::update(ReactionClass *r,double oldA, double newA)
 			if (reactionClassList[reaction] == r) break;
 		}
 	}
+	if (reaction >= 0 && reaction < n_reactions) {
+		std::size_t reactionIndex = static_cast<std::size_t>(reaction);
+		int groupIndex = reactionIndex < compactPoolGroupByReaction.size()
+				? compactPoolGroupByReaction[reactionIndex] : -1;
+		if (groupIndex >= 0) {
+			synchronizeCompactPoolGroup(groupIndex);
+			CompactPoolSelectionGroup &group = compactPoolSelectionGroups[
+					static_cast<std::size_t>(groupIndex)];
+			double oldEffective = compactPoolCoefficients[reactionIndex] *
+					static_cast<double>(group.poolSize);
+			double oldCoefficient = compactPoolCoefficients[reactionIndex];
+			double newCoefficient = r->getCompactPartnerPoolCoefficient();
+			Atot -= oldEffective;
+			Atot += newA;
+			std::size_t block = reactionIndex / selectionBlockSize;
+			selectionBlockPropensities[block] -= oldEffective;
+			selectionBlockPropensities[block] += newA;
+			group.totalCoefficient += newCoefficient - oldCoefficient;
+			group.blockCoefficients[block] += newCoefficient - oldCoefficient;
+			compactPoolCoefficients[reactionIndex] = newCoefficient;
+			if (sparseSelectionSafe) {
+				reactionPropensities[reactionIndex] = newA;
+				std::uint64_t &word = activeReactionBits[reactionIndex >> 6];
+				std::uint64_t bit = std::uint64_t(1) << (reaction & 63);
+				directSelectorUpdateActiveBit(word, bit,
+						oldEffective != 0.0, newA != 0.0);
+			}
+			return Atot;
+		}
+	}
+	Atot-=oldA;
+	Atot+=newA;
 	if (reaction >= 0 && reaction < n_reactions) {
 		std::size_t block = static_cast<std::size_t>(reaction) /
 				selectionBlockSize;
@@ -209,16 +362,6 @@ double DirectSelector::updateBatch(vector<ReactionClass *> &rxns)
 			it != rxns.end(); ++it) {
 		ReactionClass *r = *it;
 		int reaction = r->getRxnId();
-		bool indexedReaction = sparseSelectionSafe &&
-				reaction >= 0 && reaction < n_reactions &&
-				reactionClassList[reaction] == r;
-		double oldA = indexedReaction
-				? reactionPropensities[static_cast<std::size_t>(reaction)]
-				: r->get_a();
-		double newA = r->update_a();
-		Atot -= oldA;
-		Atot += newA;
-
 		if (reactionIndexMode == 0 && (reaction < 0 || reaction >= n_reactions ||
 				reactionClassList[reaction] != r)) {
 			/* System::prepareForSimulation() assigns the global reaction id
@@ -228,6 +371,44 @@ double DirectSelector::updateBatch(vector<ReactionClass *> &rxns)
 				if (reactionClassList[reaction] == r) break;
 			}
 		}
+		bool indexedReaction = sparseSelectionSafe &&
+			reaction >= 0 && reaction < n_reactions &&
+			reactionClassList[reaction] == r;
+		int groupIndex = indexedReaction &&
+				static_cast<std::size_t>(reaction) <
+						compactPoolGroupByReaction.size()
+			? compactPoolGroupByReaction[static_cast<std::size_t>(reaction)] : -1;
+		if (groupIndex >= 0) {
+			synchronizeCompactPoolGroup(groupIndex);
+			CompactPoolSelectionGroup &group = compactPoolSelectionGroups[
+					static_cast<std::size_t>(groupIndex)];
+			std::size_t reactionIndex = static_cast<std::size_t>(reaction);
+			double oldA = compactPoolCoefficients[reactionIndex] *
+					static_cast<double>(group.poolSize);
+			double newA = r->update_a();
+			double oldCoefficient = compactPoolCoefficients[reactionIndex];
+			double newCoefficient = r->getCompactPartnerPoolCoefficient();
+			Atot -= oldA;
+			Atot += newA;
+			std::size_t block = reactionIndex / selectionBlockSize;
+			selectionBlockPropensities[block] -= oldA;
+			selectionBlockPropensities[block] += newA;
+			group.totalCoefficient += newCoefficient - oldCoefficient;
+			group.blockCoefficients[block] += newCoefficient - oldCoefficient;
+			compactPoolCoefficients[reactionIndex] = newCoefficient;
+			reactionPropensities[reactionIndex] = newA;
+			std::uint64_t &word = activeReactionBits[reactionIndex >> 6];
+			std::uint64_t bit = std::uint64_t(1) << (reaction & 63);
+			directSelectorUpdateActiveBit(word, bit,
+					oldA != 0.0, newA != 0.0);
+			continue;
+		}
+		double oldA = indexedReaction
+				? reactionPropensities[static_cast<std::size_t>(reaction)]
+				: r->get_a();
+		double newA = r->update_a();
+		Atot -= oldA;
+		Atot += newA;
 		if (reaction < 0 || reaction >= n_reactions) continue;
 		std::size_t block = static_cast<std::size_t>(reaction) /
 				selectionBlockSize;
@@ -254,6 +435,16 @@ double DirectSelector::updateCompactPartnerPoolBatch(
 {
 	if (oldPoolSize == newPoolSize)
 		return Atot;
+	int groupIndex = findCompactPoolGroup(
+			rxns.empty() ? 0 : rxns.front()->getCompactPartnerPool());
+	if (groupIndex >= 0) {
+		/* The lazy scale is exact for every factorized reaction in this group.
+		 * Weighted-side changes are handled by updateBatch(), which synchronizes
+		 * the group first when the same deferred batch touches both endpoints. */
+		(void)deferredGeneration;
+		applyCompactPoolGroupSize(groupIndex, newPoolSize);
+		return Atot;
+	}
 	if (reactionIndexMode < 0) {
 		reactionIndexMode = 1;
 		for (int i = 0; i < n_reactions; ++i) {
@@ -341,7 +532,7 @@ double DirectSelector::getNextReactionClass(ReactionClass *&rc)
 						unsigned int bit = directSelectorTrailingZeroCount(active);
 						std::size_t r = first + bit;
 						active &= active - 1;
-						a_sum += reactionPropensities[r];
+						a_sum += getSelectionPropensity(r);
 						if (randNum <= a_sum) {
 							rc = reactionClassList[r];
 							return (randNum-last_a_sum);
@@ -354,7 +545,7 @@ double DirectSelector::getNextReactionClass(ReactionClass *&rc)
 								(activeReactionBits[r >> 6] &
 										(std::uint64_t(1) << (r & 63))) == 0)
 							continue;
-						a_sum += reactionPropensities[r];
+						a_sum += getSelectionPropensity(r);
 						if (randNum <= a_sum) {
 							rc = reactionClassList[r];
 							return (randNum-last_a_sum);
@@ -386,7 +577,7 @@ double DirectSelector::getNextReactionClass(ReactionClass *&rc)
 				unsigned int bit = directSelectorTrailingZeroCount(active);
 				unsigned int r = static_cast<unsigned int>((wordIndex << 6) + bit);
 				active &= active - 1;
-					a_sum += reactionPropensities[r];
+				a_sum += getSelectionPropensity(r);
 				if(randNum <= a_sum)
 				{
 					rc = reactionClassList[r];

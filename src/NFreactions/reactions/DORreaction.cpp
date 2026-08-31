@@ -1101,6 +1101,21 @@ double EnergyRxnClass::update_a()
 	return DORRxnClass::update_a();
 }
 
+double EnergyRxnClass::getCompactPartnerPoolCoefficient() const
+{
+	if (compactForwardPartnerPropensity && !useRuleMonkey)
+		return baseRate * compactRateFactor;
+	return 0.0;
+}
+
+double EnergyRxnClass::get_a() const
+{
+	if (compactForwardPartnerPropensity && !useRuleMonkey && partnerPool != 0)
+		return getCompactPartnerPoolCoefficient() *
+				static_cast<double>(partnerPool->size());
+	return a;
+}
+
 double EnergyRxnClass::update_a_for_compact_partner_pool(int poolSize)
 {
 	/* A partner-pool-only change leaves the weighted reactant tree untouched.
@@ -1330,9 +1345,8 @@ bool EnergyRxnClass::shouldUpdateMembership(
 			!firedReaction->usesIncrementalMembership())
 		return true;
 
-	const EnergyRxnClass *firedEnergy =
-		dynamic_cast<const EnergyRxnClass *>(firedReaction);
-	if (firedEnergy == 0 || !firedEnergy->simpleMembership)
+	IncrementalMembershipChange firedChange;
+	if (!firedReaction->getIncrementalMembershipChange(firedChange))
 		return true;
 
 	/* A compact binding/unbinding rule changes only the molecules explicitly
@@ -1343,13 +1357,11 @@ bool EnergyRxnClass::shouldUpdateMembership(
 		return false;
 
 	MoleculeType *targetMoleculeType = m->getMoleculeType();
-	if (dependsOnEndpoint(targetMoleculeType,
-			firedEnergy->reactantTemplates[0]->getMoleculeType(),
-			firedEnergy->reactionCenterComponentIndex))
+	if (dependsOnEndpoint(targetMoleculeType, firedChange.moleculeType1,
+			firedChange.componentIndex1))
 		return true;
-	if (dependsOnEndpoint(targetMoleculeType,
-			firedEnergy->partnerMoleculeType,
-			firedEnergy->partnerComponentIndex))
+	if (dependsOnEndpoint(targetMoleculeType, firedChange.moleculeType2,
+			firedChange.componentIndex2))
 		return true;
 	return false;
 }

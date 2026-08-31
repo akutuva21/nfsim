@@ -1840,7 +1840,7 @@ namespace NFcore
 
 			void setTraversalLimit(int limit) { this->traversalLimit = limit; };
 
-			double get_a() const { return a; };
+			virtual double get_a() const { return a; };
 			virtual void printDetails() const;
 			void fire(double random_A_number);
 			// AS2023 - additional call sig to use with reaction firing tracking. The call
@@ -1945,7 +1945,11 @@ namespace NFcore
 			/* Whether this reaction's propensity is exactly factored into a
 			 * weighted-side factor and the shared compact partner-pool size. */
 			virtual bool supportsCompactPartnerPoolUpdate() const { return false; }
+			/* Whether the shared pool dependency can be represented as a selector
+			 * scale without reevaluating this reaction on every pool mutation. */
+			virtual bool supportsCompactPartnerPoolScale() const { return false; }
 			virtual CompactPartnerPool *getCompactPartnerPool() const { return 0; }
+			virtual double getCompactPartnerPoolCoefficient() const { return 0.0; }
 			virtual double update_a_for_compact_partner_pool(int poolSize) {
 				(void)poolSize;
 				return update_a();
