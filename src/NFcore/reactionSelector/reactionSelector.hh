@@ -67,6 +67,9 @@ namespace NFcore
 			int n_reactions;
 			ReactionClass ** reactionClassList;
 			bool sparseSelectionSafe;
+			/* -1 until the first update; 1 when prepared reaction IDs match
+			 * selector positions, 0 for direct-selector compatibility callers. */
+			int reactionIndexMode;
 			vector<std::uint64_t> activeReactionBits;
 			unsigned int selectionBlockSize;
 			vector<double> selectionBlockPropensities;

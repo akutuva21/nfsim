@@ -67,6 +67,7 @@ DirectSelector::DirectSelector(vector <ReactionClass *> &rxns, System *sys) :
 {
 	this->Atot = 0;
 	this->n_reactions = rxns.size();
+	this->reactionIndexMode = -1;
 	this->reactionClassList = new ReactionClass *[n_reactions];
 	this->selectionBlockSize = 16;
 	this->selectionBlockPropensities.assign(
@@ -128,9 +129,18 @@ double DirectSelector::update(ReactionClass *r,double oldA, double newA)
 {
 	Atot-=oldA;
 	Atot+=newA;
+	if (reactionIndexMode < 0) {
+		reactionIndexMode = 1;
+		for (int i = 0; i < n_reactions; ++i) {
+			if (reactionClassList[i]->getRxnId() != i) {
+				reactionIndexMode = 0;
+				break;
+			}
+		}
+	}
 	int reaction = r->getRxnId();
-	if (reaction < 0 || reaction >= n_reactions ||
-			reactionClassList[reaction] != r) {
+	if (reactionIndexMode == 0 && (reaction < 0 || reaction >= n_reactions ||
+			reactionClassList[reaction] != r)) {
 		/* System::prepareForSimulation() assigns the global reaction id
 		 * before any runtime update.  Retain a cold fallback for callers
 		 * that construct a selector directly in tests. */
@@ -158,6 +168,15 @@ double DirectSelector::update(ReactionClass *r,double oldA, double newA)
 
 double DirectSelector::updateBatch(vector<ReactionClass *> &rxns)
 {
+	if (reactionIndexMode < 0) {
+		reactionIndexMode = 1;
+		for (int i = 0; i < n_reactions; ++i) {
+			if (reactionClassList[i]->getRxnId() != i) {
+				reactionIndexMode = 0;
+				break;
+			}
+		}
+	}
 	for (vector<ReactionClass *>::const_iterator it = rxns.begin();
 			it != rxns.end(); ++it) {
 		ReactionClass *r = *it;
@@ -167,8 +186,8 @@ double DirectSelector::updateBatch(vector<ReactionClass *> &rxns)
 		Atot += newA;
 
 		int reaction = r->getRxnId();
-		if (reaction < 0 || reaction >= n_reactions ||
-				reactionClassList[reaction] != r) {
+		if (reactionIndexMode == 0 && (reaction < 0 || reaction >= n_reactions ||
+				reactionClassList[reaction] != r)) {
 			/* System::prepareForSimulation() assigns the global reaction id
 			 * before any runtime update.  Retain a cold fallback for callers
 			 * that construct a selector directly in tests. */
