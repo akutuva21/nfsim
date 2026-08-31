@@ -172,6 +172,7 @@ namespace NFcore
 				if (position != last) {
 					Molecule *replacement = molecules[last];
 					molecules[position] = replacement;
+					moleculeSlots[position] = moleculeSlots[last];
 					positions[moleculeSlots[last]] = static_cast<int>(position);
 				}
 				molecules.pop_back();
