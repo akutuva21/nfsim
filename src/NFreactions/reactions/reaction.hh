@@ -243,6 +243,7 @@ namespace NFcore
 			virtual bool tryToAddAndReportChangeWithIndex(
 				Molecule *m, unsigned int reactantPos, int rxnIndex);
 			virtual void remove(Molecule *m, unsigned int reactantPos);
+			virtual double update_a();
 			virtual int getReactantCount(unsigned int reactantIndex) const;
 			virtual int getCorrectedReactantCount(unsigned int reactantIndex) const;
 			virtual bool canUseDirectProductList() const;

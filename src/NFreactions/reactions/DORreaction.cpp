@@ -1033,6 +1033,31 @@ EnergyRxnClass::~EnergyRxnClass()
 	compactPartnerMappingSet = 0;
 }
 
+double EnergyRxnClass::update_a()
+{
+	/* The compact representation has a factored propensity: the weighted
+	 * molecule tree contributes the sum of its energy factors and a forward
+	 * binding rule contributes the size of its shared partner pool.  Keep the
+	 * generic DOR implementation for non-compact rules and for the less common
+	 * counting modes that require complex deduplication. */
+	if (simpleMembership && !useRuleMonkey &&
+			!contextCountsPerComplex[DORreactantIndex] &&
+			!matchOncePerReactant[DORreactantIndex]) {
+		if (isForward && n_reactants == 2 && DORreactantIndex == 0 &&
+				partnerPool != 0 &&
+				!contextCountsPerComplex[1] && !matchOncePerReactant[1]) {
+			a = baseRate * reactantTree->getRateFactorSum() *
+					static_cast<double>(partnerPool->size());
+			return a;
+		}
+		if (!isForward && n_reactants == 1 && DORreactantIndex == 0) {
+			a = baseRate * reactantTree->getRateFactorSum();
+			return a;
+		}
+	}
+	return DORRxnClass::update_a();
+}
+
 bool EnergyRxnClass::tryToAdd(Molecule *m, unsigned int reactantPos)
 {
 	if (!simpleMembership)
