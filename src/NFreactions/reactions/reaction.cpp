@@ -84,7 +84,17 @@ double FunctionalRxnClass::update_a() {
 	// through setBaseRate(), so this factor is the reaction center symmetry
 	// correction and nothing else.  Without it a symmetric rule with a
 	// functional rate fires at 1/symmetryFactor times its intended rate.
-	a *= this->baseRate;
+	//
+	// Not under TotalRate, though.  The symmetry factor corrects a counting
+	// problem -- a reactant pattern with a non-trivial automorphism matches the
+	// same reaction more than once -- and TotalRate states the whole propensity
+	// of the rule outright, so there is no count to correct.  It has to be
+	// skipped here rather than where the factor is folded into baseRate:
+	// NFinput calls setTotalRateFlag() well after both this class' constructor
+	// and setBaseRate(), so totalRateFlag is still false at both of those
+	// points and a guard placed there would never fire.
+	if (!this->totalRateFlag)
+	{	a *= this->baseRate;   }
 
 	if(a<0) {
 		cout<<"Warning!!  The function you provided for functional rxn: '"<<name<<"' evaluates\n";
@@ -357,7 +367,7 @@ BasicRxnClass::BasicRxnClass(string name, double baseRate, string baseRateName, 
 	reactantLists = new ReactantList *[n_reactants];
 	//Set up the reactantLists
 	for(unsigned int r=0; r<n_reactants; r++)
-		reactantLists[r]=(new ReactantList(r,transformationSet,25));
+		reactantLists[r]=(new ReactantList(r,transformationSet,25,this->system));
 	
 	this->connectivityFlag = s->getConnectivityFlag();
 	
@@ -414,8 +424,8 @@ int BasicRxnClass::checkForEquality(Molecule *m, MappingSet* ms, int rxnIndex, R
 	/*
 	Check if mapping set clashes with any of the mapping sets already in reactantList
 	*/
-	set<int> tempSet = m->getRxnListMappingSet(rxnIndex);
-	for(set<int>::iterator it= tempSet.begin();it!= tempSet.end(); ++it){
+	const set<int>& tempSet = m->getRxnListMappingSet(rxnIndex);
+	for(set<int>::const_iterator it= tempSet.begin();it!= tempSet.end(); ++it){
 		MappingSet* ms2 = reactantList->getMappingSet(*it);
 		if(MappingSet::checkForEquality(ms,ms2)){
 			return *it;
@@ -447,6 +457,9 @@ int BasicRxnClass::checkForEquality(Molecule *m, MappingSet* ms, int rxnIndex, R
  */
 bool BasicRxnClass::tryToAdd(Molecule *m, unsigned int reactantPos)
 {
+	if (system != 0 && system->isProfilingEnabled())
+		system->recordProfileMatchCandidate();
+
 	//First a bit of error checking, that you should skip unless we are debugging...
 	//	if(reactantPos<0 || reactantPos>=n_reactants || m==NULL)
 	//	{
@@ -769,6 +782,3 @@ void BasicRxnClass::pickMappingSets(double random_A_number) const
 		}
 	}
 }
-
-
-

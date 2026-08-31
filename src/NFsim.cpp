@@ -97,6 +97,9 @@
  *  -maxcputime - maximum run time for simulation in seconds (default: no limit).
  *                 @author Arvind Rasi Subramaniam
  * 
+ *  -profile [filename] - opt-in CPU phase and per-reaction profile. If no filename
+ *                       is given, the tab-separated report is written to stdout.
+ *
  *  -printmoltypes - output molecule types (default: false).
  * 						   @author Ali Sinan Saglam
  * 
@@ -169,6 +172,7 @@
 
 
 #include "NFsim.hh"
+#include "NFtest/rng/test_rng.hh"
 #include "NFtest/util/test_util.hh"
 #include "NFtest/mapping/test_mapping.hh"
 #include "NFtest/moleculeType/test_moleculeType.hh"
@@ -225,10 +229,6 @@ System *initSystemFromFlags(const map<string,string>& argMap, bool verbose);
 int runNFsimMain(int argc, char *argv[])
 {
 
-
-	// Check if scheduler should handle the work.  This functionality is
-	// turned off for the general release code.
-	//if (!schedulerInterpreter(&argc, &argv)) return 0;
 
 	string versionNumber = "1.14.3";
 	cout<<"starting NFsim v"+versionNumber+"..."<<endl<<endl;
@@ -355,6 +355,14 @@ int runNFsimMain(int argc, char *argv[])
 					NFtest_input::run();
 					foundATest=true;
 				}
+				if(test=="commandLineParser") {
+					NFtest_commandLineParser::run();
+					foundATest=true;
+				}
+				if(test=="rng") {
+					NFtest_rng::run();
+					foundATest=true;
+				}
 				if(test=="util") {
 					NFtest_util::run();
 					foundATest=true;
@@ -405,6 +413,10 @@ int runNFsimMain(int argc, char *argv[])
 				}
 				if(test=="mappingSet") {
 					NFtest_mappingSet::run();
+					foundATest=true;
+				}
+				if(test=="energyPattern") {
+					NFtest_energyPattern::run();
 					foundATest=true;
 				}
 
@@ -821,6 +833,9 @@ bool runFromArgs(System *s, const map<string,string>& argMap, bool verbose)
 	}
 	s->setMaxCpuTime(maxCpuTime);
 
+	auto profileIt = argMap.find("profile");
+	if (profileIt != argMap.end()) s->enableProfiling(profileIt->second);
+
 	oSteps = NFinput::parseAsInt(argMap,"oSteps",(int)oSteps);
 
 	auto oTimesIt = argMap.find("oTimes");
@@ -859,6 +874,7 @@ bool runFromArgs(System *s, const map<string,string>& argMap, bool verbose)
 		// Do the run
 		cout<<endl<<endl<<endl<<"Equilibrating for :"<<eqTime<<"s.  Please wait."<<endl<<endl;
 		s->equilibrate(eqTime);
+		if (s->isProfilingEnabled()) s->resetProfiling();
 
 		if(useExplicitOutputTimes) {
 			if(explicitOutputTimes.back() > (sTime + SIM_TIME_TOL)) {
@@ -883,6 +899,8 @@ bool runFromArgs(System *s, const map<string,string>& argMap, bool verbose)
 			s->sim(sTime,oSteps);
 		}
 	}
+
+	if (s->isProfilingEnabled() && !s->writeProfile()) return false;
 
 	// save the final list of species, if requested...
 	auto ssIt = argMap.find("ss");
@@ -1044,6 +1062,9 @@ void printHelp(const string& version)
 	cout<<"                    this works only if -rxnlog switch is included."<<endl;
 	cout<<""<<endl;
 	cout<<"  -maxcputime       maximum run time for simulation in seconds (default: no limit)."<<endl;
+	cout<<""<<endl;
+	cout<<"  -profile [filename] opt-in CPU phase and per-reaction profile. If no filename"<<endl;
+	cout<<"                    is given, write the tab-separated report to stdout."<<endl;
 	cout<<""<<endl;
 	cout<<""<<endl;
 }

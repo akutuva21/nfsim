@@ -36,13 +36,15 @@ void EnergyFunction::addEnergyPattern(const EnergyPatternInfo &ep) {
  * Only such patterns have different match counts in reactant vs product,
  * so only they contribute to ΔG (Sekar Corollary 3.3-43).
  */
-vector<int> EnergyFunction::findRelevantPatternsForBinding(
+void EnergyFunction::findRelevantPatternsForBinding(
     const string &molType1, const string &site1,
-    const string &molType2, const string &site2
+    const string &molType2, const string &site2,
+    vector<int> &relevant
 ) const {
-    vector<int> relevant;
+    relevant.clear();
 
-    for (int i = 0; i < (int)patterns.size(); i++) {
+    int nPatterns = (int)patterns.size();
+    for (int i = 0; i < nPatterns; i++) {
         const EnergyPatternInfo &ep = patterns[i];
 
         // Check if this pattern contains a bond between molType1.site1 and molType2.site2
@@ -63,8 +65,6 @@ vector<int> EnergyFunction::findRelevantPatternsForBinding(
             }
         }
     }
-
-    return relevant;
 }
 
 /*
@@ -73,12 +73,14 @@ vector<int> EnergyFunction::findRelevantPatternsForBinding(
  * A pattern is relevant if it constrains the state of molType.comp,
  * because a state change on that component changes the match count.
  */
-vector<int> EnergyFunction::findRelevantPatternsForStateChange(
-    const string &molType, const string &comp
+void EnergyFunction::findRelevantPatternsForStateChange(
+    const string &molType, const string &comp,
+    vector<int> &relevant
 ) const {
-    vector<int> relevant;
+    relevant.clear();
 
-    for (int i = 0; i < (int)patterns.size(); i++) {
+    int nPatterns = (int)patterns.size();
+    for (int i = 0; i < nPatterns; i++) {
         const EnergyPatternInfo &ep = patterns[i];
         for (const auto &mol : ep.molecules) {
             if (mol.typeName == molType) {
@@ -92,8 +94,6 @@ vector<int> EnergyFunction::findRelevantPatternsForStateChange(
         }
         next_pattern:;
     }
-
-    return relevant;
 }
 
 /*
@@ -120,7 +120,8 @@ vector<ContextCondition> EnergyFunction::extractContextConditions(
 
         // For each molecule in the pattern that matches a reactant type,
         // check for components beyond the reaction center
-        for (int mi = 0; mi < (int)ep.molecules.size(); mi++) {
+        int nMolecules = (int)ep.molecules.size();
+        for (int mi = 0; mi < nMolecules; mi++) {
             const EpMolecule &mol = ep.molecules[mi];
 
             int reactantIdx = -1;
@@ -196,8 +197,9 @@ vector<ExpandedRuleInfo> EnergyFunction::expandBindingRule(
     vector<ExpandedRuleInfo> expanded;
 
     // Step 1: Find relevant patterns
-    vector<int> relevant = findRelevantPatternsForBinding(
-        molType1, bindSite1, molType2, bindSite2);
+    vector<int> relevant;
+    findRelevantPatternsForBinding(
+        molType1, bindSite1, molType2, bindSite2, relevant);
 
     if (relevant.empty()) {
         // No energy patterns overlap with the reaction center.
@@ -229,7 +231,8 @@ vector<ExpandedRuleInfo> EnergyFunction::expandBindingRule(
     vector<int> alwaysPatterns;    // indices into 'relevant'
     vector<int> conditionalPatterns;
 
-    for (int ri = 0; ri < (int)relevant.size(); ri++) {
+    int nRelevant = (int)relevant.size();
+    for (int ri = 0; ri < nRelevant; ri++) {
         int pi = relevant[ri];
         const EnergyPatternInfo &ep = patterns[pi];
 
@@ -384,7 +387,8 @@ vector<ExpandedRuleInfo> EnergyFunction::expandStateChangeRule(
 ) const {
     vector<ExpandedRuleInfo> expanded;
 
-    vector<int> relevant = findRelevantPatternsForStateChange(molType, comp);
+    vector<int> relevant;
+    findRelevantPatternsForStateChange(molType, comp, relevant);
 
     // For state change, a pattern is relevant if it constrains the state
     // of the changing component. We need to determine for each relevant
@@ -398,7 +402,8 @@ vector<ExpandedRuleInfo> EnergyFunction::expandStateChangeRule(
     vector<int> alwaysPatterns;
     vector<int> conditionalPatterns;
 
-    for (int ri = 0; ri < (int)relevant.size(); ri++) {
+    int nRelevant = (int)relevant.size();
+    for (int ri = 0; ri < nRelevant; ri++) {
         int pi = relevant[ri];
         const EnergyPatternInfo &ep = patterns[pi];
 

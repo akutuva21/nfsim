@@ -121,8 +121,8 @@ bool createFunction(string name,
 	vector <string> paramNames;
 	int otherFuncRefCounter=0;
 
-
-	for(unsigned int rn=0; rn<refNames.size(); rn++) {
+	size_t nRefs1 = refNames.size();
+	for(unsigned int rn=0; rn<nRefs1; rn++) {
 		const string& rType = refTypes[rn];
 		const string& rName = refNames[rn];
 		if(rType=="Function") {
@@ -186,7 +186,8 @@ bool createCompositeFunction(string name,
 //	cout<<"must be a composite function..."<<endl;
 
 	vector <string> functionsCalled;
-	for(unsigned int rn=0; rn<refNames.size(); rn++) {
+	size_t nRefs2 = refNames.size();
+	for(unsigned int rn=0; rn<nRefs2; rn++) {
 		const string& refType = refTypes.at(rn);
 		if(refType=="Function") {
 			functionsCalled.push_back(refNames.at(rn));
@@ -233,7 +234,8 @@ bool createLocalFunction(string name,
 	// that this isn't just a function reference to a local function...
 	vector <string> paramNames;
 	int otherFuncRefCounter=0;
-	for(unsigned int rn=0; rn<refNames.size(); rn++) {
+	size_t nRefs3 = refNames.size();
+	for(unsigned int rn=0; rn<nRefs3; rn++) {
 		if(refTypes.at(rn)=="Function") {
 			otherFuncRefCounter++;
 		} else if(refTypes.at(rn)=="Constant") {
@@ -264,7 +266,8 @@ bool createLocalFunction(string name,
 	//First, figure out the scope of the observables that we
 	//referenced in the function.  This requires the following annoying
 	//set of nested loops:
-	for(unsigned int rn=0; rn<refNames.size(); rn++) {
+	size_t nRefs4 = refNames.size();
+	for(unsigned int rn=0; rn<nRefs4; rn++) {
 		if(refTypes.at(rn)=="Observable" || refTypes.at(rn)=="MoleculeObservable" || refTypes.at(rn)=="SpeciesObservable") {
 			string::size_type sPos=expression.find(refNames.at(rn));
 			for( ; sPos!=string::npos; sPos=expression.find(refNames.at(rn),sPos+1)) {
@@ -284,7 +287,8 @@ bool createLocalFunction(string name,
 						string possibleArg = expression.substr(openPar+1,closePar-openPar-1);
 						NFutil::trim(possibleArg);
 
-						for(unsigned int aIndex=0; aIndex<argNames.size(); aIndex++) {
+						size_t nArgs = argNames.size();
+						for(unsigned int aIndex=0; aIndex<nArgs; aIndex++) {
 							if(argNames.at(aIndex)==possibleArg) {
 								//hurah!  we found the local scope of this guy
 
@@ -315,10 +319,11 @@ bool createLocalFunction(string name,
 	//scope, then we can reduce by renaming them as a single reference.
 
 	//so we loop over each used reference...
-	for(unsigned int i=0; i<obsUsedExpressionRef.size(); i++) {
+	size_t nObsExprRef = obsUsedExpressionRef.size();
+	for(unsigned int i=0; i<nObsExprRef; i++) {
 
 		//compare this reference to each of the other used references...
-		for(unsigned int j=i+1; j<obsUsedExpressionRef.size(); j++) {
+		for(unsigned int j=i+1; j<nObsExprRef; j++) {
 
 			//If we are already removing element j, then we already found it
 			//and replaced it, so we can stop.
@@ -346,7 +351,8 @@ bool createLocalFunction(string name,
 	vector <int> finalObsUsedScope;
 	vector <Observable *> finalLocalObservables;
 	//Fill the final vectors
-	for(unsigned int i=0; i<obsUsedExpressionRef.size(); i++) {
+	size_t nObsExprRefFinal = obsUsedExpressionRef.size();
+	for(unsigned int i=0; i<nObsExprRefFinal; i++) {
 		if(!markForRemoval.at(i)) {
 			finalObsUsedExpressionRef.push_back(obsUsedExpressionRef.at(i));
 			finalObsUsedName.push_back(obsUsedName.at(i));
@@ -358,7 +364,8 @@ bool createLocalFunction(string name,
 	//now from the list of observable names, we have to go back and
 	//actually create new observables for these things, by cloning existing
 	//observables.  So we'll do that here.
-	for(unsigned int i=0; i<finalObsUsedName.size(); i++) {
+	size_t nFinalObs = finalObsUsedName.size();
+	for(unsigned int i=0; i<nFinalObs; i++) {
 		if(finalObsUsedScope.at(i)!=-1) {
 			Observable *systemObs=s->getObservableByName(finalObsUsedName.at(i));
 			if(systemObs==0) {
@@ -751,7 +758,8 @@ bool NFinput::initFunctions(
 				string maxName = "";
 				string maxType = "";
 
-				for(unsigned int k=0; k<refNames.size(); k++)
+				size_t nRefs5 = refNames.size();
+				for(unsigned int k=0; k<nRefs5; k++)
 				{
 					if(refNames.at(k).length()>maxLength) {
 						maxName = refNames.at(k);
@@ -790,7 +798,8 @@ bool NFinput::initFunctions(
 
 			// Hook up time reference if any
 			bool hasTimeRef = false;
-			for(unsigned int i=0; i<refTypesSorted.size(); i++) {
+			size_t nRefTypes = refTypesSorted.size();
+			for(unsigned int i=0; i<nRefTypes; i++) {
 				if(refTypesSorted.at(i) == "Time") {
 					hasTimeRef = true;
 					break;
