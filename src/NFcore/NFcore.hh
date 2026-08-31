@@ -601,6 +601,8 @@ namespace NFcore
 			void update_A_tot(ReactionClass *r, double old_a, double new_a);
 			void beginDeferredMembershipPropensityUpdates();
 			void deferMembershipPropensityUpdate(ReactionClass *r);
+			void deferCompactPartnerPoolUpdate(
+					CompactPartnerPool *pool, int oldPoolSize, int newPoolSize);
 			void endDeferredMembershipPropensityUpdates();
 			bool isDeferringMembershipPropensityUpdates() const {
 				return deferringMembershipPropensityUpdates;
@@ -1001,8 +1003,17 @@ namespace NFcore
 
 			//Data structure that performs the selection of the next reaction class
 			ReactionSelector * selector;
+			struct DeferredCompactPartnerPoolUpdate {
+				DeferredCompactPartnerPoolUpdate() :
+						pool(0), oldPoolSize(0), newPoolSize(0) {}
+				CompactPartnerPool *pool;
+				int oldPoolSize;
+				int newPoolSize;
+			};
 			bool deferringMembershipPropensityUpdates = false;
 			vector<ReactionClass *> deferredMembershipReactions;
+			vector<DeferredCompactPartnerPoolUpdate>
+					deferredCompactPartnerPoolUpdates;
 			unsigned long long deferredMembershipUpdateGeneration = 0;
 
 			// To look up connected reactions quickly
@@ -1674,9 +1685,23 @@ namespace NFcore
 		public:
 			CompactPartnerPool() : molecules(), positions(),
 					lastRefreshedMolecule(0), lastRefreshMatches(false),
-					hasLastRefresh(false) {}
+					hasLastRefresh(false), registeredReactions(),
+					compactPartnerPoolBatchable(true) {}
 
 			int size() const { return static_cast<int>(molecules.size()); }
+			void registerReaction(ReactionClass *reaction, bool batchable) {
+				if (reaction == 0) return;
+				registeredReactions.push_back(reaction);
+				compactPartnerPoolBatchable =
+						compactPartnerPoolBatchable && batchable;
+			}
+			const std::vector<ReactionClass *> &getRegisteredReactions() const {
+				return registeredReactions;
+			}
+			bool supportsBatchUpdate() const {
+				return !registeredReactions.empty() &&
+						compactPartnerPoolBatchable;
+			}
 			Molecule *getByIndex(unsigned int index) const {
 				return index < molecules.size() ? molecules[index] : 0;
 			}
@@ -1753,7 +1778,9 @@ namespace NFcore
 			Molecule *lastRefreshedMolecule;
 			bool lastRefreshMatches;
 			bool hasLastRefresh;
-	};
+			std::vector<ReactionClass *> registeredReactions;
+			bool compactPartnerPoolBatchable;
+		};
 
 
 	//!  Abstract Base Class that defines the interface for all reaction rules.
@@ -1915,6 +1942,14 @@ namespace NFcore
 				(void)reactantPos;
 				return false;
 			}
+			/* Whether this reaction's propensity is exactly factored into a
+			 * weighted-side factor and the shared compact partner-pool size. */
+			virtual bool supportsCompactPartnerPoolUpdate() const { return false; }
+			virtual CompactPartnerPool *getCompactPartnerPool() const { return 0; }
+			virtual double update_a_for_compact_partner_pool(int poolSize) {
+				(void)poolSize;
+				return update_a();
+			}
 			/* Refine an endpoint-local membership decision using the current
 			 * post-event molecule state.  Called only after shouldUpdateMembership()
 			 * has accepted the candidate; the default preserves legacy behavior. */
@@ -1937,6 +1972,9 @@ namespace NFcore
 					return false;
 				deferredMembershipUpdateGeneration = generation;
 				return true;
+			}
+			bool hasDeferredMembershipUpdate(unsigned long long generation) const {
+				return deferredMembershipUpdateGeneration == generation;
 			}
 			/* Return false when the supplied product cannot affect this reaction's
 			 * membership or mapping-local rate factors. */

@@ -613,6 +613,10 @@ void MoleculeType::addReactionClass(ReactionClass * r, int rPosition)
 				nonCompactMembershipCandidateBits, reactionIndex);
 	}
 	if (compactPartnerRegistration) {
+		CompactPartnerPool *partnerPool = r->getCompactPartnerPool();
+		if (partnerPool != 0)
+			partnerPool->registerReaction(
+					r, r->supportsCompactPartnerPoolUpdate());
 		setCompactMembershipCandidateBit(
 				compactPartnerCandidateBits[partnerComponent], reactionIndex);
 		compactPartnerReactionIndices[partnerComponent].push_back(reactionIndex);
@@ -770,6 +774,9 @@ void MoleculeType::updateRxnMembership(Molecule * m,
 		membershipChange.moleculeType1 != membershipChange.moleculeType2 &&
 		nonCompactMembershipCandidateBits.empty();
 	bool compactPartnerPoolChanged = false;
+	bool compactPartnerPoolBatchScheduled = false;
+	CompactPartnerPool *compactPartnerPool = 0;
+	int oldCompactPartnerPoolSize = 0;
 	const vector<std::uint64_t> *partnerCandidates = 0;
 	if (useCompactPartnerPoolIndex) {
 		int partnerComponent = membershipChange.componentIndex2;
@@ -777,9 +784,21 @@ void MoleculeType::updateRxnMembership(Molecule * m,
 		const vector<unsigned int> &partnerReactions =
 				compactPartnerReactionIndices[partnerComponent];
 		unsigned int firstPartnerReaction = partnerReactions.front();
+		compactPartnerPool = reactions[firstPartnerReaction]->
+				getCompactPartnerPool();
+		if (compactPartnerPool != 0)
+			oldCompactPartnerPoolSize = compactPartnerPool->size();
 		compactPartnerPoolChanged = reactions[firstPartnerReaction]->
 				refreshCompactPartnerPool(
 						m, reactionPositions[firstPartnerReaction]);
+		if (compactPartnerPoolChanged && compactPartnerPool != 0 &&
+					this->system->isDeferringMembershipPropensityUpdates() &&
+					compactPartnerPool->supportsBatchUpdate()) {
+			this->system->deferCompactPartnerPoolUpdate(
+					compactPartnerPool, oldCompactPartnerPoolSize,
+					compactPartnerPool->size());
+			compactPartnerPoolBatchScheduled = true;
+		}
 	}
 	bool allReactionsUseCompactPartnerPool =
 			useCompactPartnerPoolIndex &&
@@ -788,14 +807,16 @@ void MoleculeType::updateRxnMembership(Molecule * m,
 	if (allReactionsUseCompactPartnerPool) {
 		if (compactPartnerPoolChanged) {
 			bool defer = this->system->isDeferringMembershipPropensityUpdates();
+			if (defer && compactPartnerPoolBatchScheduled)
+				return;
 			const vector<unsigned int> &partnerReactions =
 					compactPartnerReactionIndices[membershipChange.componentIndex2];
 			for (vector<unsigned int>::const_iterator it =
 					partnerReactions.begin(); it != partnerReactions.end(); ++it) {
 				ReactionClass *rxn = reactions[*it];
-				if (defer)
+				if (defer) {
 					this->system->deferMembershipPropensityUpdate(rxn);
-				else {
+				} else {
 					double oldA = rxn->get_a();
 					double newA = rxn->update_a();
 					this->system->update_A_tot(rxn, oldA, newA);
@@ -858,9 +879,11 @@ void MoleculeType::updateRxnMembership(Molecule * m,
 							compactMembershipBitIsSet(*partnerCandidates, r)) {
 						if (!compactPartnerPoolChanged) continue;
 						bool defer = this->system->isDeferringMembershipPropensityUpdates();
-						if (defer)
+						if (defer) {
+							if (compactPartnerPoolBatchScheduled)
+								continue;
 							this->system->deferMembershipPropensityUpdate(rxn);
-						else {
+						} else {
 							double oldA = rxn->get_a();
 							double newA = rxn->update_a();
 							this->system->update_A_tot(rxn, oldA, newA);
@@ -951,9 +974,11 @@ void MoleculeType::updateRxnMembership(Molecule * m,
 						compactMembershipBitIsSet(*partnerCandidates, r)) {
 					if (!compactPartnerPoolChanged) continue;
 					bool defer = this->system->isDeferringMembershipPropensityUpdates();
-					if (defer)
+					if (defer) {
+						if (compactPartnerPoolBatchScheduled)
+							continue;
 						this->system->deferMembershipPropensityUpdate(rxn);
-					else {
+					} else {
 						double oldA = rxn->get_a();
 						double newA = rxn->update_a();
 						this->system->update_A_tot(rxn, oldA, newA);
@@ -1004,9 +1029,11 @@ void MoleculeType::updateRxnMembership(Molecule * m,
 				compactMembershipBitIsSet(*partnerCandidates, r)) {
 			if (!compactPartnerPoolChanged) continue;
 			bool defer = this->system->isDeferringMembershipPropensityUpdates();
-			if (defer)
+			if (defer) {
+				if (compactPartnerPoolBatchScheduled)
+					continue;
 				this->system->deferMembershipPropensityUpdate(rxn);
-			else {
+			} else {
 				double oldA = rxn->get_a();
 				double newA = rxn->update_a();
 				this->system->update_A_tot(rxn, oldA, newA);

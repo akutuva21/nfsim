@@ -59,6 +59,25 @@ double ReactionSelector::updateBatch(vector<ReactionClass *> &rxns)
 	return getAtot();
 }
 
+double ReactionSelector::updateCompactPartnerPoolBatch(
+		const vector<ReactionClass *> &rxns,
+		int oldPoolSize, int newPoolSize,
+		unsigned long long deferredGeneration)
+{
+	if (oldPoolSize == newPoolSize)
+		return getAtot();
+	for (vector<ReactionClass *>::const_iterator it = rxns.begin();
+			it != rxns.end(); ++it) {
+		ReactionClass *r = *it;
+		if (r == 0 || r->hasDeferredMembershipUpdate(deferredGeneration))
+			continue;
+		double oldA = r->get_a();
+		double newA = r->update_a_for_compact_partner_pool(newPoolSize);
+		update(r, oldA, newA);
+	}
+	return getAtot();
+}
+
 
 
 
@@ -221,6 +240,64 @@ double DirectSelector::updateBatch(vector<ReactionClass *> &rxns)
 				activeReactionBits[static_cast<std::size_t>(reaction) >> 6];
 			std::uint64_t bit =
 				std::uint64_t(1) << (reaction & 63);
+			directSelectorUpdateActiveBit(word, bit,
+					oldA != 0.0, newA != 0.0);
+		}
+	}
+	return Atot;
+}
+
+double DirectSelector::updateCompactPartnerPoolBatch(
+		const vector<ReactionClass *> &rxns,
+		int oldPoolSize, int newPoolSize,
+		unsigned long long deferredGeneration)
+{
+	if (oldPoolSize == newPoolSize)
+		return Atot;
+	if (reactionIndexMode < 0) {
+		reactionIndexMode = 1;
+		for (int i = 0; i < n_reactions; ++i) {
+			if (reactionClassList[i]->getRxnId() != i) {
+				reactionIndexMode = 0;
+				break;
+			}
+		}
+	}
+	for (vector<ReactionClass *>::const_iterator it = rxns.begin();
+			it != rxns.end(); ++it) {
+		ReactionClass *r = *it;
+		if (r == 0 || r->hasDeferredMembershipUpdate(deferredGeneration))
+			continue;
+		int reaction = r->getRxnId();
+		if (reaction < 0 || reaction >= n_reactions ||
+				reactionClassList[reaction] != r) {
+			for (reaction = 0; reaction < n_reactions; ++reaction) {
+				if (reactionClassList[reaction] == r) break;
+			}
+		}
+		if (reaction < 0 || reaction >= n_reactions) {
+			double oldA = r->get_a();
+			double newA = r->update_a_for_compact_partner_pool(newPoolSize);
+			update(r, oldA, newA);
+			continue;
+		}
+
+		std::size_t reactionIndex = static_cast<std::size_t>(reaction);
+		double oldA = sparseSelectionSafe
+				? reactionPropensities[reactionIndex] : r->get_a();
+		double newA = r->update_a_for_compact_partner_pool(newPoolSize);
+		Atot -= oldA;
+		Atot += newA;
+		std::size_t block = reactionIndex / selectionBlockSize;
+		/* Keep the same per-rule floating-point update order as updateBatch().
+		 * The grouped path removes selector dispatch and generic propensity
+		 * work, but must not perturb the block sums that drive selection. */
+		selectionBlockPropensities[block] -= oldA;
+		selectionBlockPropensities[block] += newA;
+		if (sparseSelectionSafe) {
+			reactionPropensities[reactionIndex] = newA;
+			std::uint64_t &word = activeReactionBits[reactionIndex >> 6];
+			std::uint64_t bit = std::uint64_t(1) << (reaction & 63);
 			directSelectorUpdateActiveBit(word, bit,
 					oldA != 0.0, newA != 0.0);
 		}

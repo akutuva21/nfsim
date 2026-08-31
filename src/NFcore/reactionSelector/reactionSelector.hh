@@ -38,6 +38,10 @@ namespace NFcore
 
 			virtual double update(ReactionClass *r,double oldA, double newA) = 0;
 			virtual double updateBatch(vector<ReactionClass *> &rxns);
+			virtual double updateCompactPartnerPoolBatch(
+					const vector<ReactionClass *> &rxns,
+					int oldPoolSize, int newPoolSize,
+					unsigned long long deferredGeneration);
 			virtual double getNextReactionClass(ReactionClass *&rc) = 0;
 			virtual double getAtot() = 0;
 
@@ -58,6 +62,10 @@ namespace NFcore
 
 			virtual double update(ReactionClass *r,double oldA, double newA);
 			virtual double updateBatch(vector<ReactionClass *> &rxns);
+			virtual double updateCompactPartnerPoolBatch(
+					const vector<ReactionClass *> &rxns,
+					int oldPoolSize, int newPoolSize,
+					unsigned long long deferredGeneration);
 			virtual double getNextReactionClass(ReactionClass *&rc);
 			virtual double getAtot();
 

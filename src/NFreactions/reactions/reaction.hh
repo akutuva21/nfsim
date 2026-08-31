@@ -233,6 +233,13 @@ namespace NFcore
 					int &partnerComponent) const;
 			virtual bool refreshCompactPartnerPool(
 					Molecule *m, unsigned int reactantPos);
+			virtual bool supportsCompactPartnerPoolUpdate() const {
+				return compactForwardPartnerPropensity;
+			}
+			virtual CompactPartnerPool *getCompactPartnerPool() const {
+				return partnerPool;
+			}
+			virtual double update_a_for_compact_partner_pool(int poolSize);
 			virtual bool shouldUpdateMembershipForChange(
 					Molecule *m,
 					const IncrementalMembershipChange &change) const;

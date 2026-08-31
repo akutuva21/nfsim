@@ -1101,6 +1101,19 @@ double EnergyRxnClass::update_a()
 	return DORRxnClass::update_a();
 }
 
+double EnergyRxnClass::update_a_for_compact_partner_pool(int poolSize)
+{
+	/* A partner-pool-only change leaves the weighted reactant tree untouched.
+	 * Reuse the same factored expression as update_a() without entering the
+	 * general DOR propensity path.  The fallback keeps RuleMonkey and any
+	 * future non-factorized compact reaction semantically conservative. */
+	if (compactForwardPartnerPropensity && !useRuleMonkey) {
+		a = baseRate * compactRateFactor * static_cast<double>(poolSize);
+		return a;
+	}
+	return update_a();
+}
+
 bool EnergyRxnClass::tryToAdd(Molecule *m, unsigned int reactantPos)
 {
 	if (!simpleMembership)
