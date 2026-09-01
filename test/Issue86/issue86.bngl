@@ -1,0 +1,44 @@
+# Regression for issue #86: Species-observable dependencies must update after
+# each event, just like Molecules-observable dependencies.
+begin model
+
+begin parameters
+  k_deg 0.01
+  k_prod 1.0
+end parameters
+
+begin molecule types
+  A()
+  Ps()
+  Pm()
+end molecule types
+
+begin seed species
+  A() 100
+  Ps() 0
+  Pm() 0
+end seed species
+
+begin observables
+  Species   Sobs A()
+  Molecules Mobs A()
+  Molecules Ps_n Ps()
+  Molecules Pm_n Pm()
+end observables
+
+begin functions
+  fs() = k_prod*Sobs
+  fm() = k_prod*Mobs
+end functions
+
+begin reaction rules
+  Rdeg: A() -> 0  k_deg
+  Rps:  0 -> Ps()  fs()
+  Rpm:  0 -> Pm()  fm()
+end reaction rules
+
+end model
+
+begin actions
+  writeXML()
+end actions

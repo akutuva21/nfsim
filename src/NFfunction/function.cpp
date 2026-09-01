@@ -114,6 +114,7 @@ GlobalFunction::~GlobalFunction()
 void GlobalFunction::prepareForSimulation(System *s)
 {
 	try {
+		const string expression = normalizeTimeExpression(this->funcExpression);
 		p=FuncFactory::create();
 		for(unsigned int vr=0; vr<n_varRefs; vr++)
 		{
@@ -142,7 +143,11 @@ void GlobalFunction::prepareForSimulation(System *s)
 		if (this->fileFunc && !this->ctrName.empty()) {
 			p->DefineConst(this->ctrName, 0.0);
 		}
-		p->SetExpr(this->funcExpression);
+		if (expression != this->funcExpression) {
+			p->DefineVar("time", s->getCurrentTimePointer());
+			s->setHasTimeDependentFunctions(true);
+		}
+		p->SetExpr(expression);
 
 	}
 	catch (mu::Parser::exception_type &e)

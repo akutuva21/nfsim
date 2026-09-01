@@ -1,0 +1,32 @@
+# Regression for issue #78: NFsim must preserve an absolute start time for
+# output and for functions that reference time().
+begin model
+
+begin parameters
+end parameters
+
+begin molecule types
+  X()
+end molecule types
+
+begin seed species
+  X() 0
+end seed species
+
+begin observables
+  Molecules Xtot X()
+end observables
+
+begin functions
+  stimulus() = time()
+end functions
+
+begin reaction rules
+  R: 0 -> X() stimulus()
+end reaction rules
+
+end model
+
+begin actions
+  writeXML()
+end actions

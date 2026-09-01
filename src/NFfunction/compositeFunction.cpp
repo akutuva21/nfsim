@@ -319,7 +319,12 @@ void CompositeFunction::updateParameters(System *s)
 void CompositeFunction::prepareForSimulation(System *s)
 {
 	try {
+		const string expression = normalizeTimeExpression(this->parsedExpression);
 		p=FuncFactory::create();
+		if (expression != this->parsedExpression) {
+			p->DefineVar("time", s->getCurrentTimePointer());
+			s->setHasTimeDependentFunctions(true);
+		}
 		for(int f=0; f<n_gfs; f++) {
 			p->DefineVar(gfNames[f],&gfValues[f]);
 		}
@@ -342,7 +347,7 @@ void CompositeFunction::prepareForSimulation(System *s)
 			p->DefineConst(this->ctrName, 0.0);
 		}
 
-		p->SetExpr(this->parsedExpression);
+		p->SetExpr(expression);
 	}
 	catch (mu::Parser::exception_type &e)
 	{

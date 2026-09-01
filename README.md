@@ -128,6 +128,28 @@ executable, you'll need to copy the the following DLLs along with it:
 - `-gml <integer>` sets the per-molecule-type maximum agent count.
 - `-gml auto` (also accepts `none` and `nolimit`) disables this cap. This is
     useful for very large models where the default cap would stop the simulation.
+- `-i <time>` sets the absolute simulation start time. The default is `0`; the
+    value is used by `time()` and time-dependent functions and becomes the first
+    value in the output time column. `-oTimes` values remain relative to the
+    start of the requested simulation.
+
+### Complex Bookkeeping and Molecularity
+
+`-cb` and `-bscb` are accepted spellings for enabling complex-aware reaction
+matching in the command-line XML runner:
+
+- Both enable complex bookkeeping and enforce distinct-complex molecularity for
+    separate reactant patterns. `-bscb` is the explicit legacy spelling for the
+    same-complex binding guard; `-cb` is the spelling emitted by BioNetGen's
+    `complex=>1` setting.
+- A Species observable may also auto-enable complex bookkeeping when needed.
+- If an XML file is run directly, pass `-cb` or `-bscb` when its reaction rules
+    require complex-aware matching; the XML itself does not carry that CLI
+    policy.
+
+NFsim rejects `TotalRate` on Michaelis-Menten, Arrhenius, saturation, and local
+function rate laws because those implementations do not define a compatible
+macroscopic-rate interpretation.
 
 ## TFUN Support
 

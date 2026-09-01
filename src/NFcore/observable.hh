@@ -148,6 +148,8 @@ namespace NFcore
 			int n_dependentRxns;
 			ReactionClass ** dependentRxns;
 
+			void updateDependentReactions();
+
 	};
 
 
