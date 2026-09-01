@@ -68,6 +68,31 @@ void NFtest_system::run()
 	}
 	delete sys5;
 
+	cout << "  Testing System name validation..." << endl;
+	const vector<string> invalidNames = {
+		"../escape", "/absolute", "C:\\escape", "C:escape",
+		"nested/name", "nested\\name", "contains..dots"
+	};
+	for (const string &invalidName : invalidNames) {
+		for (int constructor = 0; constructor < 3; ++constructor) {
+			bool rejected = false;
+			try {
+				if (constructor == 0) {
+					System invalidSystem(invalidName);
+				} else if (constructor == 1) {
+					System invalidSystem(invalidName, true);
+				} else {
+					System invalidSystem(invalidName, true, 100);
+				}
+			} catch (const runtime_error &) {
+				rejected = true;
+			}
+			if (!rejected) {
+				throw runtime_error("System accepted unsafe name: " + invalidName);
+			}
+		}
+	}
+
 	cout << "  Testing System::addMoleculeType..." << endl;
 
 	// Instantiate a System
