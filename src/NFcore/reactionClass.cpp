@@ -15,6 +15,8 @@ ReactionClass::ReactionClass(string name, double baseRate, string baseRateParame
 	this->system=s;
 	this->tagged = false;
 	this->useRuleMonkey = false;
+	this->useConnectivity = false;
+	this->directProductMolecules = 0;
 
 	totalRateFlag=false;
 	isDimerStyle=false;
@@ -319,6 +321,7 @@ ReactionClass::~ReactionClass()
 	delete [] matchOncePerReactant;
 	delete [] contextCountsPerComplex;
 	delete [] identicalPopCountCorrection;
+	delete directProductMolecules;
 	connectedReactions.clear();
 }
 
@@ -374,6 +377,17 @@ void ReactionClass::resetBaseRateFromSystemParamter() {
 MoleculeType *ReactionClass::getMoleculeTypeOfReactantTemplate(int pos) const {
 	// return reactantTemplates.at(pos)->getMoleculeType();
 	return reactantTemplates[pos]->getMoleculeType();
+}
+
+bool ReactionClass::isDirectProductMolecule(Molecule *molecule,
+		bool compactDirectProducts) const
+{
+	if (compactDirectProducts)
+		return std::find(directProductMoleculeList.begin(),
+				directProductMoleculeList.end(), molecule) !=
+			directProductMoleculeList.end();
+	return directProductMolecules != 0 &&
+		directProductMolecules->find(molecule) != directProductMolecules->end();
 }
 
 
@@ -441,6 +455,15 @@ string ReactionClass::fire(double random_A_number, bool track) {
 		return string("");
 	}
 
+	/* Compact EnergyPattern binding rules can detect an occupied endpoint
+	 * before the generic product/membership pipeline.  This preserves the
+	 * transformation's null-event semantics while avoiding all work that
+	 * cannot change the state. */
+	if (!this->checkPreFireConditions(mappingSet)) {
+		++(System::NULL_EVENT_COUNTER);
+		return string("");
+	}
+
 	// Defensive check: a picked MappingSet can occasionally contain an unmapped entry
 	// (null molecule) in edge cases involving internal bond reconnection/symmetry.
 	// Treat this as a null event and skip firing to avoid dereferencing null mappings.
@@ -460,10 +483,42 @@ string ReactionClass::fire(double random_A_number, bool track) {
 
 
 	// Generate the set of possible products that we need to update
-	// (excluding new molecules, we'll get those later --Justin)
-	this->transformationSet->getListOfProducts(
-			mappingSet, products, traversalLimit, &productComponentSizes,
-			&productComponentsTruncated);
+	// (excluding new molecules, we'll get those later --Justin).  A compact
+	// energy rule can use only its explicitly mapped endpoints when it has
+	// already proven that no observable, Type-II function, or indirect
+	// membership dependency needs the rest of the bonded complex.
+	bool directProductsPrepared = false;
+	if (this->canUseDirectProductList()) {
+		ProfileTime directProductStart = system->isProfileReactionActive()
+			? profileNow() : ProfileTime();
+		directProductMoleculeList.clear();
+		for (unsigned int msIndex = 0; msIndex < n_mappingsets; ++msIndex) {
+			MappingSet *ms = mappingSet[msIndex];
+			if (ms == 0) continue;
+			for (unsigned int mapIndex = 0;
+					mapIndex < ms->getNumOfMappings(); ++mapIndex) {
+				Mapping *mapping = ms->get(mapIndex);
+				if (mapping == 0 || mapping->getMolecule() == 0) continue;
+				Molecule *molecule = mapping->getMolecule();
+				if (std::find(directProductMoleculeList.begin(),
+						directProductMoleculeList.end(), molecule) ==
+						directProductMoleculeList.end())
+				{
+					directProductMoleculeList.push_back(molecule);
+					products.push_back(molecule);
+				}
+			}
+		}
+		directProductsPrepared = true;
+		if (system->isProfileReactionActive())
+			system->recordProfileProductPreparation(
+					profileElapsedSeconds(directProductStart),
+					static_cast<unsigned long long>(products.size()));
+	} else {
+		this->transformationSet->getListOfProducts(
+				mappingSet, products, traversalLimit, &productComponentSizes,
+				&productComponentsTruncated);
+	}
 
 	// Check product-side filters (include_products / exclude_products).
 	// If the resulting products don't pass the filter, treat this as a null event.
@@ -543,28 +598,51 @@ string ReactionClass::fire(double random_A_number, bool track) {
 	// Add newly created molecules to the list of products
 	this->transformationSet->getListOfAddedMolecules(mappingSet,products,traversalLimit);
 
-	// Track molecules that were explicitly mapped by this firing. Products added
-	// through bonded-neighborhood traversal must use the full updater to preserve
-	// the same membership mutation order as the non-connectivity path.
-	std::unordered_set<Molecule*> directProductSet;
+	// Track molecules that were explicitly mapped by this firing when either
+	// connectivity-aware membership or a compact energy reaction may use the
+	// endpoint-local membership filter. Products added through bonded-neighborhood
+	// traversal remain conservative and use the full updater.
 	bool hasIndirectProducts = false;
-	if (useConnectivity) {
-		for (unsigned int msIndex=0; msIndex<n_mappingsets; msIndex++) {
-			MappingSet *ms = mappingSet[msIndex];
-			if (ms==0) continue;
-			for (unsigned int mapIndex=0; mapIndex<ms->getNumOfMappings(); mapIndex++) {
-				Mapping *mapping = ms->get(mapIndex);
-				if (mapping==0) continue;
-				Molecule *directMol = mapping->getMolecule();
-				if (directMol!=0) directProductSet.insert(directMol);
+	bool trackDirectProducts = useConnectivity || this->usesIncrementalMembership();
+	if (trackDirectProducts) {
+		indirectMembershipDecisions.clear();
+		if (!directProductsPrepared) {
+			if (directProductMolecules == 0)
+				directProductMolecules = new unordered_set<Molecule *>();
+			directProductMolecules->clear();
+			for (unsigned int msIndex=0; msIndex<n_mappingsets; msIndex++) {
+				MappingSet *ms = mappingSet[msIndex];
+				if (ms==0) continue;
+				for (unsigned int mapIndex=0; mapIndex<ms->getNumOfMappings(); mapIndex++) {
+					Mapping *mapping = ms->get(mapIndex);
+					if (mapping==0) continue;
+					Molecule *directMol = mapping->getMolecule();
+					if (directMol!=0) directProductMolecules->insert(directMol);
+				}
 			}
 		}
-		for (molIter = products.begin(); molIter != products.end(); molIter++) {
-			Molecule *mol = *molIter;
-			if (!mol->isAlive()) continue;
-			if (directProductSet.find(mol)==directProductSet.end()) {
-				hasIndirectProducts = true;
-				break;
+		if (this->usesIncrementalMembership()) {
+			for (molIter = products.begin(); molIter != products.end(); ++molIter) {
+				Molecule *mol = *molIter;
+				if (!mol->isAlive() ||
+						isDirectProductMolecule(mol, directProductsPrepared))
+					continue;
+				MoleculeType *mt = mol->getMoleculeType();
+				if (indirectMembershipDecisions.find(mt) ==
+						indirectMembershipDecisions.end()) {
+					indirectMembershipDecisions.emplace(
+							mt, mt->canSkipIndirectMembership(this));
+				}
+			}
+		}
+		if (useConnectivity) {
+			for (molIter = products.begin(); molIter != products.end(); molIter++) {
+				Molecule *mol = *molIter;
+				if (!mol->isAlive()) continue;
+				if (!isDirectProductMolecule(mol, directProductsPrepared)) {
+					hasIndirectProducts = true;
+					break;
+				}
 			}
 		}
 	}
@@ -648,6 +726,11 @@ string ReactionClass::fire(double random_A_number, bool track) {
 	bool profileMembership = profileReaction;
 	ProfileTime profileMembershipStart = profileMembership
 		? profileNow() : ProfileTime();
+	bool deferMembershipPropensityUpdates =
+		directProductsPrepared && this->usesIncrementalMembership() &&
+		!useConnectivity;
+	if (deferMembershipPropensityUpdates)
+		this->system->beginDeferredMembershipPropensityUpdates();
 	for ( molIter = products.begin(); molIter != products.end(); molIter++ ) {
 		Molecule * mol = *molIter;
 		MoleculeType * mt = mol->getMoleculeType();
@@ -665,12 +748,22 @@ string ReactionClass::fire(double random_A_number, bool track) {
 		//   (typeI relationship) will be updated as long as UTL is set appropriately.
 		if ( mol->isAlive() ) {
 			bool useConnectedUpdate =
-				useConnectivity &&
-				!hasIndirectProducts &&
-				directProductSet.find(mol)!=directProductSet.end();
-			mol->updateRxnMembership(this, useConnectedUpdate);
+					useConnectivity &&
+					!hasIndirectProducts &&
+					isDirectProductMolecule(mol, directProductsPrepared);
+			bool directProduct = !trackDirectProducts ||
+					isDirectProductMolecule(mol, directProductsPrepared);
+			if (!directProduct) {
+				auto decision = indirectMembershipDecisions.find(mt);
+				if (decision != indirectMembershipDecisions.end() &&
+						decision->second)
+					continue;
+			}
+			mol->updateRxnMembership(this, useConnectedUpdate, directProduct);
 		}
 	}
+	if (deferMembershipPropensityUpdates)
+		this->system->endDeferredMembershipPropensityUpdates();
 	if (profileMembership)
 		system->recordProfileMembershipPhase(
 			profileElapsedSeconds(profileMembershipStart));

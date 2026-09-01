@@ -1,6 +1,7 @@
 #ifndef BASICREACTIONS_HH_
 #define BASICREACTIONS_HH_
 
+#include <cstdint>
 
 #include "../NFreactions.hh"
 
@@ -122,6 +123,18 @@ namespace NFcore
 					CompositeFunction *function,
 					vector <string> &lfArgumentPointerNameList,
 					System *s);
+			/* Internal constructor for reactions whose rate factor is supplied by
+			 * another mapping-local evaluator rather than a BNGL local function. */
+			DORRxnClass(
+					string name,
+					double baseRate,
+					string baseRateName,
+					TransformationSet *transformationSet,
+					int dorReactantIndex,
+					System *s,
+					unsigned int reactantListInitialCapacity = 25,
+					unsigned int reactantTreeInitialCapacity = 32,
+					bool allocateReactantLists = true);
 			virtual ~DORRxnClass();
 
 			virtual void init();
@@ -178,6 +191,133 @@ namespace NFcore
 			Molecule ** argMappedMolecule;
 			int * argScope;
 
+	};
+
+	/*
+	 * Compact Arrhenius energy reaction.  This uses the DOR mapping tree to
+	 * select a reaction-center molecule with its context-dependent rate factor,
+	 * but does not create one BasicRxnClass for every boolean context state.
+	 * The input path only selects this class for factorized binding contexts
+	 * whose conditional terms depend only on sites of the same reactant.
+	 */
+	class EnergyRxnClass : public DORRxnClass {
+		public:
+			EnergyRxnClass(
+					string name,
+					double baseRate,
+					string baseRateName,
+					TransformationSet *transformationSet,
+					int dorReactantIndex,
+					const EnergyBindingContext &context,
+					double phi,
+					double RT,
+					bool isForward,
+					System *s);
+			virtual ~EnergyRxnClass();
+			virtual bool usesIncrementalMembership() const { return simpleMembership; }
+			virtual bool supportsSparseSelection() const {
+				return simpleMembership;
+			}
+			virtual bool membershipDecisionIsTypeInvariant() const {
+				return simpleMembership;
+			}
+			virtual bool getIncrementalMembershipChange(
+					IncrementalMembershipChange &change) const;
+			virtual bool getCompactMembershipIndexInfo(
+					unsigned int reactantPos,
+					int &reactionCenterComponent,
+					std::uint64_t &contextComponentMask,
+					unsigned int &minimumContextComponents) const;
+			virtual bool getCompactPartnerPoolInfo(
+					unsigned int reactantPos,
+					int &partnerComponent) const;
+			virtual bool refreshCompactPartnerPool(
+					Molecule *m, unsigned int reactantPos);
+			virtual bool supportsCompactPartnerPoolUpdate() const {
+				return compactForwardPartnerPropensity;
+			}
+			virtual bool supportsCompactPartnerPoolScale() const {
+				return compactForwardPartnerPropensity && !useRuleMonkey;
+			}
+			virtual CompactPartnerPool *getCompactPartnerPool() const {
+				return partnerPool;
+			}
+			virtual double getCompactPartnerPoolCoefficient() const;
+			virtual double update_a_for_compact_partner_pool(int poolSize);
+			virtual bool shouldUpdateMembershipForChange(
+					Molecule *m,
+					const IncrementalMembershipChange &change) const;
+			virtual bool supportsDeferredMembershipUpdate() const {
+				return simpleMembership;
+			}
+			virtual double get_a() const;
+			virtual bool tryToAddAndReportChange(
+					Molecule *m, unsigned int reactantPos);
+			virtual bool tryToAddWithIndex(
+				Molecule *m, unsigned int reactantPos, int rxnIndex);
+			virtual bool tryToAddAndReportChangeWithIndex(
+				Molecule *m, unsigned int reactantPos, int rxnIndex);
+			virtual void remove(Molecule *m, unsigned int reactantPos);
+			virtual double update_a();
+			virtual int getReactantCount(unsigned int reactantIndex) const;
+			virtual int getCorrectedReactantCount(unsigned int reactantIndex) const;
+			virtual bool canUseDirectProductList() const;
+			virtual bool canSkipIndirectMembership(
+					ReactionClass *firedReaction) const;
+			virtual bool checkPreFireConditions(
+					MappingSet **mappingSets) const;
+			virtual void notifyRateFactorChange(
+					Molecule *m, int reactantIndex, int rxnListIndex);
+			virtual bool shouldUpdateMembership(Molecule *m,
+					ReactionClass *firedReaction,
+					bool directProduct) const;
+
+		protected:
+			virtual bool tryToAdd(Molecule *m, unsigned int reactantPos);
+			virtual double evaluateLocalFunctions(MappingSet *ms);
+			virtual void pickRuleMonkeyMappingSets(double randNumber) const;
+			virtual double exactRuleMonkey_a();
+
+		private:
+			vector<EnergyPatternTerm> conditionalTerms;
+			vector<int> conditionComponentIndices;
+			vector<std::uint64_t> conditionalComponentMasks;
+			bool componentMaskFastPath;
+			double baseEnergy;
+			double phi;
+			double RT;
+			bool isForward;
+			bool simpleMembership;
+			bool compactFactorizedPropensity;
+			bool compactForwardPartnerPropensity;
+			bool compactReversePropensity;
+			bool preFireBindingFastPath;
+			int reactionCenterComponentIndex;
+			int partnerComponentIndex;
+			MoleculeType *partnerMoleculeType;
+			CompactPartnerPool *partnerPool;
+			MappingSet *compactPartnerMappingSet;
+			std::uint64_t weightedDependencyMask;
+			bool dependencyMaskValid;
+			bool singleConditionalTermFastPath;
+			double baseEnergyRateFactor;
+			double conditionedEnergyRateFactor;
+			bool multiConditionalTermFastPath;
+			std::vector<double> conditionalRateFactors;
+			double compactRateFactor;
+			unsigned int minimumConditionalBits;
+			mutable bool directProductListDecisionKnown;
+			mutable bool directProductListSafe;
+
+			bool tryToAddCompact(Molecule *m, unsigned int reactantPos,
+					int rxnIndex = -1);
+			void refreshCompactRateFactor();
+
+			bool dependsOnEndpoint(MoleculeType *targetMoleculeType,
+					MoleculeType *changedMoleculeType,
+					int changedComponentIndex) const;
+
+			virtual void pickMappingSets(double randNumber) const;
 	};
 
 	/* A reaction class with DOR calculations on two reactants.

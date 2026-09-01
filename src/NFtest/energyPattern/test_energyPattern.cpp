@@ -1,4 +1,5 @@
 #include "test_energyPattern.hh"
+#include "../../NFcore/NFcore.hh"
 #include "../../NFcore/energyPattern.hh"
 #include <iostream>
 #include <stdexcept>
@@ -90,6 +91,74 @@ void NFtest_energyPattern::run()
     if (abs(rev.deltaG - (-5.0)) > 1e-6) throw runtime_error("Reverse rule deltaG mismatch.");
     if (abs(rev.rate - exp(-12.5)) > 1e-6) throw runtime_error("Reverse rule rate mismatch.");
 
+    cout << "  Testing compact conjunction context extraction..." << endl;
+
+    EnergyPatternInfo epConjunction;
+    epConjunction.id = "EP_CONJUNCTION";
+    epConjunction.energyValue = 2.0;
+
+    EpMolecule promoter;
+    promoter.typeName = "P";
+    promoter.xmlId = "promoter";
+    for (int i = 0; i < 3; ++i) {
+        EpMolecule::CompInfo site;
+        site.name = string("s") + char('0' + i);
+        site.bondPartnerId = string("ligand") + char('0' + i);
+        site.isBound = true;
+        site.stateConstraint = "";
+        promoter.components.push_back(site);
+    }
+    epConjunction.molecules.push_back(promoter);
+
+    EpMolecule ligand0;
+    ligand0.typeName = "L";
+    ligand0.xmlId = "ligand0";
+    EpMolecule::CompInfo ligand0Site;
+    ligand0Site.name = "p";
+    ligand0Site.bondPartnerId = "promoter";
+    ligand0Site.isBound = true;
+    ligand0Site.stateConstraint = "";
+    ligand0.components.push_back(ligand0Site);
+    epConjunction.molecules.push_back(ligand0);
+
+    EnergyPatternInfo::Bond centerBond;
+    centerBond.mol1 = 0;
+    centerBond.comp1 = 0;
+    centerBond.mol2 = 1;
+    centerBond.comp2 = 0;
+    epConjunction.bonds.push_back(centerBond);
+
+    for (int i = 1; i < 3; ++i) {
+        EpMolecule contextLigand;
+        contextLigand.typeName = "L";
+        contextLigand.xmlId = string("ligand") + char('0' + i);
+        EpMolecule::CompInfo contextSite;
+        contextSite.name = "p";
+        contextSite.bondPartnerId = "promoter";
+        contextSite.isBound = true;
+        contextSite.stateConstraint = "";
+        contextLigand.components.push_back(contextSite);
+        epConjunction.molecules.push_back(contextLigand);
+
+        EnergyPatternInfo::Bond contextBond;
+        contextBond.mol1 = 0;
+        contextBond.comp1 = i;
+        contextBond.mol2 = i + 1;
+        contextBond.comp2 = 0;
+        epConjunction.bonds.push_back(contextBond);
+    }
+
+    ef.addEnergyPattern(epConjunction);
+
+    EnergyBindingContext conjunctionContext;
+    if (!ef.getBindingContext("P", "s0", "L", "p", conjunctionContext))
+        throw runtime_error("getBindingContext rejected a compact conjunction.");
+    if (conjunctionContext.conditions.size() != 2)
+        throw runtime_error("compact conjunction did not retain both conditions.");
+    if (conjunctionContext.conditionalTerms.size() != 1 ||
+        conjunctionContext.conditionalTerms[0].conditionMask != 3u)
+        throw runtime_error("compact conjunction mask was not encoded correctly.");
+
 
     // Test state change rule
     cout << "  Testing EnergyFunction::expandStateChangeRule..." << endl;
@@ -127,6 +196,33 @@ void NFtest_energyPattern::run()
     if (fwdS.name != "RxnState_fwd") throw runtime_error("State forward rule name mismatch.");
     if (abs(fwdS.deltaG - (-3.0)) > 1e-6) throw runtime_error("State forward rule deltaG mismatch.");
     if (abs(fwdS.rate - exp(-8.5)) > 1e-6) throw runtime_error("State forward rule rate mismatch.");
+
+    cout << "  Testing compact partner pool swap removal..." << endl;
+    System *poolSystem = new System("CompactPartnerPoolTest");
+    vector<string> poolComponents;
+    poolComponents.push_back("site");
+    MoleculeType *poolMoleculeType =
+        new MoleculeType("PoolMolecule", poolComponents, poolSystem);
+    Molecule *poolMolecule0 = poolMoleculeType->genDefaultMolecule();
+    Molecule *poolMolecule1 = poolMoleculeType->genDefaultMolecule();
+    Molecule *poolMolecule2 = poolMoleculeType->genDefaultMolecule();
+    CompactPartnerPool pool;
+    pool.add(poolMolecule0,
+             static_cast<unsigned int>(poolMolecule0->getMolListId()));
+    pool.add(poolMolecule1,
+             static_cast<unsigned int>(poolMolecule1->getMolListId()));
+    pool.add(poolMolecule2,
+             static_cast<unsigned int>(poolMolecule2->getMolListId()));
+    if (!pool.remove(poolMolecule0,
+                     static_cast<unsigned int>(poolMolecule0->getMolListId())))
+        throw runtime_error("compact partner pool did not remove its first entry.");
+    if (!pool.contains(poolMolecule1,
+                       static_cast<unsigned int>(poolMolecule1->getMolListId())) ||
+        !pool.contains(poolMolecule2,
+                       static_cast<unsigned int>(poolMolecule2->getMolListId())) ||
+        pool.getByIndex(0) != poolMolecule2)
+        throw runtime_error("compact partner pool reverse index was not updated after swap removal.");
+    delete poolSystem;
 
 	cout << "EnergyFunction tests completed successfully." << endl;
 }

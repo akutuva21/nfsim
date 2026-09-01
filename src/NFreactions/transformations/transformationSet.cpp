@@ -786,6 +786,15 @@ bool TransformationSet::checkMolecularity( MappingSet ** mappingSets )
 	}
 	else if ( complex_bookkeeping )
 	{	// verify that each reactant pattern points to a unique complex
+		if (n_reactants == 2 &&
+				!reactants[0]->getMoleculeType()->isPopulationType() &&
+				!reactants[1]->getMoleculeType()->isPopulationType()) {
+			/* The general path below uses a hash set for arbitrary molecularity.
+			 * For the overwhelmingly common bimolecular case, uniqueness is
+			 * exactly one complex-ID comparison and does not need a container. */
+			return mappingSets[0]->getComplexID() !=
+				mappingSets[1]->getComplexID();
+		}
 		complex_ids.clear();
 		for ( unsigned int ir = 0;  ir < n_reactants;  ++ir )
 		{

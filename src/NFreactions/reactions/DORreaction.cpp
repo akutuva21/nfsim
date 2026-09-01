@@ -8,6 +8,27 @@
 using namespace std;
 using namespace NFcore;
 
+namespace {
+
+/* Species are loaded before reaction rules, so compact EnergyPattern rules
+ * can size their ordinary partner lists from the current molecule pool.  A
+ * later synthesis or an unusual multi-mapping rule still expands normally. */
+unsigned int compactReactantListInitialCapacity(
+		TransformationSet *transformationSet, int dorReactantIndex)
+{
+	unsigned int capacity = 1;
+	for (unsigned int r = 0; r < transformationSet->getNreactants(); ++r) {
+		if ((int)r == dorReactantIndex) continue;
+		int moleculeCount = transformationSet->getTemplateMolecule(r)
+				->getMoleculeType()->getMoleculeCount();
+		if (moleculeCount > (int)capacity)
+			capacity = (unsigned int)moleculeCount;
+	}
+	return capacity;
+}
+
+}
+
 
 //should also accept list of local functions and list of PointerNames for each of the functions...
 DORRxnClass::DORRxnClass(
@@ -158,6 +179,59 @@ DORRxnClass::DORRxnClass(
 	cf->addTypeIMoleculeDependency( reactantTemplates[DORreactantIndex]->getMoleculeType() );
 
 }
+
+DORRxnClass::DORRxnClass(
+		string name,
+		double baseRate,
+		string baseRateName,
+		TransformationSet *transformationSet,
+		int dorReactantIndex,
+		System *s,
+		unsigned int reactantListInitialCapacity,
+		unsigned int reactantTreeInitialCapacity,
+		bool allocateReactantLists) :
+	ReactionClass(name,baseRate,baseRateName,transformationSet,s),
+	cf(0),
+	DORreactantIndex(dorReactantIndex),
+	n_argMolecules(0),
+	argIndexIntoMappingSet(0),
+	argMappedMolecule(0),
+	argScope(0)
+{
+	/* This constructor is deliberately limited to the same single weighted
+	 * reactant model used by ordinary DOR reactions.  EnergyRxnClass uses it
+	 * only for two-reactant binding rules (and one-reactant reverse rules). */
+	if (dorReactantIndex < 0 || dorReactantIndex >= (int)n_reactants) {
+		cerr << "Invalid weighted reactant index when creating DOR reaction: "
+		     << name << endl;
+		exit(1);
+	}
+	if (transformationSet->getTemplateMolecule((unsigned)dorReactantIndex)
+			->getMoleculeType()->isPopulationType()) {
+		cerr << "A weighted DOR reactant cannot be a population type: "
+		     << name << endl;
+		exit(1);
+	}
+
+	this->reactionType = ReactionClass::DOR_RXN;
+	this->reactantTree = new ReactantTree(this->DORreactantIndex,
+			transformationSet,reactantTreeInitialCapacity);
+	this->msPairBuffer = new MappingSet *[n_reactants > 2 ? n_reactants : 2];
+	this->reactantLists = new ReactantList *[n_reactants];
+	for (unsigned int r=0; r<n_reactants; r++) {
+		if ((int)r != this->DORreactantIndex) {
+			if (allocateReactantLists)
+				this->reactantLists[r] = new ReactantList(
+						r, transformationSet, reactantListInitialCapacity);
+			else
+				this->reactantLists[r] = 0;
+		} else {
+			this->reactantLists[r] = 0;
+		}
+	}
+	this->a = 0;
+}
+
 DORRxnClass::~DORRxnClass() {
 
 	for(unsigned int r=0; r<n_reactants; r++) {
@@ -212,8 +286,8 @@ void DORRxnClass::remove(Molecule *m, unsigned int reactantPos)
 
 int DORRxnClass::checkForCollision(Molecule *m, MappingSet* ms, int rxnIndex){
 	
-	const set<int>& tempSet = m->getRxnListMappingSet(rxnIndex);
-	for(set<int>::const_iterator it= tempSet.begin();it!= tempSet.end(); ++it){
+	const MappingIdSet& tempSet = m->getRxnListMappingSet(rxnIndex);
+	for(MappingIdSet::const_iterator it= tempSet.begin();it!= tempSet.end(); ++it){
 		MappingSet* ms2 = reactantTree->getMappingSet(*it);
 		if(MappingSet::checkForEquality(ms,ms2)){
 			return *it;
@@ -245,7 +319,7 @@ bool DORRxnClass::tryToAdd(Molecule *m, unsigned int reactantPos) {
 			}
 		}
 		//JJT: keep a list containing those mapping sets that will be deleted
-		set<int> deleteMs = m->getRxnListMappingSet(rxnIndex);
+		MappingIdSet deleteMs = m->getRxnListMappingSet(rxnIndex);
 		symmetricMappingSet.clear();
 		if(m->getRxnListMappingId(rxnIndex)>=0) {
 			/* JJT: this branch contains those reactions for which a reaction and a molecule had been mapped together before
@@ -307,7 +381,7 @@ bool DORRxnClass::tryToAdd(Molecule *m, unsigned int reactantPos) {
 				
 			}
 
-			for(set<int>::iterator it=deleteMs.begin();it!=deleteMs.end(); ++it){
+			for(MappingIdSet::iterator it=deleteMs.begin();it!=deleteMs.end(); ++it){
 				m->deleteRxnListMappingId(rxnIndex,*it);
 				reactantTree->removeMappingSet(*it);
 			}
@@ -772,6 +846,886 @@ void DORRxnClass::printDetails() const
 
 
 
+
+
+EnergyRxnClass::EnergyRxnClass(
+		string name,
+		double baseRate,
+		string baseRateName,
+		TransformationSet *transformationSet,
+		int dorReactantIndex,
+		const EnergyBindingContext &context,
+		double phi,
+		double RT,
+		bool isForward,
+		System *s) :
+	/* Compact forward EnergyPattern rules track a single weighted promoter
+	 * mapping against an ordinary partner pool.  Size that pool from the
+	 * species already loaded by NFinput so common monomer pools do not pay
+	 * geometric list growth; reverse rules have no ordinary partner list.  The
+	 * weighted tree stays deliberately small and expands for unusual contexts. */
+	DORRxnClass(name,baseRate,baseRateName,transformationSet,dorReactantIndex,s,
+			compactReactantListInitialCapacity(transformationSet, dorReactantIndex), 1,
+			false),
+	conditionalTerms(context.conditionalTerms),
+	componentMaskFastPath(true),
+	baseEnergy(context.baseEnergy),
+	phi(phi),
+	RT(RT),
+	isForward(isForward),
+	simpleMembership(false),
+	compactFactorizedPropensity(false),
+	compactForwardPartnerPropensity(false),
+	compactReversePropensity(false),
+	preFireBindingFastPath(false),
+	reactionCenterComponentIndex(-1),
+	partnerComponentIndex(-1),
+	partnerMoleculeType(0),
+	partnerPool(0),
+	compactPartnerMappingSet(0),
+	weightedDependencyMask(0),
+	dependencyMaskValid(true),
+	singleConditionalTermFastPath(false),
+	baseEnergyRateFactor(0.0),
+	conditionedEnergyRateFactor(0.0),
+	multiConditionalTermFastPath(false),
+	conditionalRateFactors(),
+	compactRateFactor(0.0),
+	minimumConditionalBits(0),
+	directProductListDecisionKnown(false),
+	directProductListSafe(false)
+{
+	/* The compact input path currently supplies contexts on the first
+	 * reaction-center molecule.  Its mapping is the first mapping in both the
+	 * forward two-reactant rule and the reverse connected rule. */
+	if (dorReactantIndex != 0 || context.conditions.empty()) {
+		cerr << "Invalid compact energy reaction context for " << name << endl;
+		exit(1);
+	}
+
+	MoleculeType *weightedType = reactantTemplates[dorReactantIndex]->getMoleculeType();
+	if (!context.conditions.empty() &&
+			weightedType->getName() != context.conditions.front().molType) {
+		cerr << "Compact energy reaction weighted template does not match its "
+			 << "context molecule type for " << name << endl;
+		exit(1);
+	}
+	for (const auto &condition : context.conditions) {
+		if (condition.reactantIdx != 0) {
+			cerr << "Compact energy reaction context is not on reactant 0 for "
+			     << name << endl;
+			exit(1);
+		}
+		conditionComponentIndices.push_back(
+			weightedType->getCompIndexFromName(condition.compName));
+	}
+	for (unsigned int ti=0; ti<conditionalTerms.size(); ti++) {
+		std::uint64_t componentMask = 0;
+		for (unsigned int ci=0; ci<conditionComponentIndices.size(); ci++) {
+			if ((conditionalTerms[ti].conditionMask &
+					(std::uint64_t(1) << ci)) == 0)
+				continue;
+			int componentIndex = conditionComponentIndices[ci];
+			if (componentIndex < 0 || componentIndex >= 64) {
+				componentMaskFastPath = false;
+				break;
+			}
+			componentMask |=
+					(std::uint64_t(1) << componentIndex);
+		}
+		conditionalComponentMasks.push_back(componentMask);
+	}
+	if (componentMaskFastPath && !conditionalComponentMasks.empty()) {
+		minimumConditionalBits = 64;
+		for (unsigned int ti = 0; ti < conditionalComponentMasks.size(); ++ti) {
+			std::uint64_t mask = conditionalComponentMasks[ti];
+			unsigned int bits = 0;
+			while (mask != 0) {
+				mask &= (mask - 1);
+				++bits;
+			}
+			if (bits < minimumConditionalBits)
+				minimumConditionalBits = bits;
+		}
+		if (minimumConditionalBits == 64)
+			minimumConditionalBits = 0;
+	}
+
+	/* Compact input creates only a reaction-center constraint on the weighted
+	 * molecule.  Cache its two binding endpoints so membership refreshes can
+	 * update the DOR tree directly instead of recursively comparing the
+	 * template on every energy reaction.  Leave unusual/symmetric templates on
+	 * the general DOR path. */
+	if (transformationSet->getNumOfTransformations(0) > 0) {
+		Transformation *center = transformationSet->getTransformation(0, 0);
+		reactionCenterComponentIndex = center->getComponentIndex();
+		if (isForward && n_reactants == 2 &&
+				transformationSet->getNumOfTransformations(1) == 1 &&
+				center->getType() == TransformationFactory::BINDING) {
+			Transformation *partner = transformationSet->getTransformation(1, 0);
+			partnerComponentIndex = partner->getComponentIndex();
+			partnerMoleculeType = reactantTemplates[1]->getMoleculeType();
+			simpleMembership =
+				partner->getType() == TransformationFactory::EMPTY &&
+				!partnerMoleculeType->isPopulationType() &&
+				reactantTemplates[0]->getN_symComps() == 0 &&
+				reactantTemplates[0]->getN_connectedTo() == 0 &&
+				reactantTemplates[1]->getN_symComps() == 0 &&
+				reactantTemplates[1]->getN_connectedTo() == 0;
+		} else if (!isForward && n_reactants == 1 &&
+				transformationSet->getNumOfTransformations(0) == 2 &&
+				center->getType() == TransformationFactory::UNBINDING) {
+			Transformation *partner = transformationSet->getTransformation(0, 1);
+			partnerComponentIndex = partner->getComponentIndex();
+			TemplateMolecule *partnerTemplate = partner->getTemplateMolecule();
+			partnerMoleculeType = partnerTemplate->getMoleculeType();
+			simpleMembership =
+				partner->getType() == TransformationFactory::EMPTY &&
+				reactantTemplates[0]->getN_symComps() == 0 &&
+				reactantTemplates[0]->getN_connectedTo() == 0 &&
+				partnerTemplate->getN_symComps() == 0 &&
+				partnerTemplate->getN_connectedTo() == 0;
+		}
+	}
+	preFireBindingFastPath = simpleMembership && isForward &&
+		n_reactants == 2 &&
+		transformationSet->getNumOfTransformations(0) == 1 &&
+		transformationSet->getNumOfTransformations(1) == 1;
+
+	if (simpleMembership && isForward && n_reactants == 2) {
+		partnerPool = partnerMoleculeType->getOrCreateCompactPartnerPool(
+				partnerComponentIndex);
+		compactPartnerMappingSet = transformationSet->generateBlankMappingSet(1, 0);
+	}
+	compactFactorizedPropensity = simpleMembership &&
+			!contextCountsPerComplex[DORreactantIndex] &&
+			!matchOncePerReactant[DORreactantIndex];
+	compactForwardPartnerPropensity = compactFactorizedPropensity &&
+			isForward && n_reactants == 2 && DORreactantIndex == 0 &&
+			partnerPool != 0 && !contextCountsPerComplex[1] &&
+			!matchOncePerReactant[1];
+	compactReversePropensity = compactFactorizedPropensity &&
+			!isForward && n_reactants == 1 && DORreactantIndex == 0;
+	if (simpleMembership) {
+		if (reactionCenterComponentIndex < 0 ||
+				reactionCenterComponentIndex >= 64) {
+			dependencyMaskValid = false;
+		} else {
+			weightedDependencyMask |=
+					(std::uint64_t(1) << reactionCenterComponentIndex);
+		}
+		for (unsigned int ci=0; ci<conditionComponentIndices.size(); ci++) {
+			int componentIndex = conditionComponentIndices[ci];
+			if (componentIndex < 0 || componentIndex >= 64) {
+				dependencyMaskValid = false;
+			} else {
+				weightedDependencyMask |=
+						(std::uint64_t(1) << componentIndex);
+			}
+		}
+	} else if (n_reactants > 1 && reactantLists[1] == 0) {
+		/* The compact constructor suppresses non-weighted lists until the
+		 * template has been classified. Unsupported contexts use the normal DOR
+		 * implementation and therefore need the ordinary list. */
+		reactantLists[1] = new ReactantList(
+				1, transformationSet,
+				compactReactantListInitialCapacity(transformationSet,
+						dorReactantIndex));
+	}
+	/* Most generated promoter rules have one conditional energy term.  Its
+	 * occupancy test still changes per refresh, but the two Arrhenius factors
+	 * do not.  Cache those factors so the hot membership path only performs the
+	 * mask test; multi-term contexts retain the general evaluator below. */
+	if (componentMaskFastPath && conditionalTerms.size() == 1) {
+		double energyCoefficient = isForward ? phi : (phi - 1.0);
+		baseEnergyRateFactor =
+			exp(-(energyCoefficient * baseEnergy) / RT);
+		conditionedEnergyRateFactor =
+			exp(-(energyCoefficient *
+				(baseEnergy + conditionalTerms[0].energyValue)) / RT);
+		singleConditionalTermFastPath = true;
+	} else if (componentMaskFastPath && conditionalTerms.size() > 1 &&
+			conditionalTerms.size() <= 8) {
+		/* A small number of independent energy terms has only a small number of
+		 * possible summed energies.  Cache those exact sums once per reaction;
+		 * the hot path then performs the same mask tests but no exponential.  Cap
+		 * the table to keep memory bounded for unusually large contexts. */
+		double energyCoefficient = isForward ? phi : (phi - 1.0);
+		unsigned int combinationCount =
+				1u << static_cast<unsigned int>(conditionalTerms.size());
+		conditionalRateFactors.resize(combinationCount);
+		for (unsigned int combination = 0;
+				combination < combinationCount; ++combination) {
+			double deltaG = baseEnergy;
+			for (unsigned int ti = 0; ti < conditionalTerms.size(); ++ti) {
+				if (combination & (1u << ti))
+					deltaG += conditionalTerms[ti].energyValue;
+			}
+			conditionalRateFactors[combination] =
+				exp(-(energyCoefficient * deltaG) / RT);
+		}
+		multiConditionalTermFastPath = true;
+	}
+}
+
+EnergyRxnClass::~EnergyRxnClass()
+{
+	delete compactPartnerMappingSet;
+	compactPartnerMappingSet = 0;
+}
+
+void EnergyRxnClass::refreshCompactRateFactor()
+{
+	if (compactFactorizedPropensity)
+		compactRateFactor = reactantTree->getRateFactorSum();
+}
+
+double EnergyRxnClass::update_a()
+{
+	/* The compact representation has a factored propensity: the weighted
+	 * molecule tree contributes the sum of its energy factors and a forward
+	 * binding rule contributes the size of its shared partner pool.  Keep the
+	 * generic DOR implementation for non-compact rules and for the less common
+	 * counting modes that require complex deduplication. */
+	if (compactFactorizedPropensity && !useRuleMonkey) {
+		if (compactForwardPartnerPropensity) {
+			a = baseRate * compactRateFactor *
+					static_cast<double>(partnerPool->size());
+			return a;
+		}
+		if (compactReversePropensity) {
+			a = baseRate * compactRateFactor;
+			return a;
+		}
+	}
+	return DORRxnClass::update_a();
+}
+
+double EnergyRxnClass::getCompactPartnerPoolCoefficient() const
+{
+	if (compactForwardPartnerPropensity && !useRuleMonkey)
+		return baseRate * compactRateFactor;
+	return 0.0;
+}
+
+double EnergyRxnClass::get_a() const
+{
+	if (compactForwardPartnerPropensity && !useRuleMonkey && partnerPool != 0)
+		return getCompactPartnerPoolCoefficient() *
+				static_cast<double>(partnerPool->size());
+	return a;
+}
+
+double EnergyRxnClass::update_a_for_compact_partner_pool(int poolSize)
+{
+	/* A partner-pool-only change leaves the weighted reactant tree untouched.
+	 * Reuse the same factored expression as update_a() without entering the
+	 * general DOR propensity path.  The fallback keeps RuleMonkey and any
+	 * future non-factorized compact reaction semantically conservative. */
+	if (compactForwardPartnerPropensity && !useRuleMonkey) {
+		a = baseRate * compactRateFactor * static_cast<double>(poolSize);
+		return a;
+	}
+	return update_a();
+}
+
+bool EnergyRxnClass::tryToAdd(Molecule *m, unsigned int reactantPos)
+{
+	if (!simpleMembership)
+		return DORRxnClass::tryToAdd(m, reactantPos);
+	tryToAddCompact(m, reactantPos);
+	return true;
+}
+
+bool EnergyRxnClass::tryToAddAndReportChange(
+		Molecule *m, unsigned int reactantPos)
+{
+	if (!simpleMembership) {
+		tryToAdd(m, reactantPos);
+		return true;
+	}
+	return tryToAddCompact(m, reactantPos);
+}
+
+bool EnergyRxnClass::tryToAddWithIndex(
+		Molecule *m, unsigned int reactantPos, int rxnIndex)
+{
+	if (!simpleMembership)
+		return DORRxnClass::tryToAdd(m, reactantPos);
+	return tryToAddCompact(m, reactantPos, rxnIndex);
+}
+
+bool EnergyRxnClass::tryToAddAndReportChangeWithIndex(
+		Molecule *m, unsigned int reactantPos, int rxnIndex)
+{
+	if (!simpleMembership) {
+		tryToAdd(m, reactantPos);
+		return true;
+	}
+	return tryToAddCompact(m, reactantPos, rxnIndex);
+}
+
+bool EnergyRxnClass::tryToAddCompact(
+		Molecule *m, unsigned int reactantPos, int rxnIndex)
+{
+
+	if (system != 0 && system->isProfilingEnabled())
+		system->recordProfileMatchCandidate();
+
+	/* The unweighted ligand side of a compact forward rule has exactly one
+	 * empty-site constraint.  All simple rules for the same endpoint share this
+	 * pool, so only the first membership change needs to mutate storage. */
+	if (isForward && reactantPos == 1) {
+		bool matches = m->isBindingSiteOpen(partnerComponentIndex);
+		partnerPool->refresh(m,
+				static_cast<unsigned int>(m->getMolListId()), matches);
+		/* The pool is shared by all simple rules for this endpoint.  Even when
+		 * this rule's call is idempotent, its propensity still depends on the
+		 * shared pool count and must be included in a deferred update. */
+		return true;
+	}
+
+	if (reactantPos != (unsigned int)DORreactantIndex) {
+		DORRxnClass::tryToAdd(m, reactantPos);
+		return true;
+	}
+
+	if (rxnIndex < 0)
+		rxnIndex = m->getMoleculeType()->getRxnIndex(this, reactantPos);
+	Molecule *partnerMolecule = 0;
+	bool matches = false;
+	if (isForward) {
+		matches = m->isBindingSiteOpen(reactionCenterComponentIndex);
+	} else if (m->isBindingSiteBonded(reactionCenterComponentIndex)) {
+		partnerMolecule = m->getBondedMolecule(reactionCenterComponentIndex);
+		matches = partnerMolecule != 0 &&
+				partnerMolecule->getMoleculeType() == partnerMoleculeType &&
+				m->getBondedMoleculeBindingSiteIndex(reactionCenterComponentIndex) ==
+					partnerComponentIndex;
+	}
+	if (!matches) {
+		bool changed = m->getRxnListMappingId(rxnIndex) >= 0;
+		while (m->getRxnListMappingId(rxnIndex) >= 0) {
+			int mappingId = m->getRxnListMappingId(rxnIndex);
+			m->deleteRxnListMappingId(rxnIndex, mappingId);
+			reactantTree->removeMappingSet(mappingId);
+		}
+		if (changed)
+			refreshCompactRateFactor();
+		return changed;
+	}
+
+	const MappingIdSet& existingMappings = m->getRxnListMappingSet(rxnIndex);
+	if (!existingMappings.empty()) {
+		/* A simple compact energy rule has at most one mapping for its weighted
+		 * molecule.  Keep the common refresh on the existing tree node and avoid
+		 * the iterator/setup work used by the general multi-mapping path. */
+		if (existingMappings.size() == 1) {
+			int mappingId = *existingMappings.begin();
+			MappingSet *mappingSet = reactantTree->getMappingSet(mappingId);
+			if (mappingSet != 0 && mappingSet->get(0) != 0 &&
+					mappingSet->get(0)->getMolecule() == m) {
+				bool mappingChanged = false;
+				if (!isForward) {
+					mappingChanged = mappingSet->get(1)->getMolecule() !=
+							partnerMolecule;
+					if (mappingChanged) mappingSet->set(1, partnerMolecule);
+				}
+				bool rateChanged = reactantTree->updateValue(
+						mappingId, evaluateLocalFunctions(mappingSet));
+				refreshCompactRateFactor();
+				return mappingChanged || rateChanged;
+			}
+		}
+		bool changed = false;
+		for (MappingIdSet::const_iterator it = existingMappings.begin();
+				it != existingMappings.end(); ++it) {
+			MappingSet *mappingSet = reactantTree->getMappingSet(*it);
+			if (mappingSet->get(0)->getMolecule() != m)
+				changed = true;
+			mappingSet->set(0, m);
+			if (!isForward) {
+				if (mappingSet->get(1)->getMolecule() != partnerMolecule)
+					changed = true;
+				mappingSet->set(1, partnerMolecule);
+			}
+			if (reactantTree->updateValue(
+						*it, evaluateLocalFunctions(mappingSet)))
+				changed = true;
+		}
+		refreshCompactRateFactor();
+		return changed;
+	}
+
+	MappingSet *mappingSet = reactantTree->pushNextAvailableMappingSet();
+	mappingSet->set(0, m);
+	if (!isForward) mappingSet->set(1, partnerMolecule);
+	reactantTree->confirmPush(
+				mappingSet->getId(), evaluateLocalFunctions(mappingSet));
+	m->setRxnListMappingId(rxnIndex, mappingSet->getId());
+	refreshCompactRateFactor();
+	return true;
+}
+
+void EnergyRxnClass::notifyRateFactorChange(
+		Molecule *m, int reactantIndex, int rxnListIndex)
+{
+	DORRxnClass::notifyRateFactorChange(m, reactantIndex, rxnListIndex);
+	refreshCompactRateFactor();
+}
+
+void EnergyRxnClass::remove(Molecule *m, unsigned int reactantPos)
+{
+	if (simpleMembership && isForward && reactantPos == 1) {
+		if (partnerPool != 0)
+			partnerPool->remove(m,
+					static_cast<unsigned int>(m->getMolListId()));
+		return;
+	}
+	DORRxnClass::remove(m, reactantPos);
+	refreshCompactRateFactor();
+}
+
+int EnergyRxnClass::getReactantCount(unsigned int reactantIndex) const
+{
+	if (simpleMembership && isForward && reactantIndex == 1)
+		return partnerPool == 0 ? 0 : partnerPool->size();
+	return DORRxnClass::getReactantCount(reactantIndex);
+}
+
+int EnergyRxnClass::getCorrectedReactantCount(
+		unsigned int reactantIndex) const
+{
+	if (!(simpleMembership && isForward && reactantIndex == 1))
+		return DORRxnClass::getCorrectedReactantCount(reactantIndex);
+	if (partnerPool == 0) return 0;
+	if ((matchOncePerReactant[reactantIndex] ||
+			contextCountsPerComplex[reactantIndex]) &&
+			system->isUsingComplex()) {
+		std::unordered_set<int> complexes;
+		for (int i = 0; i < partnerPool->size(); ++i) {
+			Molecule *m = partnerPool->getByIndex(i);
+			if (m != 0) complexes.insert(m->getComplexID());
+		}
+		return static_cast<int>(complexes.size());
+	}
+	return partnerPool->size();
+}
+
+bool EnergyRxnClass::dependsOnEndpoint(
+		MoleculeType *targetMoleculeType,
+		MoleculeType *changedMoleculeType,
+		int changedComponentIndex) const
+{
+	MoleculeType *weightedType = reactantTemplates[0]->getMoleculeType();
+	if (targetMoleculeType == weightedType &&
+			changedMoleculeType == weightedType) {
+		if (dependencyMaskValid && changedComponentIndex >= 0 &&
+				changedComponentIndex < 64) {
+			return (weightedDependencyMask &
+					(std::uint64_t(1) << changedComponentIndex)) != 0;
+		}
+		if (changedComponentIndex == reactionCenterComponentIndex)
+			return true;
+		for (unsigned int ci=0; ci<conditionComponentIndices.size(); ci++) {
+			if (changedComponentIndex == conditionComponentIndices[ci])
+				return true;
+		}
+	}
+
+	return targetMoleculeType == partnerMoleculeType &&
+			changedMoleculeType == partnerMoleculeType &&
+			changedComponentIndex == partnerComponentIndex;
+}
+
+bool EnergyRxnClass::shouldUpdateMembership(
+		Molecule *m, ReactionClass *firedReaction, bool directProduct) const
+{
+	if (!simpleMembership || firedReaction == 0 ||
+			!firedReaction->usesIncrementalMembership())
+		return true;
+
+	IncrementalMembershipChange firedChange;
+	if (!firedReaction->getIncrementalMembershipChange(firedChange))
+		return true;
+
+	/* A compact binding/unbinding rule changes only the molecules explicitly
+	 * mapped by that rule.  The product list may also contain the rest of the
+	 * connected complex, but those indirect molecules have no changed local
+	 * endpoint that can affect another compact energy membership list. */
+	if (!directProduct)
+		return false;
+
+	MoleculeType *targetMoleculeType = m->getMoleculeType();
+	if (dependsOnEndpoint(targetMoleculeType, firedChange.moleculeType1,
+			firedChange.componentIndex1))
+		return true;
+	if (dependsOnEndpoint(targetMoleculeType, firedChange.moleculeType2,
+			firedChange.componentIndex2))
+		return true;
+	return false;
+}
+
+bool EnergyRxnClass::getIncrementalMembershipChange(
+		IncrementalMembershipChange &change) const
+{
+	if (!simpleMembership)
+		return false;
+	change.moleculeType1 = reactantTemplates[0]->getMoleculeType();
+	change.componentIndex1 = reactionCenterComponentIndex;
+	change.isBoundAfter1 = isForward;
+	change.moleculeType2 = partnerMoleculeType;
+	change.componentIndex2 = partnerComponentIndex;
+	change.isBoundAfter2 = isForward;
+	return true;
+}
+
+bool EnergyRxnClass::getCompactMembershipIndexInfo(
+		unsigned int reactantPos,
+		int &reactionCenterComponent,
+		std::uint64_t &contextComponentMask,
+		unsigned int &minimumContextComponents) const
+{
+	/* Only the weighted side has mapping membership that can be filtered by
+	 * the changed occupancy mask.  Partner-side membership is a shared pool
+	 * count and must continue through the normal reaction list. */
+	if (!simpleMembership || reactantPos != (unsigned int)DORreactantIndex ||
+			!componentMaskFastPath || reactionCenterComponentIndex < 0)
+		return false;
+
+	contextComponentMask = 0;
+	for (unsigned int ci = 0; ci < conditionComponentIndices.size(); ++ci) {
+		int componentIndex = conditionComponentIndices[ci];
+		if (componentIndex < 0 || componentIndex >= 64)
+			return false;
+		contextComponentMask |= (std::uint64_t(1) << componentIndex);
+	}
+	reactionCenterComponent = reactionCenterComponentIndex;
+	minimumContextComponents = minimumConditionalBits;
+	return true;
+}
+
+bool EnergyRxnClass::getCompactPartnerPoolInfo(
+	unsigned int reactantPos, int &partnerComponent) const
+{
+	if (!simpleMembership || !isForward || reactantPos != 1 ||
+			partnerComponentIndex < 0)
+		return false;
+	partnerComponent = partnerComponentIndex;
+	return true;
+}
+
+bool EnergyRxnClass::refreshCompactPartnerPool(
+	Molecule *m, unsigned int reactantPos)
+{
+	if (!simpleMembership || !isForward || reactantPos != 1 ||
+			m == 0 || partnerPool == 0)
+		return false;
+	return partnerPool->refresh(
+				m, static_cast<unsigned int>(m->getMolListId()),
+				m->isBindingSiteOpen(partnerComponentIndex));
+}
+
+bool EnergyRxnClass::shouldUpdateMembershipForChange(
+		Molecule *m, const IncrementalMembershipChange &change) const
+{
+	if (!simpleMembership || m == 0)
+		return true;
+
+	MoleculeType *targetMoleculeType = m->getMoleculeType();
+	if (targetMoleculeType == partnerMoleculeType &&
+			change.moleculeType2 == partnerMoleculeType &&
+			change.componentIndex2 == partnerComponentIndex)
+		return true;
+
+	MoleculeType *weightedType = reactantTemplates[0]->getMoleculeType();
+	if (targetMoleculeType != weightedType ||
+			change.moleculeType1 != weightedType)
+		return false;
+
+	if (change.componentIndex1 == reactionCenterComponentIndex)
+		return true;
+
+	if (change.componentIndex1 < 0 || change.componentIndex1 >= 64)
+		return true;
+	std::uint64_t changedBit =
+			(std::uint64_t(1) << change.componentIndex1);
+	if (dependencyMaskValid &&
+			(weightedDependencyMask & changedBit) == 0)
+		return false;
+	if (!componentMaskFastPath) {
+		for (unsigned int ci = 0; ci < conditionComponentIndices.size(); ++ci) {
+			if (conditionComponentIndices[ci] == change.componentIndex1)
+				return true;
+		}
+		return false;
+	}
+
+	std::uint64_t newMask = m->getBoundComponentMask();
+	bool observedBound = (newMask & changedBit) != 0;
+	if (observedBound != change.isBoundAfter1)
+		return true;
+	std::uint64_t oldMask = change.isBoundAfter1
+			? (newMask & ~changedBit) : (newMask | changedBit);
+	for (unsigned int ti = 0; ti < conditionalComponentMasks.size(); ++ti) {
+		std::uint64_t requiredMask = conditionalComponentMasks[ti];
+		bool wasSatisfied = (oldMask & requiredMask) == requiredMask;
+		bool isSatisfied = (newMask & requiredMask) == requiredMask;
+		if (wasSatisfied != isSatisfied)
+			return true;
+	}
+	return false;
+}
+
+bool EnergyRxnClass::canSkipIndirectMembership(
+		ReactionClass *firedReaction) const
+{
+	if (!simpleMembership || firedReaction == 0 ||
+			!firedReaction->usesIncrementalMembership())
+		return false;
+
+	const EnergyRxnClass *firedEnergy =
+			dynamic_cast<const EnergyRxnClass *>(firedReaction);
+	return firedEnergy != 0 && firedEnergy->simpleMembership;
+}
+
+bool EnergyRxnClass::canUseDirectProductList() const
+{
+	if (directProductListDecisionKnown)
+		return directProductListSafe;
+
+	bool safe = simpleMembership && system != 0 &&
+			/* On-the-fly observables need the complete affected complex; with
+			 * -notf they are rebuilt at output time instead. */
+			(!system->getOnTheFlyObservables() ||
+			 system->getNumOfObsForOutput() == 0) &&
+			/* The compact constructor never creates added molecules. */
+			transformationSet->getNumOfAddMoleculeTransforms() == 0 &&
+			/* Product filters inspect the complete post-transform complexes. */
+			!transformationSet->hasProductFilters();
+
+	if (safe) {
+		/* The direct list omits every indirect molecule.  Require both that no
+		 * Type-II function needs those molecules and that every reaction
+		 * registered on every molecule type agrees that an indirect refresh can
+		 * be skipped.  This is intentionally conservative because the product
+		 * complex is not traversed on this path. */
+		for (int i = 0; i < system->getNumOfMoleculeTypes(); ++i) {
+			MoleculeType *mt = system->getMoleculeType(i);
+			if (mt->getNumOfTypeIIFunctions() > 0 ||
+					!mt->canSkipIndirectMembership(
+						const_cast<EnergyRxnClass *>(this))) {
+				safe = false;
+				break;
+			}
+		}
+	}
+
+	directProductListSafe = safe;
+	directProductListDecisionKnown = true;
+	return safe;
+}
+
+bool EnergyRxnClass::checkPreFireConditions(
+		MappingSet **mappingSets) const
+{
+	/* The compact forward constructor creates one binding transformation on
+	 * reactant 0 and one empty partner mapping on reactant 1.  If either site
+	 * became occupied after membership was indexed, the transformation would
+	 * reject the event later; reject it here before the generic fire pipeline. */
+	if (!preFireBindingFastPath ||
+			mappingSets == 0 || mappingSets[0] == 0 || mappingSets[1] == 0)
+		return true;
+	Mapping *weightedMapping = mappingSets[0]->get(0);
+	Mapping *partnerMapping = mappingSets[1]->get(0);
+	if (weightedMapping == 0 || partnerMapping == 0)
+		return true;
+	Molecule *weightedMolecule = weightedMapping->getMolecule();
+	Molecule *partnerMolecule = partnerMapping->getMolecule();
+	if (weightedMolecule == 0 || partnerMolecule == 0)
+		return true;
+	if (reactionCenterComponentIndex >= 0 &&
+			reactionCenterComponentIndex < 64 && partnerComponentIndex >= 0 &&
+			partnerComponentIndex < 64) {
+		std::uint64_t weightedBit =
+				(std::uint64_t(1) << reactionCenterComponentIndex);
+		std::uint64_t partnerBit =
+				(std::uint64_t(1) << partnerComponentIndex);
+		return (weightedMolecule->getBoundComponentMask() & weightedBit) == 0 &&
+				(partnerMolecule->getBoundComponentMask() & partnerBit) == 0;
+	}
+	return !weightedMolecule->isBindingSiteBonded(weightedMapping->getIndex()) &&
+			!partnerMolecule->isBindingSiteBonded(partnerMapping->getIndex());
+}
+
+double EnergyRxnClass::evaluateLocalFunctions(MappingSet *ms)
+{
+	if (ms == 0 || ms->getNumOfMappings() == 0 || ms->get(0) == 0 ||
+			ms->get(0)->getMolecule() == 0) {
+		return 0.0;
+	}
+
+	Molecule *weightedMolecule = ms->get(0)->getMolecule();
+	if (singleConditionalTermFastPath) {
+		std::uint64_t boundMask = weightedMolecule->getBoundComponentMask();
+		return (boundMask & conditionalComponentMasks[0]) ==
+				conditionalComponentMasks[0]
+			? conditionedEnergyRateFactor : baseEnergyRateFactor;
+	}
+	if (multiConditionalTermFastPath) {
+		std::uint64_t boundMask = weightedMolecule->getBoundComponentMask();
+		unsigned int activeTerms = 0;
+		for (unsigned int ti = 0; ti < conditionalTerms.size(); ++ti) {
+			std::uint64_t requiredMask = conditionalComponentMasks[ti];
+			if ((boundMask & requiredMask) == requiredMask)
+				activeTerms |= (1u << ti);
+		}
+		return conditionalRateFactors[activeTerms];
+	}
+
+	double deltaG = baseEnergy;
+	if (componentMaskFastPath) {
+		std::uint64_t boundMask = weightedMolecule->getBoundComponentMask();
+		for (unsigned int ti=0; ti<conditionalTerms.size(); ti++) {
+			std::uint64_t requiredMask = conditionalComponentMasks[ti];
+			if ((boundMask & requiredMask) == requiredMask)
+				deltaG += conditionalTerms[ti].energyValue;
+		}
+	} else {
+		std::uint64_t conditionMask = 0;
+		for (unsigned int ci=0; ci<conditionComponentIndices.size(); ci++) {
+			if (weightedMolecule->isBindingSiteBonded(conditionComponentIndices[ci]))
+				conditionMask |= (std::uint64_t(1) << ci);
+		}
+		for (const auto &term : conditionalTerms) {
+			if ((conditionMask & term.conditionMask) == term.conditionMask)
+				deltaG += term.energyValue;
+		}
+	}
+
+	/* DOR's base rate carries exp(-Ea0/RT); this factor carries only the
+	 * context-dependent Arrhenius contribution. */
+	double energyCoefficient = isForward ? phi : (phi - 1.0);
+	return exp(-(energyCoefficient * deltaG) / RT);
+}
+
+void EnergyRxnClass::pickMappingSets(double random_A_number) const
+{
+	if (!(simpleMembership && isForward && n_reactants == 2 &&
+			DORreactantIndex == 0)) {
+		DORRxnClass::pickMappingSets(random_A_number);
+		return;
+	}
+
+	int partnerCount = partnerPool == 0 ? 0 : partnerPool->size();
+	if (partnerCount == 0) return;
+	int partnerIndex = NFutil::RANDOM_INT(0, partnerCount);
+	compactPartnerMappingSet->set(
+			0, partnerPool->getByIndex(static_cast<unsigned int>(partnerIndex)));
+	mappingSet[1] = compactPartnerMappingSet;
+
+	double rateFactorMultiplier = baseRate * static_cast<double>(partnerCount);
+	if (random_A_number < 0)
+		random_A_number = system->getRNG().random(this->a);
+	reactantTree->pickReactantFromValue(
+			mappingSet[DORreactantIndex], random_A_number,
+			rateFactorMultiplier);
+}
+
+double EnergyRxnClass::exactRuleMonkey_a()
+{
+	/* Keep the same total-rate convention as DORRxnClass.  The compact path
+	 * is otherwise a two-reactant microscopic rule with the first reactant
+	 * weighted by its context-dependent energy factor. */
+	if (totalRateFlag) {
+		double exact_a = baseRate;
+		for (unsigned int i = 0; i < n_reactants; i++) {
+			if (getCorrectedReactantCount(i) == 0) exact_a = 0.0;
+		}
+		return exact_a;
+	}
+
+	if (n_reactants != 2 || DORreactantIndex != 0) {
+		return DORRxnClass::exactRuleMonkey_a();
+	}
+
+	/* The inherited DOR implementation expects a ReactantList at index 0,
+	 * but the compact reaction stores the weighted first reactant in its
+	 * ReactantTree.  Enumerate the same valid pairs directly, retaining the
+	 * tree's rate factor for each first-reactant mapping.  The context list is
+	 * intentionally not collapsed here: this matches the counting semantics
+	 * of the base branch on which this reaction class is compiled. */
+	int partnerCount = partnerPool == 0 ? 0 : partnerPool->size();
+
+	double validPropensity = 0.0;
+	for (int i = 0; i < reactantTree->size(); ++i) {
+		msPairBuffer[0] = reactantTree->getMappingSetByIndex(i);
+		for (int j = 0; j < partnerCount; ++j) {
+			compactPartnerMappingSet->set(
+					0, partnerPool->getByIndex(static_cast<unsigned int>(j)));
+			msPairBuffer[1] = compactPartnerMappingSet;
+			if (transformationSet->checkMolecularity(msPairBuffer)) {
+				validPropensity += baseRate * reactantTree->getRateFactor(i);
+			}
+		}
+	}
+
+	return validPropensity;
+}
+
+void EnergyRxnClass::pickRuleMonkeyMappingSets(double random_A_number) const
+{
+	if (n_reactants != 2 || DORreactantIndex != 0) {
+		DORRxnClass::pickRuleMonkeyMappingSets(random_A_number);
+		return;
+	}
+
+	int partnerCount = partnerPool == 0 ? 0 : partnerPool->size();
+	if (partnerCount == 0 || reactantTree->size() == 0)
+		return;
+
+	/* Enumerate valid pairs in RuleMonkey mode.  The normal compact selector
+	 * can use the product of the tree sum and context count, but RuleMonkey
+	 * promises to remove null molecularity events exactly.  Keeping this
+	 * path explicit also handles models that disallow binding within one
+	 * existing complex. */
+	validPairsBuffer.clear();
+	validWeightsBuffer.clear();
+	double totalWeight = 0.0;
+	for (int i = 0; i < reactantTree->size(); ++i) {
+		msPairBuffer[0] = reactantTree->getMappingSetByIndex(i);
+		for (int j = 0; j < partnerCount; ++j) {
+			compactPartnerMappingSet->set(
+					0, partnerPool->getByIndex(static_cast<unsigned int>(j)));
+			msPairBuffer[1] = compactPartnerMappingSet;
+			if (!transformationSet->checkMolecularity(msPairBuffer)) continue;
+
+			validPairsBuffer.push_back(make_pair(i, (int)j));
+			double weight = reactantTree->getRateFactor(i);
+			validWeightsBuffer.push_back(weight);
+			totalWeight += weight;
+		}
+	}
+
+	if (validPairsBuffer.empty() || totalWeight <= 0.0) return;
+
+	double randNum = system->getRNG().random(totalWeight);
+	double cumulative = 0.0;
+	size_t selectedIndex = validPairsBuffer.size() - 1;
+	for (size_t k = 0; k < validPairsBuffer.size(); ++k) {
+		cumulative += validWeightsBuffer[k];
+		if (randNum <= cumulative) {
+			selectedIndex = k;
+			break;
+		}
+	}
+
+	const pair<int, int> selected = validPairsBuffer[selectedIndex];
+	mappingSet[0] = reactantTree->getMappingSetByIndex(selected.first);
+	compactPartnerMappingSet->set(
+			0, partnerPool->getByIndex(static_cast<unsigned int>(selected.second)));
+	mappingSet[1] = compactPartnerMappingSet;
+}
 
 
 /*

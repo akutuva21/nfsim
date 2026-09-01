@@ -69,6 +69,103 @@ void NFtest_reactantTree::run()
     cout << "    Skipping exit(1) test on Windows as fork() is not available." << endl;
 #endif
 
+    cout << "  Testing single-mapping fast path transitions..." << endl;
+    System testSystem("ReactantTree test");
+    vector<string> componentNames;
+    componentNames.push_back("site");
+    MoleculeType *testMoleculeType = new MoleculeType(
+            "TreeTest", componentNames, &testSystem);
+    TemplateMolecule *testTemplate = new TemplateMolecule(testMoleculeType);
+    vector<TemplateMolecule*> tempMols;
+    tempMols.push_back(testTemplate);
+    TransformationSet ts(tempMols);
+    ts.finalize();
+    ReactantTree tree(0, &ts, 4);
+
+    MappingSet *first = tree.pushNextAvailableMappingSet();
+    unsigned int firstId = first->getId();
+    tree.confirmPush(firstId, 2.0);
+    if (tree.size() != 1 || tree.getRateFactorSum() != 2.0 ||
+            tree.getRateFactor(0) != 2.0) {
+        cout << "    Failure: initial single mapping state is incorrect." << endl;
+        failCount++;
+    }
+
+    MappingSet *picked = 0;
+    tree.pickReactantFromValue(picked, 1.0, 1.0);
+    if (picked != first) {
+        cout << "    Failure: single mapping selection returned the wrong mapping." << endl;
+        failCount++;
+    }
+
+    tree.updateValue(firstId, 3.0);
+    tree.pickReactantFromValue(picked, 2.0, 1.0);
+    if (tree.getRateFactorSum() != 3.0 || tree.getRateFactor(0) != 3.0 ||
+            picked != first) {
+        cout << "    Failure: single mapping rate update is incorrect." << endl;
+        failCount++;
+    }
+
+    MappingSet *second = tree.pushNextAvailableMappingSet();
+    unsigned int secondId = second->getId();
+    tree.confirmPush(secondId, 5.0);
+    tree.pickReactantFromValue(picked, 4.0, 1.0);
+    if (tree.size() != 2 || tree.getRateFactorSum() != 8.0 ||
+            picked != second) {
+        cout << "    Failure: tree materialization after insertion is incorrect." << endl;
+        failCount++;
+    }
+
+    tree.removeMappingSet(secondId);
+    tree.pickReactantFromValue(picked, 2.0, 1.0);
+    if (tree.size() != 1 || tree.getRateFactorSum() != 3.0 ||
+            tree.getRateFactor(0) != 3.0 || picked != first) {
+        cout << "    Failure: tree did not restore the single mapping state." << endl;
+        failCount++;
+    }
+
+    tree.removeMappingSet(firstId);
+
+    ReactantTree oneLeafTree(0, &ts, 1);
+    MappingSet *oneLeafFirst = oneLeafTree.pushNextAvailableMappingSet();
+    unsigned int oneLeafFirstId = oneLeafFirst->getId();
+    oneLeafTree.confirmPush(oneLeafFirstId, 2.0);
+    MappingSet *oneLeafSecond = oneLeafTree.pushNextAvailableMappingSet();
+    unsigned int oneLeafSecondId = oneLeafSecond->getId();
+    oneLeafTree.confirmPush(oneLeafSecondId, 5.0);
+    oneLeafTree.pickReactantFromValue(picked, 4.0, 1.0);
+    if (oneLeafTree.size() != 2 || oneLeafTree.getRateFactorSum() != 7.0 ||
+            picked != oneLeafSecond) {
+        cout << "    Failure: one-leaf tree expansion is incorrect." << endl;
+        failCount++;
+    }
+    oneLeafTree.removeMappingSet(oneLeafSecondId);
+    oneLeafTree.removeMappingSet(oneLeafFirstId);
+
+    ReactantTree expansionTree(0, &ts, 4);
+    vector<unsigned int> expansionIds;
+    double expansionRateSum = 0.0;
+    for (unsigned int i = 0; i < 5; ++i) {
+        MappingSet *mapping = expansionTree.pushNextAvailableMappingSet();
+        expansionIds.push_back(mapping->getId());
+        double rate = static_cast<double>(i + 1);
+        expansionRateSum += rate;
+        expansionTree.confirmPush(mapping->getId(), rate);
+    }
+    if (expansionTree.size() != 5 ||
+            expansionTree.getRateFactorSum() != expansionRateSum) {
+        cout << "    Failure: tree expansion did not preserve rate factors." << endl;
+        failCount++;
+    }
+    for (vector<unsigned int>::const_iterator it = expansionIds.begin();
+            it != expansionIds.end(); ++it) {
+        expansionTree.removeMappingSet(*it);
+    }
+    if (expansionTree.size() != 0 || expansionTree.getRateFactorSum() != 0.0) {
+        cout << "    Failure: expanded tree cleanup is incorrect." << endl;
+        failCount++;
+    }
+
     if (failCount == 0) {
         cout << "All ReactantTree tests passed successfully!" << endl;
     } else {

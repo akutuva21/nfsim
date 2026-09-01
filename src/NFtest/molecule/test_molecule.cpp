@@ -13,6 +13,29 @@ void NFtest_molecule::run()
 {
 	cout << "Running NFcore::Molecule tests..." << endl;
 
+	cout << "  Testing compact reaction membership IDs..." << endl;
+	MappingIdSet mappingIds;
+	mappingIds.insert(9);
+	mappingIds.insert(3);
+	mappingIds.insert(9);
+	MappingIdSet::iterator mappingIdsIt = mappingIds.begin();
+	if (mappingIds.size() != 2 || *mappingIdsIt != 3) {
+		throw runtime_error("compact reaction membership IDs were not sorted or unique");
+	}
+	++mappingIdsIt;
+	if (*mappingIdsIt != 9) {
+		throw runtime_error("compact reaction membership IDs were not sorted");
+	}
+	if (mappingIds.erase(3) != 1 || mappingIds.size() != 1 ||
+			*mappingIds.begin() != 9) {
+		throw runtime_error("compact reaction membership ID erase failed");
+	}
+	mappingIds.clear();
+	if (!mappingIds.empty()) {
+		throw runtime_error("compact reaction membership ID clear failed");
+	}
+	cout << "  Compact reaction membership ID tests passed!" << endl;
+
 	cout << "  Testing Molecule::setLocalFunctionValue..." << endl;
 
 	// Need a system to create a molecule type
