@@ -577,6 +577,73 @@ class TestIssueRegressions(unittest.TestCase):
                 ),
             )
 
+    def test_totalrate_rules_are_not_scaled_by_the_symmetry_factor(self):
+        # FunctionalRxnClass::update_a() scales the propensity by baseRate, which
+        # for that class is the reaction center symmetry factor and nothing else.
+        # It applied it whether or not the rule uses TotalRate, so a TotalRate
+        # rule with a symmetric reaction center ran at a fraction of the rate the
+        # model asks for, one half on a homodimer.
+        #
+        # TotalRate means the rate law gives the whole propensity of the rule. The
+        # symmetry factor corrects a match count, and under TotalRate there is no
+        # count to correct, so the factor must not be applied.
+        #
+        # Every BNG-generated TotalRate rule reaches this class and no other.
+        # BNG2.pl forces a TotalRate rate law into a Function even when it is a
+        # bare constant, which routes it past the Ele/setBaseRate() path, and it
+        # rejects TotalRate on Sat/MM/Hill, on Arrhenius, and on local functions.
+        #
+        # Under TotalRate the propensity is constant while both reactant lists are
+        # non-empty, so consumption is linear in time and the expected survivor
+        # count is closed form. Both pools are built to land on the same one:
+        # Tsym fires kt*T times consuming two A each, Tasym fires 2*kt*T times
+        # consuming one B each, so both leave X0 - 2*kt*T = 4000 - 2000 = 2000.
+        # A wrongly applied 0.5 halves Tsym's propensity and leaves 3000 instead.
+        xmlPath = os.path.join(
+            nfsimPrePath, "test", "symmetry", "symmetry_factor_total_rate.xml"
+        )
+        headers, mean = self._mean_final_row(xmlPath, "-sim 1000 -oSteps 2", 5)
+
+        expected = 2000.0
+        halved = 3000.0
+        # Firing counts are Poisson, so the symmetric pool's per-seed scatter is
+        # 2*sqrt(1000) ~= 63 counts and a 5-seed mean has sigma ~= 28. A +/-200
+        # band is ~7 sigma wide and still leaves the halved value 800 counts
+        # outside it.
+        tolerance = 200.0
+
+        pools = [
+            ("Tsym_free", "symmetric reaction center, TotalRate"),
+            # symmetry_factor is 1 here, so no placement of the factor can move
+            # this pool. It fails only if TotalRate handling broke some other way.
+            ("Tasym_free", "asymmetric reaction center, TotalRate (control)"),
+        ]
+        for name, description in pools:
+            got = mean[headers.index(name)]
+            self.assertAlmostEqual(
+                got,
+                expected,
+                delta=tolerance,
+                msg="{0} ({1}) ended at {2:.1f}, expected about {3:.1f}; "
+                "{4:.1f} means the symmetry factor was applied to a rule that "
+                "states its own total rate".format(
+                    name, description, got, expected, halved
+                ),
+            )
+
+        # The sharpest form of the claim, needing no expected value at all: under
+        # TotalRate a rule's propensity is whatever it says it is, so it must not
+        # depend on whether its reactant pattern happens to be symmetric.
+        sym = mean[headers.index("Tsym_free")]
+        asym = mean[headers.index("Tasym_free")]
+        self.assertAlmostEqual(
+            sym,
+            asym,
+            delta=2 * tolerance,
+            msg="TotalRate: symmetric pool ended at {0:.1f}, asymmetric at "
+            "{1:.1f}".format(sym, asym),
+        )
+
     def test_michaelis_menten_symmetry_factor_scales_the_substrate_count(self):
         # Where the MM law is linear in the substrate match count, scaling that
         # count and scaling the finished propensity coincide, so the fixture above

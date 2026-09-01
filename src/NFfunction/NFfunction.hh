@@ -320,7 +320,7 @@ namespace NFcore {
 			double evaluateOn(Molecule *m, int scope);
 			// evaluates a species-scoped local function on a connected component
 			// that was already traversed by the caller
-			double evaluateOn(Molecule *m, list <Molecule *> &members);
+			double evaluateOn(Molecule *m, const list <Molecule *> &members);
 			// this version evaluates local fcn on a complex with SPECIES scope
 			double evaluateOn(Complex *c);
 

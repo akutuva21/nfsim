@@ -348,7 +348,7 @@ double LocalFunction::evaluateOn(Molecule *m, int scope) {
 	return -1;
 }
 
-double LocalFunction::evaluateOn(Molecule *m, list <Molecule *> &members) {
+double LocalFunction::evaluateOn(Molecule *m, const list <Molecule *> &members) {
 	if(!isEverEvaluatedOnSpeciesScope) {
 		return this->evaluateOn(m, LocalFunction::MOLECULE);
 	}
@@ -366,7 +366,7 @@ double LocalFunction::evaluateOn(Molecule *m, list <Molecule *> &members) {
 
 	//recompute the observables
 	int matches = 0;
-	for(molIter=members.begin(); molIter!=members.end(); molIter++) {
+	for(list<Molecule *>::const_iterator memberIter=members.begin(); memberIter!=members.end(); memberIter++) {
 
 		//Loop over each observable
 		for(unsigned int i=0; i<n_varRefs; i++) {
@@ -374,7 +374,7 @@ double LocalFunction::evaluateOn(Molecule *m, list <Molecule *> &members) {
 
 				//If the observable is of type MOLECULES
 				if(varLocalObservables[i]->getType()==Observable::MOLECULES) {
-					matches = varLocalObservables[i]->isObservable((*molIter));
+					matches = varLocalObservables[i]->isObservable((*memberIter));
 					varLocalObservables[i]->straightAdd(matches);
 				}
 				//If the observables is of a different type
@@ -394,11 +394,11 @@ double LocalFunction::evaluateOn(Molecule *m, list <Molecule *> &members) {
 
 	//Here we have to notify the type I molecules that this function has changed
 	//Update the molecules (Type I) that needed this function evaluated...
-	for(molIter=members.begin(); molIter!=members.end(); molIter++) {
+	for(list<Molecule *>::const_iterator memberIter=members.begin(); memberIter!=members.end(); memberIter++) {
 		for(int ti=0; ti<n_typeImolecules; ti++) {
-			if((*molIter)->getMoleculeType()==typeI_mol[ti]) {
-				(*molIter)->setLocalFunctionValue(newValue,this->typeI_localFunctionIndex[ti]);
-				(*molIter)->updateDORRxnValues();
+			if((*memberIter)->getMoleculeType()==typeI_mol[ti]) {
+				(*memberIter)->setLocalFunctionValue(newValue,this->typeI_localFunctionIndex[ti]);
+				(*memberIter)->updateDORRxnValues();
 			}
 		}
 	}
