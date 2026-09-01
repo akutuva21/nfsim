@@ -451,6 +451,9 @@ namespace NFcore
 			void setUsingComplex(bool val);  // Added to enable auto-enabling complex bookkeeping for Species observables
 			bool isOutputtingBinary() { return useBinaryOutput; };
 			double getCurrentTime() const { return current_time; };
+			double *getCurrentTimePointer() { return &current_time; };
+			/* Set the absolute simulation time before prepareForSimulation(). */
+			void setCurrentTime(double time);
 			int getGlobalMoleculeLimit() const { return globalMoleculeLimit; };
 
 			void setHasTimeDependentFunctions(bool val) { hasTimeDependentFunctions = val; }
@@ -640,8 +643,8 @@ namespace NFcore
 
 			void singleStep();
 
-			/* runs the simulation without output for the given time.  After, the clock is reset to
-			 * to the start time, so it is as if no time has elapsed */
+			/* runs the simulation without output for the given duration.  After, the clock is reset to
+			 * the absolute start time, so it is as if no time has elapsed */
 			void equilibrate(double duration);
 			void equilibrate(double duration, int statusReports);
 

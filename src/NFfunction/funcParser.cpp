@@ -1,11 +1,71 @@
 #include "NFfunction.hh"
 
+#include <cctype>
 #include <math.h>
 
 using namespace NFcore;
 #ifndef NFSIM_USE_EXPRTK
 using namespace mu;
 #endif
+
+namespace {
+
+bool isIdentifierCharacter(char c)
+{
+	return std::isalnum(static_cast<unsigned char>(c)) || c == '_';
+}
+
+bool isTimeAliasAt(const std::string &expression, size_t start,
+		const std::string &alias, size_t &end)
+{
+	if (expression.compare(start, alias.size(), alias) != 0) return false;
+	if (start > 0 && isIdentifierCharacter(expression[start - 1])) return false;
+
+	size_t cursor = start + alias.size();
+	if (cursor < expression.size() && isIdentifierCharacter(expression[cursor])) {
+		return false;
+	}
+	while (cursor < expression.size() &&
+			std::isspace(static_cast<unsigned char>(expression[cursor]))) {
+		++cursor;
+	}
+	if (cursor >= expression.size() || expression[cursor] != '(') return false;
+	++cursor;
+	while (cursor < expression.size() &&
+			std::isspace(static_cast<unsigned char>(expression[cursor]))) {
+		++cursor;
+	}
+	if (cursor >= expression.size() || expression[cursor] != ')') return false;
+
+	end = cursor + 1;
+	return true;
+}
+
+} // namespace
+
+std::string normalizeTimeExpression(const std::string &expression)
+{
+	std::string normalized;
+	normalized.reserve(expression.size());
+
+	for (size_t i = 0; i < expression.size();) {
+		size_t end = i;
+		if (isTimeAliasAt(expression, i, "time", end) ||
+				isTimeAliasAt(expression, i, "t", end)) {
+			normalized += "time";
+			i = end;
+		} else {
+			normalized += expression[i++];
+		}
+	}
+
+	return normalized;
+}
+
+bool containsTimeExpression(const std::string &expression)
+{
+	return normalizeTimeExpression(expression) != expression;
+}
 
 
 
@@ -272,4 +332,3 @@ void FuncFactory::test()
 	//Thats all the test I can think of!
 	cout<<endl<<"Testing complete."<<endl;
 }
-

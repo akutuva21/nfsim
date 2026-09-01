@@ -95,18 +95,16 @@ System * NFinput::initializeFromXML(
 
 		// Decide whether the System must track complexes (useComplex). Two
 		// independent needs require it:
-		//   1. blockSameComplexBinding (-bscb): the same-complex binding /
-		//      molecularity policy needs complex membership to evaluate.
+		//   1. the caller's complex-aware reaction-matching flag (-cb/-bscb):
+		//      the same-complex binding / molecularity policy needs membership.
 		//   2. any Species-typed observable: those are counted by iterating
 		//      complexes, and their incremental count is only correct if complex
 		//      tracking is on from System construction (before molecules and
-		//      observables are built). Deriving useComplex from -bscb alone left
-		//      Species counts wildly inflated whenever same-complex binding was
-		//      allowed; the retroactive setUsingComplex() added for issue #49
-		//      fires too late to repair the already-wired incremental counters.
-		// Complex tracking (counting) is thus decoupled here from the -bscb
-		// policy, which stays governed by blockSameComplexBinding downstream
-		// (TransformationSet::setComplexBookkeeping).
+		//      observables are built). Species observables can therefore require
+		//      complex tracking even when no complex-aware reaction flag was passed.
+		// The CLI passes either -cb or -bscb through this parameter, so the same
+		// effective policy controls both System tracking and TransformationSet
+		// molecularity checks.
 		bool useComplex = blockSameComplexBinding || modelHasSpeciesObservable(pModel);
 
 		//Make sure the basics are there
@@ -2294,6 +2292,18 @@ bool NFinput::initReactionRulePermutation(
 
 					if(verbose) cout<<"\t\t\tRate Law for Reaction is: "<<rateLawType<<endl;
 
+					// BioNetGen does not define TotalRate semantics for these rate laws.
+					// Reject them here instead of silently running a different propensity
+					// from the one requested by the XML (issue #91).
+					if (totalRateFlag && (rateLawType == "Arrhenius" ||
+							 rateLawType == "MM" || rateLawType == "Sat")) {
+						cerr << "Error!! TotalRate keyword is not compatible with "
+							 << rateLawType << " type RateLaw for ReactionRule "
+							 << rxnName << "." << endl;
+						delete ts;
+						return false;
+					}
+
 					if(rateLawType=="Arrhenius")
 					{
 						// Energy-based rule: expand into multiple BasicRxnClass instances
@@ -2531,6 +2541,12 @@ bool NFinput::initReactionRulePermutation(
 								r=new FunctionalRxnClass(rxnName,cf,ts,s);
 							}
 						} else {
+							if (totalRateFlag) {
+								cerr << "Error!! TotalRate keyword is not compatible with local functions for ReactionRule "
+									 << rxnName << "." << endl;
+								delete ts;
+								return false;
+							}
 
 							string functionName = pRateLaw->Attribute("name");
 							LocalFunction *lf = s->getLocalFunctionByName(functionName);
@@ -2549,8 +2565,14 @@ bool NFinput::initReactionRulePermutation(
 						}
 					}
 					else if(rateLawType=="FunctionProduct") {
+						if (totalRateFlag) {
+							cerr << "Error!! TotalRate keyword is not compatible with local functions for ReactionRule "
+								 << rxnName << "." << endl;
+							delete ts;
+							return false;
+						}
 
-						//make sure the function1 has a name
+							//make sure the function1 has a name
 						if(!pRateLaw->Attribute("name1")) {
 							cerr<<"!!Error:: ReactionRule "<<rxnName<<" rate law specification Function: cannot read 'name' attribute!"<<endl;
 							return false;

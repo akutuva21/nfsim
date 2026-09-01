@@ -514,6 +514,152 @@ class TestIssueRegressions(unittest.TestCase):
                 total = data if total is None else total + data
         return headers, (total / nSeeds)[-1]
 
+    def test_cb_enforces_same_complex_reactant_molecularity(self):
+        # Issue #51. The XML runner routes BioNetGen's complex=>1 / -cb policy
+        # into the same distinct-complex molecularity guard as -bscb. A and B
+        # below are already in one complex, so their free x/y sites may bind
+        # without flags but must remain unreacted under either complex flag.
+        xmlPath = os.path.join(nfsimPrePath, "test", "Issue51", "issue51.xml")
+        with tempfile.TemporaryDirectory() as tmpdir:
+            finalCounts = {}
+            for label, options in [
+                ("none", ""),
+                ("cb", "-cb"),
+                ("bscb", "-bscb"),
+            ]:
+                outputPath = os.path.join(tmpdir, "{0}.gdat".format(label))
+                self._run_nfsim_xml(
+                    xmlPath,
+                    outputPath,
+                    "-sim 1 -oSteps 1 -seed 1 {0}".format(options),
+                )
+                headers, data = self._load_gdat(outputPath)
+                finalCounts[label] = data[-1, headers.index("bound")]
+
+        self.assertEqual(
+            finalCounts["none"],
+            1.0,
+            "Issue #51 fixture no longer demonstrates same-complex binding",
+        )
+        self.assertEqual(
+            finalCounts["cb"],
+            0.0,
+            "Issue #51 failed: -cb did not enforce distinct reactant complexes",
+        )
+        self.assertEqual(
+            finalCounts["bscb"],
+            0.0,
+            "Issue #51 failed: -bscb allowed a same-complex reactant match",
+        )
+
+    def test_absolute_start_time_offsets_time_functions_and_output(self):
+        # Issue #78. The CLI accepted no usable absolute start time: output was
+        # still zero-based, and generic BioNetGen time() expressions were not
+        # bound to the simulator clock. Explicit output times exercise both the
+        # time axis and function value at the requested sample times.
+        xmlPath = os.path.join(nfsimPrePath, "test", "Issue78", "issue78.xml")
+        with tempfile.TemporaryDirectory() as tmpdir:
+            outputPath = os.path.join(tmpdir, "issue78.gdat")
+            self._run_nfsim_xml(
+                xmlPath,
+                outputPath,
+                "-i 100 -sim 2 -oTimes 0,1,2 -ogf -seed 1",
+            )
+            headers, data = self._load_gdat(outputPath)
+
+        timeIdx = headers.index("time")
+        stimulusIdx = headers.index("stimulus()")
+        xIdx = headers.index("Xtot")
+        self.assertTrue(
+            np.allclose(data[:, timeIdx], [100.0, 101.0, 102.0]),
+            "Issue #78 failed: output time axis did not include the absolute start time",
+        )
+        self.assertTrue(
+            np.allclose(data[:, stimulusIdx], data[:, timeIdx]),
+            "Issue #78 failed: generic time() function did not follow the simulator clock",
+        )
+        self.assertTrue(
+            np.all(np.diff(data[:, xIdx]) >= 0.0),
+            "Issue #78 fixture produced decreasing zero-order product counts",
+        )
+
+    def test_species_observable_function_dependency_updates_after_events(self):
+        # Issue #86. Species observable counts were changed through the bulk
+        # straightAdd/straightSubtract path during events, so functional rates
+        # depending on them stayed at their initial value until output rebuilt
+        # the count. The paired production reactions must therefore agree when
+        # one uses the Species count and the other uses the molecule count.
+        xmlPath = os.path.join(nfsimPrePath, "test", "Issue86", "issue86.xml")
+        headers, mean = self._mean_final_row(
+            xmlPath, "-sim 300 -oSteps 1 -cb", 5
+        )
+
+        self.assertAlmostEqual(
+            mean[headers.index("Sobs")],
+            mean[headers.index("Mobs")],
+            delta=1e-6,
+            msg="Issue #86 fixture's Species and molecule observables diverged",
+        )
+        speciesProduct = mean[headers.index("Ps_n")]
+        moleculeProduct = mean[headers.index("Pm_n")]
+        self.assertGreater(moleculeProduct, 0.0)
+        self.assertLess(
+            speciesProduct / moleculeProduct,
+            1.5,
+            "Issue #86 failed: Species-observable-dependent production stayed stale",
+        )
+        self.assertLess(
+            abs(speciesProduct - moleculeProduct),
+            1000.0,
+            "Issue #86 failed: Species-observable-dependent rate did not refresh",
+        )
+
+    def test_totalrate_is_rejected_for_unsupported_rate_laws(self):
+        # Issue #91. These rate-law implementations have no TotalRate
+        # semantics. They must fail explicitly instead of silently running the
+        # per-instance interpretation.
+        cases = [
+            (
+                os.path.join(nfsimPrePath, "test", "MM", "mm_small_km.xml"),
+                '<RateLaw id="RR1_RateLaw" type="MM" totalrate="0">',
+                '<RateLaw id="RR1_RateLaw" type="MM" totalrate="1">',
+                "TotalRate keyword is not compatible with MM",
+            ),
+            (
+                os.path.join(nfsimPrePath, "test", "testSuite", "t3.xml"),
+                '<RateLaw id="RR9_RateLaw" type="Function" name="_rateLaw1" totalrate="0">',
+                '<RateLaw id="RR9_RateLaw" type="Function" name="_rateLaw1" totalrate="1">',
+                "TotalRate keyword is not compatible with local functions",
+            ),
+        ]
+
+        for xmlPath, sourceText, replacement, errorText in cases:
+            with tempfile.TemporaryDirectory() as tmpdir:
+                invalidPath = os.path.join(tmpdir, "invalid.xml")
+                outputPath = os.path.join(tmpdir, "invalid.gdat")
+                with open(xmlPath, "r") as source:
+                    xml = source.read()
+                self.assertIn(sourceText, xml, "TotalRate fixture no longer matches source XML")
+                with open(invalidPath, "w") as invalid:
+                    invalid.write(xml.replace(sourceText, replacement, 1))
+
+                result = subprocess.run(
+                    [nfsimPath, "-xml", invalidPath, "-o", outputPath, "-sim", "1"],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    universal_newlines=True,
+                )
+
+                self.assertTrue(
+                    result.returncode != 0 or not os.path.exists(outputPath),
+                    "unsupported TotalRate input unexpectedly produced a trajectory",
+                )
+                self.assertIn(
+                    errorText,
+                    result.stdout + result.stderr,
+                    "unsupported TotalRate input did not report a clear error",
+                )
+
     def test_symmetry_factor_is_applied_on_every_rate_law(self):
         # ReactionClass's constructor scaled its own baseRate *argument*, which the
         # member had already been copied out of, so the symmetry correction was

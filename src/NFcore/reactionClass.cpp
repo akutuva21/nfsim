@@ -554,7 +554,9 @@ string ReactionClass::fire(double random_A_number, bool track) {
 					c = mappingSet[k]->get(0)->getMolecule()->getComplex();
 					for(int i=0; i<system->getNumOfSpeciesObs(); i++) {
 						matches = system->getSpeciesObs(i)->isObservable(c);
-						system->getSpeciesObs(i)->straightSubtract(matches);
+						if (matches > 0) {
+							system->getSpeciesObs(i)->subtract(matches);
+						}
 					}
 				}
 			}
@@ -572,7 +574,9 @@ string ReactionClass::fire(double random_A_number, bool track) {
 					c = addmol->getComplex();
 					for (int i=0; i < system->getNumOfSpeciesObs(); i++) {
 						matches = system->getSpeciesObs(i)->isObservable(c);
-						system->getSpeciesObs(i)->straightSubtract(matches);
+						if (matches > 0) {
+							system->getSpeciesObs(i)->subtract(matches);
+						}
 					}
 				}
 			}
@@ -706,7 +710,9 @@ string ReactionClass::fire(double random_A_number, bool track) {
 				matches = 0;
 				for ( int i=0; i < system->getNumOfSpeciesObs(); i++ ) {
 					matches = system->getSpeciesObs(i)->isObservable(c);
-					system->getSpeciesObs(i)->straightAdd(matches);
+					if (matches > 0) {
+						system->getSpeciesObs(i)->add(matches);
+					}
 				}
 			}
 

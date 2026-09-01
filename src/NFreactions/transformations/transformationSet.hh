@@ -220,8 +220,9 @@ namespace NFcore
 			unsigned int getNmappingSets() const { return n_reactants + n_addmol; };
 
 			/*!
-			 * Get/set complex bookkeeping.
-			 * If complex bookkeeping is true, we should check molecularity when firing rules.
+				 * Get/set the per-reaction molecularity check.
+				 * This is distinct from System complex bookkeeping: when true, reject
+				 * matches whose separate reactant patterns come from the same complex.
 			 * @author JustinHogg
 			 */
 			bool getComplexBookkeeping() const { return complex_bookkeeping; };
