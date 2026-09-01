@@ -340,6 +340,7 @@ namespace NFcore
 
 			void addExcludeProduct(int productIndex, TemplateMolecule *pattern, const map<string, TemplateMolecule*>& parsedTemplates);
 			void addIncludeProduct(int productIndex, TemplateMolecule *pattern, const map<string, TemplateMolecule*>& parsedTemplates);
+			bool hasProductFilters() const { return !productFilters.empty(); }
 			bool checkProductFilters(const list<Molecule *> &products) const;
 
 		protected:

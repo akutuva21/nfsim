@@ -21,6 +21,7 @@ namespace NFcore
 {
 	//Forward Declarations
 	class ReactionClass;
+	class CompactPartnerPool;
 
 
 	// Abstract Interface Class for the Reaction Selection Algorithm
@@ -37,6 +38,11 @@ namespace NFcore
 
 
 			virtual double update(ReactionClass *r,double oldA, double newA) = 0;
+			virtual double updateBatch(vector<ReactionClass *> &rxns);
+			virtual double updateCompactPartnerPoolBatch(
+					const vector<ReactionClass *> &rxns,
+					int oldPoolSize, int newPoolSize,
+					unsigned long long deferredGeneration);
 			virtual double getNextReactionClass(ReactionClass *&rc) = 0;
 			virtual double getAtot() = 0;
 
@@ -56,16 +62,56 @@ namespace NFcore
 
 
 			virtual double update(ReactionClass *r,double oldA, double newA);
+			virtual double updateBatch(vector<ReactionClass *> &rxns);
+			virtual double updateCompactPartnerPoolBatch(
+					const vector<ReactionClass *> &rxns,
+					int oldPoolSize, int newPoolSize,
+					unsigned long long deferredGeneration);
 			virtual double getNextReactionClass(ReactionClass *&rc);
 			virtual double getAtot();
 
 
 		protected:
+			struct CompactPoolSelectionGroup {
+				CompactPoolSelectionGroup() : pool(0), poolSize(0),
+						totalCoefficient(0.0), blockCoefficients(), reactionIndices() {}
+				CompactPartnerPool *pool;
+				int poolSize;
+				double totalCoefficient;
+				vector<double> blockCoefficients;
+				vector<int> reactionIndices;
+			};
+
+			int findCompactPoolGroup(CompactPartnerPool *pool) const;
+			void applyCompactPoolGroupSize(int groupIndex, int newPoolSize);
+			void synchronizeCompactPoolGroup(int groupIndex);
+			void updateCompactPoolActiveBits(
+					const CompactPoolSelectionGroup &group,
+					bool active);
+			double getSelectionPropensity(std::size_t reaction) const;
+
 			double Atot;
 			int n_reactions;
 			ReactionClass ** reactionClassList;
+			bool sparseSelectionSafe;
+			/* -1 until the first update; 1 when prepared reaction IDs match
+			 * selector positions, 0 for direct-selector compatibility callers. */
+			int reactionIndexMode;
+			vector<std::uint64_t> activeReactionBits;
+			unsigned int selectionBlockSize;
+			vector<double> selectionBlockPropensities;
+			/* Keep a contiguous actual-propensity mirror for non-group entries and
+			 * diagnostics.  Grouped compact selection derives each value from its
+			 * stored coefficient and shared pool size; dense legacy selectors retain
+			 * the reaction-object read. */
+			vector<double> reactionPropensities;
+			/* For factorized compact forward rules, retain the weighted-side
+			 * coefficient while the shared partner-pool size is selector state. */
+			vector<int> compactPoolGroupByReaction;
+			vector<double> compactPoolCoefficients;
+			vector<CompactPoolSelectionGroup> compactPoolSelectionGroups;
 
-	};
+		};
 
 
 	class LogClassSelector : public ReactionSelector {

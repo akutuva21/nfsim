@@ -20,9 +20,22 @@ using namespace NFcore;
 
 int System::NULL_EVENT_COUNTER = 0;
 
+namespace {
+
+void validateSystemName(const string &name)
+{
+	if (name.find("..") != string::npos || name.find("/") != string::npos ||
+	    name.find("\\") != string::npos || name.find(":") != string::npos) {
+		throw runtime_error("Path traversal detected in System name.");
+	}
+}
+
+}
+
 
 System::System(string name)
 {
+	validateSystemName(name);
 	this->name = name;
 	this->a_tot = 0;
 	current_time = 0;
@@ -59,6 +72,7 @@ System::System(string name)
 
 System::System(string name, bool useComplex)
 {
+	validateSystemName(name);
 	this->name = name;
 	this->a_tot = 0;
 	current_time = 0;
@@ -96,6 +110,7 @@ System::System(string name, bool useComplex)
 
 System::System(string name, bool useComplex, int globalMoleculeLimit)
 {
+	validateSystemName(name);
 	this->name = name;
 	this->a_tot = 0;
 	current_time = 0;
@@ -903,6 +918,61 @@ void System::update_A_tot(ReactionClass *r, double old_a, double new_a)
 {
 	a_tot = selector->update(r,old_a,new_a);
 
+}
+
+void System::beginDeferredMembershipPropensityUpdates()
+{
+	deferredMembershipReactions.clear();
+	deferredCompactPartnerPoolUpdates.clear();
+	++deferredMembershipUpdateGeneration;
+	deferringMembershipPropensityUpdates = true;
+}
+
+void System::deferMembershipPropensityUpdate(ReactionClass *r)
+{
+	if (r != 0 && r->markDeferredMembershipUpdate(
+			deferredMembershipUpdateGeneration))
+		deferredMembershipReactions.push_back(r);
+}
+
+void System::deferCompactPartnerPoolUpdate(
+		CompactPartnerPool *pool, int oldPoolSize, int newPoolSize)
+{
+	if (!deferringMembershipPropensityUpdates || pool == 0 ||
+			oldPoolSize == newPoolSize || !pool->supportsBatchUpdate())
+		return;
+	for (vector<DeferredCompactPartnerPoolUpdate>::iterator it =
+			deferredCompactPartnerPoolUpdates.begin();
+			it != deferredCompactPartnerPoolUpdates.end(); ++it) {
+		if (it->pool == pool) {
+			it->newPoolSize = newPoolSize;
+			return;
+		}
+	}
+	DeferredCompactPartnerPoolUpdate update;
+	update.pool = pool;
+	update.oldPoolSize = oldPoolSize;
+	update.newPoolSize = newPoolSize;
+	deferredCompactPartnerPoolUpdates.push_back(update);
+}
+
+void System::endDeferredMembershipPropensityUpdates()
+{
+	if (!deferringMembershipPropensityUpdates)
+		return;
+	/* Reset the guard before calling update_A_tot so any nested update follows
+	 * the normal selector path. */
+	deferringMembershipPropensityUpdates = false;
+	a_tot = selector->updateBatch(deferredMembershipReactions);
+	for (vector<DeferredCompactPartnerPoolUpdate>::const_iterator it =
+			deferredCompactPartnerPoolUpdates.begin();
+			it != deferredCompactPartnerPoolUpdates.end(); ++it) {
+		a_tot = selector->updateCompactPartnerPoolBatch(
+				it->pool->getRegisteredReactions(), it->oldPoolSize,
+				it->newPoolSize, deferredMembershipUpdateGeneration);
+	}
+	deferredMembershipReactions.clear();
+	deferredCompactPartnerPoolUpdates.clear();
 }
 
 
