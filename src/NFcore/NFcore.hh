@@ -321,7 +321,7 @@ namespace NFcore
 
 	/* Lazy paged storage for per-molecule reaction mappings.  Most molecule/reaction
 	 * registration pairs are empty, especially in large rule families.  Allocate a
-	 * small pointer directory eagerly and 64-slot MappingIdSet pages only when a
+	 * small pointer directory eagerly and 32-slot MappingIdSet pages by default only when a
 	 * molecule actually acquires a mapping in that page. */
 	class PagedMappingIdTable {
 		public:
