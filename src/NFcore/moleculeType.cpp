@@ -1,4 +1,10 @@
+#include <ctime>
+#include <map>
+#include <set>
+#include <string>
+#include <cstdlib>
 #include <iostream>
+#include <limits>
 #include "NFcore.hh"
 
 #if defined(_MSC_VER)
@@ -164,6 +170,9 @@ void MoleculeType::init(
 	//Basics...
 	this->name=name;
 	this->numOfComponents=compName.size();
+	locFuncs_typeIIByStateComponent.assign(
+			static_cast<size_t>(this->numOfComponents),
+			vector <LocalFunction *> ());
 
 	//First, some quick error checks
 	if((int)defaultCompState.size()!=numOfComponents || (int)possibleCompStates.size()!=numOfComponents ||
@@ -437,6 +446,7 @@ void MoleculeType::addMoleculeToRunningSystemButDontUpdate(Molecule *&mol)
 	mol->setUpLocalFunctionList();
 	mol->prepareForSimulation();
 	mol->setAlive(true);
+	if (system != 0) system->recordNewMembershipMolecule(mol);
 
 	//We assume observables and reaction membership will be updated later
 	// (this is now the case for reaction firing)
@@ -528,6 +538,8 @@ void MoleculeType::addTemplateMolecule(TemplateMolecule *t)
 	else
 		cout<<"!!!!Error: trying to add molecule of type " << t->getMoleculeTypeName() << " to MoleculeType " << name << endl;
 }
+
+
 
 string MoleculeType::getMolObsName(int obsIndex) const {
 	return molObs.at(obsIndex)->getName();
@@ -682,8 +694,814 @@ void MoleculeType::setUpLocalFunctionListForMolecules()
 	}
 }
 
+namespace {
+	static inline void appendUniqueMembershipIndex(
+			vector<unsigned int> &v, unsigned int reactionIndex) {
+		if (v.empty() || v.back() != reactionIndex)
+			v.push_back(reactionIndex);
+	}
+
+	static bool generalMembershipFilterEnabled() {
+		static int enabled = -1;
+		if (enabled < 0)
+			enabled = getenv("NFSIM_MEMFILTER") != 0 ? 1 : 0;
+		return enabled == 1;
+	}
+
+	static bool generalMembershipDiffEnabled() {
+		static int enabled = -1;
+		if (enabled < 0)
+			enabled = getenv("NFSIM_MEMFILTER_DIFF") != 0 ? 1 : 0;
+		return enabled == 1;
+	}
+	static bool generalMembershipFilterForceEnabled() {
+		static int enabled = -1;
+		if (enabled < 0)
+			enabled = getenv("NFSIM_MEMFILTER_FORCE") != 0 ? 1 : 0;
+		return enabled == 1;
+	}
+	static unsigned int generalMembershipFilterMinRegistrations() {
+		static int threshold = -1;
+		if (threshold < 0) {
+			threshold = 16;
+			const char *value = getenv("NFSIM_MEMFILTER_MIN_REGISTRATIONS");
+			if (value != 0) {
+				char *end = 0;
+				long parsed = strtol(value, &end, 10);
+				if (end != value && parsed >= 0) threshold = static_cast<int>(parsed);
+			}
+		}
+		return static_cast<unsigned int>(threshold);
+	}
+	static bool candidateTraceEnabled() {
+		static int enabled = -1;
+		if (enabled < 0)
+			enabled = getenv("NFSIM_CANDTRACE") != 0 ? 1 : 0;
+		return enabled == 1;
+	}
+	bool memprofEnabled();
+}
+namespace NFcore {
+	void memprofCandidateProbe(const std::string &name, long long vectorProbes,
+			long long activeProbes, long long rootChecks);
+}
+
+void MoleculeType::buildMembershipDependencyIndex()
+{
+	membershipStateRequiredCandidates.clear();
+	membershipStateExcludedCandidates.clear();
+	membershipBondFreeCandidates.clear();
+	membershipBondFreeGainFallbackCandidates.clear();
+	membershipBondFreeGainAnchorComponents.clear();
+	membershipBondFreeGainCompositeCandidates.clear();
+	membershipBondBoundCandidates.clear();
+	membershipBondBoundGainFallbackCandidates.clear();
+	membershipBondBoundGainAnchorComponents.clear();
+	membershipBondBoundGainCompositeCandidates.clear();
+	membershipTopologyCandidates.clear();
+	membershipTopologyGainFallbackCandidates.clear();
+	membershipTopologyGainAnchorComponents.clear();
+	membershipTopologyGainCompositeCandidates.clear();
+	membershipBondFreeGainLookups.clear();
+	membershipBondBoundGainLookups.clear();
+	membershipTopologyGainLookups.clear();
+	unconditionalMembershipCandidates.clear();
+	membershipNonlocalPropensityCandidates.clear();
+	membershipRootContexts.assign(reactions.size(),
+			vector<MembershipRootPredicate>());
+	membershipRootContextSafe.assign(reactions.size(), 0);
+	membershipRootRequiredBoundMasks.assign(reactions.size(), 0);
+	membershipRootRequiredFreeMasks.assign(reactions.size(), 0);
+	membershipCandidateViews.clear();
+	membershipCandidateSeen.assign(reactions.size(), 0);
+	membershipRootContextChecked.assign(reactions.size(), 0);
+	membershipRootContextResult.assign(reactions.size(), 0);
+	membershipCandidateScratch.clear();
+	membershipCandidateScratch.reserve(reactions.size());
+	membershipEventCandidatePlan.clear();
+	membershipEventPlanGeneration = ~0ULL;
+	membershipCandidateGeneration = 0;
+
+	for (unsigned int r = 0; r < reactions.size(); ++r) {
+		if (!reactions[r]->propensityDependsOnlyOnMembership())
+			membershipNonlocalPropensityCandidates.push_back(r);
+		TemplateMolecule *root = reactions[r]->getReactantTemplate(
+				reactionPositions[r]);
+		vector<MembershipPatternDependency> dependencies;
+		if (root == 0 || !root->collectMembershipDependencies(dependencies)) {
+			appendUniqueMembershipIndex(unconditionalMembershipCandidates, r);
+			continue;
+		}
+		vector<MembershipPatternDependency> rootDependencies;
+		bool rootDependenciesSafe =
+				root->collectRootMembershipDependencies(rootDependencies);
+		bool hasCompositeBondAnchor = false;
+		int compositeBondAnchorScore = -1;
+		MembershipPatternDependency compositeBondAnchor;
+		if (rootDependenciesSafe) {
+			vector<MembershipRootPredicate> &stored = membershipRootContexts[r];
+			stored.reserve(rootDependencies.size());
+			for (vector<MembershipPatternDependency>::const_iterator rit =
+					rootDependencies.begin(); rit != rootDependencies.end(); ++rit) {
+				/* Free/bound predicates on the first 64 components are represented
+				 * completely by the compiled root masks below.  Do not also retain
+				 * them in the generic predicate vector: surviving candidates would
+				 * otherwise iterate and switch over predicates whose result is already
+				 * proven by two bit operations.  State and topology predicates remain
+				 * in the vector because they carry information beyond occupancy. */
+				const bool compiledBondPredicate = rit->componentIndex >= 0 &&
+					rit->componentIndex < 64 &&
+					(rit->kind == MembershipPatternDependency::BOND_FREE ||
+					 rit->kind == MembershipPatternDependency::BOND_BOUND);
+				if (!compiledBondPredicate) {
+					MembershipRootPredicate p;
+					p.kind = static_cast<int>(rit->kind);
+					p.componentIndex = rit->componentIndex;
+					p.stateValue = rit->stateValue;
+					p.partnerType = rit->partnerType;
+					p.partnerComponentIndex = rit->partnerComponentIndex;
+					stored.push_back(p);
+				}
+				if (rit->componentIndex >= 0 && rit->componentIndex < 64) {
+					const std::uint64_t bit = std::uint64_t(1) << rit->componentIndex;
+					if (rit->kind == MembershipPatternDependency::BOND_FREE)
+						membershipRootRequiredFreeMasks[r] |= bit;
+					else if (rit->kind == MembershipPatternDependency::BOND_BOUND ||
+							rit->kind == MembershipPatternDependency::TOPOLOGY)
+						membershipRootRequiredBoundMasks[r] |= bit;
+				}
+				/* A required explicit topology dependency is a sound necessary-condition
+				 * anchor for gain-side partitioning on both small machinery and large
+				 * polymers.  The key already contains the concrete component index, so
+				 * positional polymers remain exact rather than collapsing to a generic
+				 * molecule-type bucket. */
+				if (rit->kind == MembershipPatternDependency::TOPOLOGY &&
+						rit->componentIndex >= 0 && rit->partnerType != 0 &&
+						rit->partnerComponentIndex >= 0) {
+					/* Prefer the anchor whose partner type has the largest component
+					 * space.  In positional polymer models this selects, for example,
+					 * ribosome.asite->mRNA.pN over ribosome.hit3->ribosome.hit5,
+					 * turning the latter's generic machinery bond into a selective key. */
+					int score = rit->partnerType->getNumOfComponents();
+					if (!hasCompositeBondAnchor || score > compositeBondAnchorScore) {
+						compositeBondAnchor = *rit;
+						compositeBondAnchorScore = score;
+						hasCompositeBondAnchor = true;
+					}
+				}
+			}
+			membershipRootContextSafe[r] = 1;
+		}
+
+		for (vector<MembershipPatternDependency>::const_iterator it =
+				dependencies.begin(); it != dependencies.end(); ++it) {
+			const MembershipPatternDependency &d = *it;
+			if (d.moleculeType == 0 || d.componentIndex < 0) {
+				appendUniqueMembershipIndex(unconditionalMembershipCandidates, r);
+				continue;
+			}
+			switch (d.kind) {
+			case MembershipPatternDependency::STATE_REQUIRED:
+				appendUniqueMembershipIndex(
+					membershipStateRequiredCandidates[
+						MembershipStateKey(d.moleculeType, d.componentIndex,
+							d.stateValue)], r);
+				break;
+			case MembershipPatternDependency::STATE_EXCLUDED:
+				appendUniqueMembershipIndex(
+					membershipStateExcludedCandidates[
+						MembershipStateKey(d.moleculeType, d.componentIndex,
+							d.stateValue)], r);
+				break;
+			case MembershipPatternDependency::BOND_FREE: {
+				MembershipComponentKey trigger(d.moleculeType, d.componentIndex);
+				appendUniqueMembershipIndex(membershipBondFreeCandidates[trigger], r);
+				if (hasCompositeBondAnchor) {
+					MembershipBondContextKey contextKey(
+						d.moleculeType, d.componentIndex,
+						compositeBondAnchor.componentIndex,
+						compositeBondAnchor.partnerType,
+						compositeBondAnchor.partnerComponentIndex);
+					appendUniqueMembershipIndex(
+						membershipBondFreeGainCompositeCandidates[contextKey], r);
+					vector<int> &anchors = membershipBondFreeGainAnchorComponents[trigger];
+					if (std::find(anchors.begin(), anchors.end(),
+							compositeBondAnchor.componentIndex) == anchors.end())
+						anchors.push_back(compositeBondAnchor.componentIndex);
+				} else {
+					appendUniqueMembershipIndex(
+						membershipBondFreeGainFallbackCandidates[trigger], r);
+				}
+				break;
+			}
+			case MembershipPatternDependency::BOND_BOUND: {
+				MembershipComponentKey trigger(d.moleculeType, d.componentIndex);
+				/* Keep the complete list for loss-side current-membership
+				 * intersection.  Gain-side lookup may use the composite partition. */
+				appendUniqueMembershipIndex(
+					membershipBondBoundCandidates[trigger], r);
+				if (hasCompositeBondAnchor) {
+					MembershipBondContextKey contextKey(
+						d.moleculeType, d.componentIndex,
+						compositeBondAnchor.componentIndex,
+						compositeBondAnchor.partnerType,
+						compositeBondAnchor.partnerComponentIndex);
+					appendUniqueMembershipIndex(
+						membershipBondBoundGainCompositeCandidates[contextKey], r);
+					vector<int> &anchors =
+						membershipBondBoundGainAnchorComponents[trigger];
+					if (std::find(anchors.begin(), anchors.end(),
+							compositeBondAnchor.componentIndex) == anchors.end())
+						anchors.push_back(compositeBondAnchor.componentIndex);
+				} else {
+					appendUniqueMembershipIndex(
+						membershipBondBoundGainFallbackCandidates[trigger], r);
+				}
+				break;
+			}
+			case MembershipPatternDependency::TOPOLOGY: {
+				if (d.partnerType == 0 || d.partnerComponentIndex < 0) {
+					appendUniqueMembershipIndex(unconditionalMembershipCandidates, r);
+					break;
+				}
+				MembershipTopologyKey trigger(d.moleculeType, d.componentIndex,
+					d.partnerType, d.partnerComponentIndex);
+				/* Complete list retained for loss-side current-membership
+				 * intersection. Gain-side lookup can be partitioned by an
+				 * independent explicit root topology anchor. */
+				appendUniqueMembershipIndex(membershipTopologyCandidates[trigger], r);
+				bool anchorIsTrigger = hasCompositeBondAnchor &&
+					compositeBondAnchor.moleculeType == d.moleculeType &&
+					compositeBondAnchor.componentIndex == d.componentIndex &&
+					compositeBondAnchor.partnerType == d.partnerType &&
+					compositeBondAnchor.partnerComponentIndex == d.partnerComponentIndex;
+				if (hasCompositeBondAnchor && !anchorIsTrigger) {
+					MembershipTopologyContextKey contextKey(
+						d.moleculeType, d.componentIndex, d.partnerType,
+						d.partnerComponentIndex, compositeBondAnchor.componentIndex,
+						compositeBondAnchor.partnerType,
+						compositeBondAnchor.partnerComponentIndex);
+					appendUniqueMembershipIndex(
+						membershipTopologyGainCompositeCandidates[contextKey], r);
+					vector<int> &anchors = membershipTopologyGainAnchorComponents[trigger];
+					if (std::find(anchors.begin(), anchors.end(),
+							compositeBondAnchor.componentIndex) == anchors.end())
+						anchors.push_back(compositeBondAnchor.componentIndex);
+				} else {
+					appendUniqueMembershipIndex(
+						membershipTopologyGainFallbackCandidates[trigger], r);
+				}
+				break;
+			}
+			}
+		}
+	}
+	/* Anchor component lists are constructed in reaction order, not component
+	 * order. Sort them once so hot gain application can intersect a broad
+	 * static anchor set with the molecule's sparse, sorted bonded-component
+	 * list from whichever side is smaller. */
+	for (auto it = membershipBondFreeGainAnchorComponents.begin();
+			it != membershipBondFreeGainAnchorComponents.end(); ++it) {
+		std::sort(it->second.begin(), it->second.end());
+		it->second.erase(std::unique(it->second.begin(), it->second.end()),
+			it->second.end());
+	}
+	for (auto it = membershipBondBoundGainAnchorComponents.begin();
+			it != membershipBondBoundGainAnchorComponents.end(); ++it) {
+		std::sort(it->second.begin(), it->second.end());
+		it->second.erase(std::unique(it->second.begin(), it->second.end()),
+			it->second.end());
+	}
+	for (auto it = membershipTopologyGainAnchorComponents.begin();
+			it != membershipTopologyGainAnchorComponents.end(); ++it) {
+		std::sort(it->second.begin(), it->second.end());
+		it->second.erase(std::unique(it->second.begin(), it->second.end()),
+			it->second.end());
+	}
+	/* Small machinery has only a handful of occupancy states.  Precompute the
+	 * exact ordered subsequence compatible with each complete bound mask for
+	 * root-filtered gain vectors.  Avoid doing this for large roots or tiny
+	 * vectors where an extra indirection would cost more than the checks. */
+	if (numOfComponents > 0 && numOfComponents <= 6) {
+		const unsigned int maskCount = 1u << numOfComponents;
+		auto ensureView = [&](const vector<unsigned int> *vec) {
+			if (vec == 0 || vec->size() < 4 || membershipCandidateViews.count(vec)) return;
+			MembershipCandidateView view; view.candidates = vec;
+			view.byBoundMask.resize(maskCount);
+			for (unsigned int mask = 0; mask < maskCount; ++mask) {
+				vector<unsigned int> &out = view.byBoundMask[mask];
+				out.reserve(vec->size());
+				for (vector<unsigned int>::const_iterator it = vec->begin(); it != vec->end(); ++it) {
+					unsigned int r = *it;
+					std::uint64_t bound = membershipRootRequiredBoundMasks[r];
+					std::uint64_t free = membershipRootRequiredFreeMasks[r];
+					if ((std::uint64_t(mask) & bound) == bound &&
+							(std::uint64_t(mask) & free) == 0) out.push_back(r);
+				}
+			}
+			membershipCandidateViews.emplace(vec, std::move(view));
+		};
+		for (auto &kv : membershipStateRequiredCandidates) ensureView(&kv.second);
+		for (auto &kv : membershipStateExcludedCandidates) ensureView(&kv.second);
+		for (auto &kv : membershipBondFreeGainFallbackCandidates) ensureView(&kv.second);
+		for (auto &kv : membershipBondBoundGainFallbackCandidates) ensureView(&kv.second);
+		for (auto &kv : membershipTopologyGainFallbackCandidates) ensureView(&kv.second);
+		for (auto &kv : membershipBondFreeGainCompositeCandidates) ensureView(&kv.second);
+		for (auto &kv : membershipBondBoundGainCompositeCandidates) ensureView(&kv.second);
+		for (auto &kv : membershipTopologyGainCompositeCandidates) ensureView(&kv.second);
+	}
+	auto candidateViewFor = [&](const vector<unsigned int> *vec) -> const MembershipCandidateView * {
+		auto it = membershipCandidateViews.find(vec);
+		return it == membershipCandidateViews.end() ? 0 : &it->second;
+	};
+
+	/* Resolve composite gain hashes into small static tables.  Candidate-vector
+	 * storage stays owned by the immutable maps above; these tables only retain
+	 * pointers, so no reaction lists are duplicated. */
+	for (auto it = membershipBondFreeGainFallbackCandidates.begin();
+			it != membershipBondFreeGainFallbackCandidates.end(); ++it)
+		membershipBondFreeGainLookups[it->first].fallback = &it->second;
+	for (auto it = membershipBondBoundGainFallbackCandidates.begin();
+			it != membershipBondBoundGainFallbackCandidates.end(); ++it)
+		membershipBondBoundGainLookups[it->first].fallback = &it->second;
+	for (auto it = membershipTopologyGainFallbackCandidates.begin();
+			it != membershipTopologyGainFallbackCandidates.end(); ++it)
+		membershipTopologyGainLookups[it->first].fallback = &it->second;
+	for (auto &kv : membershipBondFreeGainLookups) kv.second.fallbackView = candidateViewFor(kv.second.fallback);
+	for (auto &kv : membershipBondBoundGainLookups) kv.second.fallbackView = candidateViewFor(kv.second.fallback);
+	for (auto &kv : membershipTopologyGainLookups) kv.second.fallbackView = candidateViewFor(kv.second.fallback);
+
+	auto appendBondComposite = [&](
+			unordered_map<MembershipComponentKey, MembershipGainLookup, MembershipComponentKeyHash> &lookups,
+			const MembershipBondContextKey &key, const vector<unsigned int> *candidates) {
+		MembershipComponentKey trigger(key.triggerType, key.triggerComponent);
+		MembershipGainLookup &lookup = lookups[trigger];
+		MembershipAnchorCandidateLookup *anchor = 0;
+		for (auto &a : lookup.anchors) if (a.anchorComponent == key.anchorComponent) { anchor = &a; break; }
+		if (anchor == 0) {
+			MembershipAnchorCandidateLookup fresh; fresh.anchorComponent = key.anchorComponent;
+			lookup.anchors.push_back(fresh); anchor = &lookup.anchors.back();
+		}
+		MembershipPartnerCandidateEntry entry;
+		entry.partnerType = key.partnerType; entry.partnerComponent = key.partnerComponent;
+		entry.candidates = candidates; entry.candidateView = candidateViewFor(candidates); anchor->entries.push_back(entry);
+	};
+	for (auto it = membershipBondFreeGainCompositeCandidates.begin();
+			it != membershipBondFreeGainCompositeCandidates.end(); ++it)
+		appendBondComposite(membershipBondFreeGainLookups, it->first, &it->second);
+	for (auto it = membershipBondBoundGainCompositeCandidates.begin();
+			it != membershipBondBoundGainCompositeCandidates.end(); ++it)
+		appendBondComposite(membershipBondBoundGainLookups, it->first, &it->second);
+	for (auto it = membershipTopologyGainCompositeCandidates.begin();
+			it != membershipTopologyGainCompositeCandidates.end(); ++it) {
+		const MembershipTopologyContextKey &key = it->first;
+		MembershipTopologyKey trigger(key.triggerType, key.triggerComponent,
+				key.triggerPartnerType, key.triggerPartnerComponent);
+		MembershipGainLookup &lookup = membershipTopologyGainLookups[trigger];
+		MembershipAnchorCandidateLookup *anchor = 0;
+		for (auto &a : lookup.anchors) if (a.anchorComponent == key.anchorComponent) { anchor = &a; break; }
+		if (anchor == 0) {
+			MembershipAnchorCandidateLookup fresh; fresh.anchorComponent = key.anchorComponent;
+			lookup.anchors.push_back(fresh); anchor = &lookup.anchors.back();
+		}
+		MembershipPartnerCandidateEntry entry;
+		entry.partnerType = key.anchorPartnerType; entry.partnerComponent = key.anchorPartnerComponent;
+		entry.candidates = &it->second; entry.candidateView = candidateViewFor(&it->second); anchor->entries.push_back(entry);
+	}
+	for (auto &kv : membershipBondFreeGainLookups)
+		std::sort(kv.second.anchors.begin(), kv.second.anchors.end(),
+			[](const MembershipAnchorCandidateLookup &a, const MembershipAnchorCandidateLookup &b){ return a.anchorComponent < b.anchorComponent; });
+	for (auto &kv : membershipBondBoundGainLookups)
+		std::sort(kv.second.anchors.begin(), kv.second.anchors.end(),
+			[](const MembershipAnchorCandidateLookup &a, const MembershipAnchorCandidateLookup &b){ return a.anchorComponent < b.anchorComponent; });
+	for (auto &kv : membershipTopologyGainLookups)
+		std::sort(kv.second.anchors.begin(), kv.second.anchors.end(),
+			[](const MembershipAnchorCandidateLookup &a, const MembershipAnchorCandidateLookup &b){ return a.anchorComponent < b.anchorComponent; });
+
+	membershipDependencyIndexBuilt = true;
+}
+
+bool MoleculeType::membershipRootContextMatches(
+		Molecule *m, unsigned int reactionIndex) const
+{
+	if (m == 0 || reactionIndex >= membershipRootContexts.size() ||
+			reactionIndex >= membershipRootContextSafe.size() ||
+			!membershipRootContextSafe[reactionIndex])
+		return true;
+	const std::uint64_t boundMask = m->getBoundComponentMask();
+	const std::uint64_t requiredBound = membershipRootRequiredBoundMasks[reactionIndex];
+	const std::uint64_t requiredFree = membershipRootRequiredFreeMasks[reactionIndex];
+	if ((boundMask & requiredBound) != requiredBound ||
+			(boundMask & requiredFree) != 0)
+		return false;
+	const vector<MembershipRootPredicate> &context =
+		membershipRootContexts[reactionIndex];
+	for (vector<MembershipRootPredicate>::const_iterator it = context.begin();
+			it != context.end(); ++it) {
+		const MembershipRootPredicate &d = *it;
+		if (d.componentIndex < 0 ||
+				d.componentIndex >= m->getMoleculeType()->getNumOfComponents())
+			return false;
+		switch (d.kind) {
+		case MembershipPatternDependency::STATE_REQUIRED:
+			if (m->getComponentState(d.componentIndex) != d.stateValue)
+				return false;
+			break;
+		case MembershipPatternDependency::STATE_EXCLUDED:
+			if (m->getComponentState(d.componentIndex) == d.stateValue)
+				return false;
+			break;
+		case MembershipPatternDependency::BOND_FREE:
+			if (d.componentIndex >= 64 && m->isBindingSiteBonded(d.componentIndex))
+				return false;
+			break;
+		case MembershipPatternDependency::BOND_BOUND:
+			if (d.componentIndex >= 64 && !m->isBindingSiteBonded(d.componentIndex))
+				return false;
+			break;
+		case MembershipPatternDependency::TOPOLOGY: {
+			/* indexOfBond is -1 for an open site, so the partner-component test
+			 * simultaneously proves occupancy and is much more selective than the
+			 * partner type in positional polymer models.  Only dereference the bonded
+			 * molecule after this cheap exact endpoint check succeeds. */
+			if (m->getBondedMoleculeBindingSiteIndex(d.componentIndex) !=
+					d.partnerComponentIndex)
+				return false;
+			Molecule *partner = m->getBondedMolecule(d.componentIndex);
+			if (partner == 0 || partner->getMoleculeType() != d.partnerType)
+				return false;
+			break;
+		}
+		}
+	}
+	return true;
+}
+
+void MoleculeType::appendMembershipCandidateVector(
+		const vector<unsigned int> *candidates, Molecule *m, bool lossOnly,
+		bool requireCurrentRootContext, const MembershipCandidateView *candidateView)
+{
+	if (candidates == 0) return;
+	if (requireCurrentRootContext && candidateView != 0 && m != 0) {
+		unsigned int mask = static_cast<unsigned int>(m->getBoundComponentMask());
+		if (mask < candidateView->byBoundMask.size())
+			candidates = &candidateView->byBoundMask[mask];
+	}
+	auto rootContextMatchesCached = [&](unsigned int r) -> bool {
+		if (!requireCurrentRootContext) return true;
+		if (membershipRootContextChecked[r] != membershipCandidateGeneration) {
+			membershipRootContextChecked[r] = membershipCandidateGeneration;
+			membershipRootContextResult[r] =
+				membershipRootContextMatches(m, r) ? 1 : 0;
+		}
+		return membershipRootContextResult[r] != 0;
+	};
+	if (lossOnly && m != 0) {
+		const vector<int> &active = m->getActiveReactionMembershipIndices();
+		/* Broad loss lists are especially pathological in translation models:
+		 * hundreds or thousands of rules may require a generic bound/unbound
+		 * predicate, while this particular molecule participates in only a small
+		 * number of local entries.  Both sets are exact, so intersect from the
+		 * smaller side. Candidate vectors are built in monotonically increasing
+		 * local-index order, making binary_search valid. */
+		if (active.empty()) return;
+		if (candidates->size() > active.size() * 8) {
+			if (memprofEnabled())
+				NFcore::memprofCandidateProbe(name, 0,
+						static_cast<long long>(active.size()), 0);
+			for (vector<int>::const_iterator ait = active.begin();
+					ait != active.end(); ++ait) {
+				if (*ait < 0) continue;
+				unsigned int r = static_cast<unsigned int>(*ait);
+				if (!std::binary_search(candidates->begin(), candidates->end(), r))
+					continue;
+				if (membershipCandidateSeen[r] == membershipCandidateGeneration) continue;
+				if (!rootContextMatchesCached(r)) continue;
+				membershipCandidateSeen[r] = membershipCandidateGeneration;
+				membershipCandidateScratch.push_back(r);
+			}
+			return;
+		}
+	}
+	if (memprofEnabled())
+		NFcore::memprofCandidateProbe(name,
+				static_cast<long long>(candidates->size()), 0,
+				requireCurrentRootContext ? static_cast<long long>(candidates->size()) : 0);
+	for (vector<unsigned int>::const_iterator it = candidates->begin();
+			it != candidates->end(); ++it) {
+		unsigned int r = *it;
+		if (membershipCandidateSeen[r] == membershipCandidateGeneration) continue;
+		if (lossOnly && m->getRxnListMappingSet(r).empty()) continue;
+		if (!rootContextMatchesCached(r)) continue;
+		membershipCandidateSeen[r] = membershipCandidateGeneration;
+		membershipCandidateScratch.push_back(r);
+	}
+}
+
+void MoleculeType::appendMembershipBondFreeGainCandidates(
+		const MembershipComponentKey &trigger, Molecule *m)
+{
+	auto fallback = membershipBondFreeGainFallbackCandidates.find(trigger);
+	appendMembershipCandidateVector(
+			fallback == membershipBondFreeGainFallbackCandidates.end()
+				? 0 : &fallback->second, m, false, true);
+	auto anchors = membershipBondFreeGainAnchorComponents.find(trigger);
+	if (anchors == membershipBondFreeGainAnchorComponents.end() || m == 0)
+		return;
+	for (vector<int>::const_iterator ait = anchors->second.begin();
+			ait != anchors->second.end(); ++ait) {
+		int anchorComponent = *ait;
+		if (anchorComponent < 0 ||
+				anchorComponent >= m->getMoleculeType()->getNumOfComponents() ||
+				!m->isBindingSiteBonded(anchorComponent))
+			continue;
+		Molecule *partner = m->getBondedMolecule(anchorComponent);
+		if (partner == 0) continue;
+		MembershipBondContextKey key(trigger.type, trigger.component,
+				anchorComponent, partner->getMoleculeType(),
+				m->getBondedMoleculeBindingSiteIndex(anchorComponent));
+		auto composite = membershipBondFreeGainCompositeCandidates.find(key);
+		appendMembershipCandidateVector(
+				composite == membershipBondFreeGainCompositeCandidates.end()
+					? 0 : &composite->second, m, false, true);
+	}
+}
+
+void MoleculeType::appendMembershipBondBoundGainCandidates(
+		const MembershipComponentKey &trigger, Molecule *m)
+{
+	/* Rules without a usable compact root topology anchor retain the existing
+	 * root-context-filtered path. */
+	auto fallback = membershipBondBoundGainFallbackCandidates.find(trigger);
+	appendMembershipCandidateVector(
+			fallback == membershipBondBoundGainFallbackCandidates.end()
+				? 0 : &fallback->second, m, false, true);
+
+	auto anchors = membershipBondBoundGainAnchorComponents.find(trigger);
+	if (anchors == membershipBondBoundGainAnchorComponents.end() || m == 0)
+		return;
+	for (vector<int>::const_iterator ait = anchors->second.begin();
+			ait != anchors->second.end(); ++ait) {
+		int anchorComponent = *ait;
+		if (anchorComponent < 0 ||
+				anchorComponent >= m->getMoleculeType()->getNumOfComponents() ||
+				!m->isBindingSiteBonded(anchorComponent))
+			continue;
+		Molecule *partner = m->getBondedMolecule(anchorComponent);
+		if (partner == 0) continue;
+		int partnerComponent =
+			m->getBondedMoleculeBindingSiteIndex(anchorComponent);
+		MembershipBondContextKey key(trigger.type, trigger.component,
+				anchorComponent, partner->getMoleculeType(), partnerComponent);
+		auto composite = membershipBondBoundGainCompositeCandidates.find(key);
+		appendMembershipCandidateVector(
+				composite == membershipBondBoundGainCompositeCandidates.end()
+					? 0 : &composite->second, m, false, true);
+	}
+}
+
+void MoleculeType::appendMembershipTopologyGainCandidates(
+		const MembershipTopologyKey &trigger, Molecule *m)
+{
+	auto fallback = membershipTopologyGainFallbackCandidates.find(trigger);
+	appendMembershipCandidateVector(
+			fallback == membershipTopologyGainFallbackCandidates.end()
+				? 0 : &fallback->second, m, false, true);
+
+	auto anchors = membershipTopologyGainAnchorComponents.find(trigger);
+	if (anchors == membershipTopologyGainAnchorComponents.end() || m == 0)
+		return;
+	for (vector<int>::const_iterator ait = anchors->second.begin();
+			ait != anchors->second.end(); ++ait) {
+		int anchorComponent = *ait;
+		if (anchorComponent < 0 ||
+				anchorComponent >= m->getMoleculeType()->getNumOfComponents() ||
+				!m->isBindingSiteBonded(anchorComponent))
+			continue;
+		Molecule *partner = m->getBondedMolecule(anchorComponent);
+		if (partner == 0) continue;
+		int partnerComponent =
+			m->getBondedMoleculeBindingSiteIndex(anchorComponent);
+		MembershipTopologyContextKey key(
+				trigger.type, trigger.component, trigger.partnerType,
+				trigger.partnerComponent, anchorComponent,
+				partner->getMoleculeType(), partnerComponent);
+		auto composite = membershipTopologyGainCompositeCandidates.find(key);
+		appendMembershipCandidateVector(
+				composite == membershipTopologyGainCompositeCandidates.end()
+					? 0 : &composite->second, m, false, true);
+	}
+}
+
+void MoleculeType::prepareMembershipEventPlan(unsigned long long eventGeneration)
+{
+	if (system == 0) return;
+	/* The hot membership path refreshes several molecules for the same event.
+	 * Check the generation in the caller so this comparatively large function is
+	 * entered only when the root-independent plan actually has to be rebuilt. */
+	membershipEventPlanGeneration = eventGeneration;
+	membershipEventCandidatePlan.clear();
+
+	auto addDirect = [&](const vector<unsigned int> *candidates,
+			bool lossOnly, bool requireRoot) {
+		if (candidates == 0 || candidates->empty()) return;
+		MembershipEventCandidateAction action;
+		action.kind = MembershipEventCandidateAction::DIRECT;
+		action.candidates = candidates;
+		if (requireRoot) {
+			auto vit = membershipCandidateViews.find(candidates);
+			if (vit != membershipCandidateViews.end()) action.candidateView = &vit->second;
+		}
+		action.lossOnly = lossOnly;
+		action.requireRoot = requireRoot;
+		membershipEventCandidatePlan.push_back(action);
+	};
+	auto addGainLookup = [&](MembershipEventCandidateAction::Kind kind,
+			const MembershipGainLookup *lookup) {
+		if (lookup == 0 || ((lookup->fallback == 0 || lookup->fallback->empty()) &&
+				lookup->anchors.empty())) return;
+		MembershipEventCandidateAction action;
+		action.kind = kind;
+		action.gainLookup = lookup;
+		membershipEventCandidatePlan.push_back(action);
+	};
+
+	const vector<MembershipEventMutation> &mutations =
+			system->getMembershipEventMutations();
+	for (vector<MembershipEventMutation>::const_iterator mit = mutations.begin();
+			mit != mutations.end(); ++mit) {
+		const MembershipEventMutation &mutation = *mit;
+		if (mutation.kind == MembershipEventMutation::STATE_CHANGE) {
+			MembershipStateKey oldKey(mutation.type1, mutation.component1,
+					mutation.oldState);
+			MembershipStateKey newKey(mutation.type1, mutation.component1,
+					mutation.newState);
+			auto reqNew = membershipStateRequiredCandidates.find(newKey);
+			addDirect(reqNew == membershipStateRequiredCandidates.end()
+					? 0 : &reqNew->second, false, true);
+			auto excOld = membershipStateExcludedCandidates.find(oldKey);
+			addDirect(excOld == membershipStateExcludedCandidates.end()
+					? 0 : &excOld->second, false, true);
+			auto reqOld = membershipStateRequiredCandidates.find(oldKey);
+			addDirect(reqOld == membershipStateRequiredCandidates.end()
+					? 0 : &reqOld->second, true, false);
+			auto excNew = membershipStateExcludedCandidates.find(newKey);
+			addDirect(excNew == membershipStateExcludedCandidates.end()
+					? 0 : &excNew->second, true, false);
+			continue;
+		}
+
+		MembershipComponentKey c1(mutation.type1, mutation.component1);
+		MembershipComponentKey c2(mutation.type2, mutation.component2);
+		MembershipTopologyKey t12(mutation.type1, mutation.component1,
+				mutation.type2, mutation.component2);
+		MembershipTopologyKey t21(mutation.type2, mutation.component2,
+				mutation.type1, mutation.component1);
+
+		if (mutation.kind == MembershipEventMutation::BOND_ADD) {
+			auto topo12Lookup = membershipTopologyGainLookups.find(t12);
+			addGainLookup(MembershipEventCandidateAction::TOPOLOGY_GAIN,
+				topo12Lookup == membershipTopologyGainLookups.end() ? 0 : &topo12Lookup->second);
+			auto topo21Lookup = membershipTopologyGainLookups.find(t21);
+			addGainLookup(MembershipEventCandidateAction::TOPOLOGY_GAIN,
+				topo21Lookup == membershipTopologyGainLookups.end() ? 0 : &topo21Lookup->second);
+
+			auto bound1Lookup = membershipBondBoundGainLookups.find(c1);
+			addGainLookup(MembershipEventCandidateAction::BOND_BOUND_GAIN,
+				bound1Lookup == membershipBondBoundGainLookups.end() ? 0 : &bound1Lookup->second);
+			auto bound2Lookup = membershipBondBoundGainLookups.find(c2);
+			addGainLookup(MembershipEventCandidateAction::BOND_BOUND_GAIN,
+				bound2Lookup == membershipBondBoundGainLookups.end() ? 0 : &bound2Lookup->second);
+
+			auto free1 = membershipBondFreeCandidates.find(c1);
+			addDirect(free1 == membershipBondFreeCandidates.end() ? 0 : &free1->second,
+					true, false);
+			auto free2 = membershipBondFreeCandidates.find(c2);
+			addDirect(free2 == membershipBondFreeCandidates.end() ? 0 : &free2->second,
+					true, false);
+		} else if (mutation.kind == MembershipEventMutation::BOND_DEL) {
+			auto free1Lookup = membershipBondFreeGainLookups.find(c1);
+			addGainLookup(MembershipEventCandidateAction::BOND_FREE_GAIN,
+				free1Lookup == membershipBondFreeGainLookups.end() ? 0 : &free1Lookup->second);
+			auto free2Lookup = membershipBondFreeGainLookups.find(c2);
+			addGainLookup(MembershipEventCandidateAction::BOND_FREE_GAIN,
+				free2Lookup == membershipBondFreeGainLookups.end() ? 0 : &free2Lookup->second);
+
+			auto topo12 = membershipTopologyCandidates.find(t12);
+			addDirect(topo12 == membershipTopologyCandidates.end() ? 0 : &topo12->second,
+					true, false);
+			auto topo21 = membershipTopologyCandidates.find(t21);
+			addDirect(topo21 == membershipTopologyCandidates.end() ? 0 : &topo21->second,
+					true, false);
+			auto bound1 = membershipBondBoundCandidates.find(c1);
+			addDirect(bound1 == membershipBondBoundCandidates.end() ? 0 : &bound1->second,
+					true, false);
+			auto bound2 = membershipBondBoundCandidates.find(c2);
+			addDirect(bound2 == membershipBondBoundCandidates.end() ? 0 : &bound2->second,
+					true, false);
+		}
+	}
+}
+
+void MoleculeType::applyMembershipEventPlan(Molecule *m)
+{
+	for (vector<MembershipEventCandidateAction>::const_iterator ait =
+			membershipEventCandidatePlan.begin();
+			ait != membershipEventCandidatePlan.end(); ++ait) {
+		const MembershipEventCandidateAction &action = *ait;
+		if (action.kind == MembershipEventCandidateAction::DIRECT) {
+			appendMembershipCandidateVector(action.candidates, m,
+				action.lossOnly, action.requireRoot, action.candidateView);
+			continue;
+		}
+
+		const MembershipGainLookup *lookup = action.gainLookup;
+		if (lookup == 0) continue;
+		appendMembershipCandidateVector(lookup->fallback, m, false, true, lookup->fallbackView);
+		if (m == 0 || lookup->anchors.empty()) continue;
+		const vector<int> &bonded = m->getBondedComponentIndices();
+		if (bonded.empty()) continue;
+
+		auto applyAnchor = [&](const MembershipAnchorCandidateLookup &anchor) {
+			int c = anchor.anchorComponent;
+			if (c < 0 || c >= m->getMoleculeType()->getNumOfComponents() ||
+					!m->isBindingSiteBonded(c)) return;
+			Molecule *partner = m->getBondedMolecule(c);
+			if (partner == 0) return;
+			int pc = m->getBondedMoleculeBindingSiteIndex(c);
+			MoleculeType *pt = partner->getMoleculeType();
+			for (vector<MembershipPartnerCandidateEntry>::const_iterator eit =
+					anchor.entries.begin(); eit != anchor.entries.end(); ++eit) {
+				if (eit->partnerType == pt && eit->partnerComponent == pc) {
+					appendMembershipCandidateVector(eit->candidates, m, false, true, eit->candidateView);
+					return;
+				}
+			}
+		};
+
+		/* Both lists are sorted.  Intersect from the molecule's sparse occupied
+		 * component list when the static anchor set is broader. */
+		if (lookup->anchors.size() > bonded.size() * 4u) {
+			for (vector<int>::const_iterator bit = bonded.begin(); bit != bonded.end(); ++bit) {
+				auto pos = std::lower_bound(lookup->anchors.begin(), lookup->anchors.end(), *bit,
+					[](const MembershipAnchorCandidateLookup &a, int c){ return a.anchorComponent < c; });
+				if (pos != lookup->anchors.end() && pos->anchorComponent == *bit) applyAnchor(*pos);
+			}
+		} else {
+			for (vector<MembershipAnchorCandidateLookup>::const_iterator a = lookup->anchors.begin();
+					a != lookup->anchors.end(); ++a) applyAnchor(*a);
+		}
+	}
+}
+
+void MoleculeType::prepareMembershipCandidates(Molecule *m)
+{
+	if (!membershipDependencyIndexBuilt)
+		buildMembershipDependencyIndex();
+	if (++membershipCandidateGeneration == 0) {
+		std::fill(membershipCandidateSeen.begin(), membershipCandidateSeen.end(), 0);
+		std::fill(membershipRootContextChecked.begin(), membershipRootContextChecked.end(), 0);
+		membershipCandidateGeneration = 1;
+	}
+	membershipCandidateScratch.clear();
+
+	/* New molecules start with no mappings, so only gains are possible.  A full
+	 * scan is nevertheless unnecessary when the runtime reactant role has a
+	 * provably local root pattern: failing any root-local state/bond/topology
+	 * predicate is a necessary-condition failure regardless of the rest of the
+	 * connected pattern.  Unsafe/symmetric/connectedTo/compartment roles remain
+	 * unconditional. Population types keep the legacy path until their count
+	 * semantics are explicitly indexed. */
+	if (m == 0 || population_type || system == 0) {
+		for (unsigned int r = 0; r < reactions.size(); ++r) {
+			membershipCandidateSeen[r] = membershipCandidateGeneration;
+			membershipCandidateScratch.push_back(r);
+		}
+		return;
+	}
+	if (system->isNewMembershipMolecule(m)) {
+		for (unsigned int r = 0; r < reactions.size(); ++r) {
+			if (r < membershipRootContextSafe.size() &&
+					membershipRootContextSafe[r] &&
+					!membershipRootContextMatches(m, r))
+				continue;
+			membershipCandidateSeen[r] = membershipCandidateGeneration;
+			membershipCandidateScratch.push_back(r);
+		}
+		return;
+	}
+
+	appendMembershipCandidateVector(&unconditionalMembershipCandidates, m, false);
+	const unsigned long long eventGeneration =
+		system->getMembershipMutationGeneration();
+	if (membershipEventPlanGeneration != eventGeneration)
+		prepareMembershipEventPlan(eventGeneration);
+	applyMembershipEventPlan(m);
+}
+
 void MoleculeType::prepareForSimulation()
 {
+	buildMembershipDependencyIndex();
 	//cout<<"Preparing: "<<name<<endl;
 	//Check each reaction and add this molecule as a reactant if we have to
 	int r=0;
@@ -693,8 +1511,38 @@ void MoleculeType::prepareForSimulation()
   	}
 
 
-	//Our iterators that we will use to loop through every molecule
+	// Our iterators that we will use to loop through every molecule.
 	Molecule *mol;
+	const bool sparseInitialMembership = generalMembershipFilterEnabled() &&
+			!generalMembershipDiffEnabled() && !population_type &&
+			(generalMembershipFilterForceEnabled() ||
+			 reactions.size() >= generalMembershipFilterMinRegistrations());
+	/* Many seed states contain thousands of identical small machinery molecules
+	 * (e.g. free ribosomes). Their safe root-local candidate set depends only on
+	 * local state and immediate bond topology, so cache it by an exact local
+	 * signature instead of rescanning every registered reaction per copy. */
+	const bool cacheInitialCandidates = sparseInitialMembership &&
+			numOfComponents <= 16 && mList->size() >= 8;
+	std::map<std::string, std::vector<unsigned int> > initialCandidateCache;
+	auto initialMembershipSignature = [&](Molecule *candidate) {
+		std::string key;
+		key.reserve(static_cast<std::size_t>(numOfComponents) * 3 * sizeof(int));
+		for (int c = 0; c < numOfComponents; ++c) {
+			int values[3];
+			values[0] = candidate->getComponentState(c);
+			values[1] = -1;
+			values[2] = -1;
+			if (candidate->isBindingSiteBonded(c)) {
+				Molecule *partner = candidate->getBondedMolecule(c);
+				if (partner != 0) {
+					values[1] = partner->getMoleculeType()->getTypeID();
+					values[2] = candidate->getBondedMoleculeBindingSiteIndex(c);
+				}
+			}
+			key.append(reinterpret_cast<const char *>(values), sizeof(values));
+		}
+		return key;
+	};
   	for( int m=0; m<mList->size(); m++ )
   	{
   		//First prepare the molecule for simulation
@@ -704,15 +1552,148 @@ void MoleculeType::prepareForSimulation()
   		//Check each observable and see if this molecule should be counted
   		this->addToObservables(mol);
 
-  		//Check each reaction and add this molecule as a reactant if we have to
-		for(rxnIter = reactions.begin(), r=0; rxnIter != reactions.end(); rxnIter++, r++ )
-		{
-			if ((*rxnIter)->usesIncrementalMembership())
-				(*rxnIter)->tryToAddWithIndex(
-						mol, reactionPositions.at(r), r);
-			else
-				(*rxnIter)->tryToAdd(mol, reactionPositions.at(r));
-  		}
+		// Initial molecules have no mappings, so only gains are possible. A safe
+		// root-local mismatch is therefore sufficient to skip the full template.
+		if (cacheInitialCandidates) {
+			std::string signature = initialMembershipSignature(mol);
+			auto cached = initialCandidateCache.find(signature);
+			if (cached == initialCandidateCache.end()) {
+				std::vector<unsigned int> candidates;
+				candidates.reserve(reactions.size());
+				for (unsigned int ri = 0; ri < reactions.size(); ++ri) {
+					if (ri < membershipRootContextSafe.size() &&
+						membershipRootContextSafe[ri] &&
+						!membershipRootContextMatches(mol, ri))
+						continue;
+					candidates.push_back(ri);
+				}
+				cached = initialCandidateCache.insert(
+						std::make_pair(signature, candidates)).first;
+			}
+			const std::vector<unsigned int> &candidates = cached->second;
+			for (std::vector<unsigned int>::const_iterator ci = candidates.begin();
+					ci != candidates.end(); ++ci) {
+				unsigned int ri = *ci;
+				ReactionClass *initialRxn = reactions[ri];
+				if (initialRxn->usesIncrementalMembership())
+					initialRxn->tryToAddWithIndex(mol, reactionPositions[ri], ri);
+				else
+					initialRxn->tryToAdd(mol, reactionPositions[ri]);
+			}
+		} else {
+			for(rxnIter = reactions.begin(), r=0; rxnIter != reactions.end(); rxnIter++, r++ )
+			{
+				if (sparseInitialMembership && r < (int)membershipRootContextSafe.size() &&
+						membershipRootContextSafe[r] &&
+						!membershipRootContextMatches(mol, r))
+					continue;
+				if ((*rxnIter)->usesIncrementalMembership())
+					(*rxnIter)->tryToAddWithIndex(
+							mol, reactionPositions.at(r), r);
+				else
+					(*rxnIter)->tryToAdd(mol, reactionPositions.at(r));
+			}
+		}
+	}
+}
+
+
+/* ---- membership-walk instrumentation (NFSIM_MEMPROF=1) ----------------
+ * The scaling of per-event cost with rule count implicates this walk, but
+ * that inference is not a measurement.  These counters partition it: total
+ * time in the generic loop, how many reactions are visited, how many survive
+ * to a tryToAdd, how much time tryToAdd itself costs, and how often it
+ * actually changes membership.  Compiled in unconditionally but gated at
+ * runtime; the guard is a single load of a cached flag. */
+namespace {
+	bool memprofEnabled() {
+		static int on = -1;
+		if (on < 0) on = (getenv("NFSIM_MEMPROF") != 0) ? 1 : 0;
+		return on == 1;
+	}
+	static inline double memprofNow() {
+		struct timespec ts;
+		clock_gettime(CLOCK_MONOTONIC, &ts);
+		return (double) ts.tv_sec + 1e-9 * (double) ts.tv_nsec;
+	}
+}
+namespace NFcore {
+	bool shadowOn();
+	extern long long shadowEvent;
+	void memprofAdd(const std::string &name, double, double, double,
+			long long, long long, long long, long long);
+	double memprofWalkTime = 0.0;
+	double memprofCandidateTime = 0.0;
+	double memprofTryTime = 0.0;
+	long long memprofWalkCalls = 0;
+	long long memprofCandidateCalls = 0;
+	long long memprofCandidates = 0;
+	long long memprofVisited = 0;
+	long long memprofTryCalls = 0;
+	long long memprofChanged = 0;
+	struct MemprofType { double walk; double tryT; double candidateT; long long candidates;
+			long long candidateVectorProbes; long long candidateActiveProbes;
+			long long candidateRootChecks; long long visits; long long tries;
+			long long changed; long long calls; };
+	std::map<std::string, MemprofType> memprofByType;
+	void memprofAdd(const std::string &name, double walk, double tryT, double candidateT,
+			long long candidates, long long visits, long long tries, long long changed) {
+		MemprofType &e = memprofByType[name];
+		e.walk += walk; e.tryT += tryT; e.candidateT += candidateT;
+		e.candidates += candidates; e.visits += visits;
+		e.tries += tries; e.changed += changed; e.calls += 1;
+	}
+	void memprofCandidateProbe(const std::string &name, long long vectorProbes,
+			long long activeProbes, long long rootChecks) {
+		MemprofType &e = memprofByType[name];
+		e.candidateVectorProbes += vectorProbes;
+		e.candidateActiveProbes += activeProbes;
+		e.candidateRootChecks += rootChecks;
+	}
+	void memprofReport() {
+		if (getenv("NFSIM_MEMPROF") == 0) return;
+		for (std::map<std::string, MemprofType>::const_iterator it =
+				memprofByType.begin(); it != memprofByType.end(); ++it) {
+			cout << "#MEMPROF_TYPE " << it->first
+			     << " candidate_s=" << it->second.candidateT
+			     << " candidates=" << it->second.candidates
+			     << " cand_vec_probes=" << it->second.candidateVectorProbes
+			     << " cand_active_probes=" << it->second.candidateActiveProbes
+			     << " cand_root_checks=" << it->second.candidateRootChecks
+			     << " walk_s=" << it->second.walk
+			     << " try_s=" << it->second.tryT
+			     << " calls=" << it->second.calls
+			     << " visits=" << it->second.visits
+			     << " tries=" << it->second.tries
+			     << " changed=" << it->second.changed << endl;
+		}
+		cout << "#MEMPROF candidate_s=" << memprofCandidateTime
+		     << " candidate_calls=" << memprofCandidateCalls
+		     << " candidates=" << memprofCandidates
+		     << " walk_s=" << memprofWalkTime
+		     << " try_s=" << memprofTryTime
+		     << " walk_calls=" << memprofWalkCalls
+		     << " visited=" << memprofVisited
+		     << " try_calls=" << memprofTryCalls
+		     << " changed=" << memprofChanged << endl;
+	}
+}
+
+
+namespace {
+	/* MappingIdSet has no operator!=; compare contents element-wise.  This is
+	 * the role-local exactness the v2 oracle depends on: the local reaction
+	 * list is keyed (ReactionClass, reactantPosition), so comparing the set
+	 * for one role detects a change in that role even when reactant list 0
+	 * is untouched -- the collision-rule case that reactantLists[0] missed. */
+	bool shadowSetsEqual(const NFcore::MappingIdSet &a,
+			const NFcore::MappingIdSet &b) {
+		if (a.size() != b.size()) return false;
+		NFcore::MappingIdSet::const_iterator ia = a.begin();
+		NFcore::MappingIdSet::const_iterator ib = b.begin();
+		for (; ia != a.end(); ++ia, ++ib)
+			if (*ia != *ib) return false;
+		return true;
 	}
 }
 
@@ -1022,8 +2003,174 @@ void MoleculeType::updateRxnMembership(Molecule * m,
 		return;
 	}
 
+	if (NFcore::shadowOn()) {
+		/* Shadow-v2 works at the same granularity as NFsim membership itself:
+		 * (runtime ReactionClass, reactantPosition) on each walked molecule.
+		 * A multi-reactant rule can change membership for a molecule that was
+		 * not itself mutated, so recording only mutated molecules or only
+		 * reactant list 0 is not a valid correctness oracle. */
+		cout << "@WALK " << NFcore::shadowEvent << " "
+		     << m->getUniqueID() << " " << this->name << endl;
+
+		/* Dump runtime registration once per MoleculeType.  Production
+		 * dependency metadata should attach to these expanded runtime entries;
+		 * the Python shadow tool only normalizes _sym<N> as diagnostic glue. */
+		static std::set<const MoleculeType *> dumpedTypes;
+		if (dumpedTypes.insert(this).second) {
+			for (unsigned int r = 0; r < reactions.size(); ++r) {
+				cout << "@REG " << this->name << " " << r << " "
+				     << reactionPositions.at(r) << " "
+				     << reactions[r]->getRxnId() << " "
+				     << reactions[r]->getName() << endl;
+			}
+		}
+
+		/* Current role-local memberships, captured before any tryToAdd.
+		 * Loss candidates may be intersected with these entries: a local
+		 * mapping can only disappear if it exists before the update. */
+		for (unsigned int r = 0; r < reactions.size(); ++r) {
+			if (!m->getRxnListMappingSet(r).empty())
+				cout << "@MEMR " << NFcore::shadowEvent << " "
+				     << m->getUniqueID() << " " << this->name << " "
+				     << r << " " << reactionPositions.at(r) << " "
+				     << reactions[r]->getRxnId() << " "
+				     << reactions[r]->getName() << endl;
+		}
+	}
+	const bool membershipDiff = generalMembershipDiffEnabled() &&
+			firedReaction != 0 && system != 0 &&
+			system->isMembershipMutationCaptureActive();
+	const bool membershipFilter = generalMembershipFilterEnabled() &&
+			!membershipDiff && firedReaction != 0 && system != 0 &&
+			system->isMembershipMutationCaptureActive() &&
+			(generalMembershipFilterForceEnabled() ||
+			 reactions.size() >= generalMembershipFilterMinRegistrations());
+	const bool membershipCandidateMode = membershipDiff || membershipFilter;
+	const bool memprof = memprofEnabled();
+	double mpCandidateTime = 0.0;
+	long long mpCandidates = 0;
+	if (membershipCandidateMode) {
+		double candidateT0 = memprof ? memprofNow() : 0.0;
+		prepareMembershipCandidates(m);
+		if (memprof) {
+			mpCandidateTime = memprofNow() - candidateT0;
+			mpCandidates = static_cast<long long>(membershipCandidateScratch.size());
+			NFcore::memprofCandidateTime += mpCandidateTime;
+			NFcore::memprofCandidateCalls++;
+			NFcore::memprofCandidates += mpCandidates;
+		}
+	}
+
+	double memprofT0 = 0.0;
+	long long mpVisits = 0, mpTries = 0, mpChanged = 0;
+	double mpTryTime = 0.0;
+	if (memprof) { memprofT0 = memprofNow(); NFcore::memprofWalkCalls++; }
+	/* Ceiling probe only.  Skipping the walk produces wrong results; it
+	 * measures the floor of per-event cost so the payoff of a correct
+	 * membership filter can be bounded before the filter is written. */
+	{
+		static int skipWalk = -1;
+		if (skipWalk < 0) skipWalk = (getenv("NFSIM_SKIP_WALK") != 0) ? 1 : 0;
+		if (skipWalk == 1) return;
+	}
+
+	/* The dependency filter used to retain the O(number-of-registrations) loop
+	 * and merely make most iterations cheap.  On Rasi-500 that still meant about
+	 * 6.45 million rejected local entries for 624 events.  For ordinary
+	 * (non-EnergyPattern) firings we can instead merge the sparse membership
+	 * candidates with the precomputed set of entries whose propensity has
+	 * non-membership runtime dependencies.  Sorting the candidate scratch list
+	 * preserves the MoleculeType's native registration order, so match-list and
+	 * A_tot updates occur in exactly the same order as the legacy full scan.
+	 * Specialized incremental-energy paths stay on their existing code above. */
+	const bool useSparseGeneralMembershipLoop = membershipFilter &&
+			!NFcore::shadowOn() && !hasMembershipChange &&
+			!useCompactMembershipIndex && !useCompactPartnerPoolIndex &&
+			!refineMembershipChange && cachedDecisions == 0;
+	if (useSparseGeneralMembershipLoop) {
+		std::sort(membershipCandidateScratch.begin(),
+				membershipCandidateScratch.end());
+		size_t ci = 0, pi = 0;
+		while (ci < membershipCandidateScratch.size() ||
+				pi < membershipNonlocalPropensityCandidates.size()) {
+			unsigned int candidateIndex = ci < membershipCandidateScratch.size()
+					? membershipCandidateScratch[ci]
+					: std::numeric_limits<unsigned int>::max();
+			unsigned int propensityIndex = pi < membershipNonlocalPropensityCandidates.size()
+					? membershipNonlocalPropensityCandidates[pi]
+					: std::numeric_limits<unsigned int>::max();
+			unsigned int r = std::min(candidateIndex, propensityIndex);
+			bool isCandidate = candidateIndex == r;
+			if (candidateIndex == r) ++ci;
+			if (propensityIndex == r) ++pi;
+			if (r >= reactions.size()) continue;
+			if (memprof) { NFcore::memprofVisited++; mpVisits++; }
+
+			ReactionClass *rxn = reactions[r];
+			if (isCandidate && candidateTraceEnabled())
+				cout << "#CAND " << name << " "
+				     << (firedReaction ? firedReaction->getName() : string("?"))
+				     << " " << rxn->getName() << endl;
+			/* Preserve any reaction-class-specific rejection semantics even though
+			 * BasicRxnClass returns true here. */
+			if (!rxn->shouldUpdateMembership(m, firedReaction, directProduct))
+				continue;
+			bool useIndexedMembership = rxn->supportsDeferredMembershipUpdate();
+			bool defer = this->system->isDeferringMembershipPropensityUpdates() &&
+					useIndexedMembership;
+			if (defer) {
+				if (!isCandidate) {
+					/* This entry is present only because its rate can change without a
+					 * membership change.  Batch the rate refresh exactly as the full
+					 * loop does. */
+					this->system->deferMembershipPropensityUpdate(rxn);
+					continue;
+				}
+				double tryT0 = memprof ? memprofNow() : 0.0;
+				bool changed = useIndexedMembership
+					? rxn->tryToAddAndReportChangeWithIndex(
+						m, reactionPositions[r], r)
+					: rxn->tryToAddAndReportChange(
+						m, reactionPositions[r]);
+				if (memprof) {
+					double dt = memprofNow() - tryT0;
+					NFcore::memprofTryTime += dt; mpTryTime += dt;
+					NFcore::memprofTryCalls++; mpTries++;
+				}
+				if (changed)
+					this->system->deferMembershipPropensityUpdate(rxn);
+				continue;
+			}
+
+			double oldA = rxn->get_a();
+			if (isCandidate) {
+				double tryT0 = memprof ? memprofNow() : 0.0;
+				/* The MoleculeType-local registration index is already known here.
+				 * BasicRxnClass consumes it directly; other reaction classes inherit
+				 * the virtual fallback to their existing tryToAdd implementation. */
+				rxn->tryToAddWithIndex(m, reactionPositions[r], r);
+				if (memprof) {
+					double dt = memprofNow() - tryT0;
+					NFcore::memprofTryTime += dt; mpTryTime += dt;
+					NFcore::memprofTryCalls++; mpTries++;
+				}
+			}
+			double newA = rxn->update_a();
+			if (memprof && newA != oldA) { NFcore::memprofChanged++; mpChanged++; }
+			this->system->update_A_tot(rxn, oldA, newA);
+		}
+		if (memprof) {
+			double dt = memprofNow() - memprofT0;
+			NFcore::memprofWalkTime += dt;
+			NFcore::memprofAdd(this->name, dt, mpTryTime, mpCandidateTime, mpCandidates,
+				mpVisits, mpTries, mpChanged);
+		}
+		return;
+	}
+
 	for( unsigned int r=0; r<reactions.size(); r++ )
 	{
+		if (memprof) { NFcore::memprofVisited++; mpVisits++; }
 		ReactionClass * rxn=reactions.at(r);
 		if (useCompactPartnerPoolIndex &&
 				compactMembershipBitIsSet(*partnerCandidates, r)) {
@@ -1054,26 +2201,112 @@ void MoleculeType::updateRxnMembership(Molecule * m,
 			rxn->supportsDeferredMembershipUpdate();
 		bool defer = this->system->isDeferringMembershipPropensityUpdates() &&
 			useIndexedMembership;
+		const bool isCandidate = !membershipCandidateMode ||
+			isPreparedMembershipCandidate(r);
+		if (membershipFilter && !isCandidate &&
+				rxn->propensityDependsOnlyOnMembership())
+			continue;
 		if (defer) {
+			if (membershipFilter && !isCandidate) {
+				/* A non-candidate cannot change this molecule's role-local
+				 * membership, but a functional propensity may still depend on
+				 * observables/functions changed elsewhere in the event.  Only
+				 * suppress the deferred rate refresh when its semantics are
+				 * membership-only. */
+				if (!rxn->propensityDependsOnlyOnMembership())
+					this->system->deferMembershipPropensityUpdate(rxn);
+				continue;
+			}
 			bool changed = useIndexedMembership
 				? rxn->tryToAddAndReportChangeWithIndex(
 						m, reactionPositions.at(r), r)
 				: rxn->tryToAddAndReportChange(
 						m, reactionPositions.at(r));
+			if (membershipDiff && !isCandidate && changed) {
+				cerr << "MEMFILTER DIFFERENTIAL MISS: event="
+				     << NFcore::shadowEvent << " fired="
+				     << (firedReaction ? firedReaction->getName() : string("?"))
+				     << " molecule=" << m->getUniqueID()
+				     << " type=" << name << " local=" << r
+				     << " role=" << reactionPositions.at(r)
+				     << " target=" << rxn->getName() << endl;
+				abort();
+			}
 			if (changed)
 				this->system->deferMembershipPropensityUpdate(rxn);
 		} else {
 			double oldA = rxn->get_a();
-			if (useIndexedMembership)
-				rxn->tryToAddWithIndex(
-						m, reactionPositions.at(r), r);
-			else
-				rxn->tryToAdd(m, reactionPositions.at(r));
+			/* Role-local exact membership comparison.  listMatchIds() only
+			 * inspects reactant list 0 and therefore misses changes in another
+			 * role of a multi-reactant rule (e.g. the second ribosome in a
+			 * collision pattern).  Molecule's MappingIdSet is already keyed by
+			 * this local reaction entry, including reactantPosition. */
+			const bool shadow = NFcore::shadowOn();
+			MappingIdSet shadowBefore;
+			MappingIdSet diffBefore;
+			if (shadow) shadowBefore = m->getRxnListMappingSet(r);
+			if (membershipDiff && !isCandidate)
+				diffBefore = m->getRxnListMappingSet(r);
+			if (!membershipFilter || isCandidate) {
+				double tryT0 = memprof ? memprofNow() : 0.0;
+				if (useIndexedMembership)
+					rxn->tryToAddWithIndex(
+							m, reactionPositions.at(r), r);
+				else
+					rxn->tryToAdd(m, reactionPositions.at(r));
+				if (memprof) {
+					double dt = memprofNow() - tryT0;
+					NFcore::memprofTryTime += dt; mpTryTime += dt;
+					NFcore::memprofTryCalls++; mpTries++;
+				}
+			}
+			if (membershipDiff && !isCandidate) {
+				MappingIdSet diffAfter = m->getRxnListMappingSet(r);
+				if (!shadowSetsEqual(diffBefore, diffAfter)) {
+					cerr << "MEMFILTER DIFFERENTIAL MISS: event="
+					     << NFcore::shadowEvent << " fired="
+					     << (firedReaction ? firedReaction->getName() : string("?"))
+					     << " molecule=" << m->getUniqueID()
+					     << " type=" << name << " local=" << r
+					     << " role=" << reactionPositions.at(r)
+					     << " target=" << rxn->getName() << endl;
+					abort();
+				}
+			}
 			double newA = rxn->update_a();
+			if (membershipDiff && !isCandidate &&
+					rxn->propensityDependsOnlyOnMembership() && newA != oldA) {
+				cerr << "MEMFILTER PROPENSITY PREDICATE MISS: event="
+				     << NFcore::shadowEvent << " fired="
+				     << (firedReaction ? firedReaction->getName() : string("?"))
+				     << " molecule=" << m->getUniqueID()
+				     << " type=" << name << " local=" << r
+				     << " role=" << reactionPositions.at(r)
+				     << " target=" << rxn->getName()
+				     << " oldA=" << oldA << " newA=" << newA << endl;
+				abort();
+			}
+			if (shadow) {
+				MappingIdSet shadowAfter = m->getRxnListMappingSet(r);
+				if (!shadowSetsEqual(shadowAfter, shadowBefore))
+					cout << "@CHGR " << NFcore::shadowEvent
+					     << " " << m->getUniqueID()
+					     << " " << this->name
+					     << " " << r
+					     << " " << reactionPositions.at(r)
+					     << " " << rxn->getRxnId()
+					     << " " << rxn->getName() << endl;
+			}
+			if (memprof && newA != oldA) { NFcore::memprofChanged++; mpChanged++; }
 			this->system->update_A_tot(rxn,oldA,newA);
 		}
   	}
-
+	if (memprof) {
+		double dt = memprofNow() - memprofT0;
+		NFcore::memprofWalkTime += dt;
+		NFcore::memprofAdd(this->name, dt, mpTryTime, mpCandidateTime, mpCandidates,
+				mpVisits, mpTries, mpChanged);
+	}
 }
 
 void MoleculeType::updateConnectedRxnMembership(Molecule * m,
@@ -1135,6 +2368,9 @@ int MoleculeType::getRxnIndex(ReactionClass * rxn, int rxnPosition)
 
 
 
+
+
+
 void MoleculeType::removeFromObservables(Molecule *m)
 {
 	//cout<<"removing from observables:"<<m->getMoleculeTypeName()<<"_"<<m->getUniqueID()<<endl;
@@ -1177,8 +2413,37 @@ void MoleculeType::removeFromRxns(Molecule * m)
 //evaluated function
 int MoleculeType::addLocalFunc_TypeI(LocalFunction *lf) {
 	locFuncs_typeI.push_back(lf);
+	typeILocalFunctionReactions.push_back(
+			vector <pair<ReactionClass *, int> >());
 	return locFuncs_typeI.size()-1;
 
+}
+
+void MoleculeType::addTypeILocalFunctionReaction(
+		int localFunctionIndex, ReactionClass *rxn, int reactionPosition) {
+	if (localFunctionIndex < 0 ||
+			localFunctionIndex >= static_cast<int>(
+					typeILocalFunctionReactions.size()) ||
+			rxn == 0 || reactionPosition < 0)
+		return;
+	vector <pair<ReactionClass *, int> > &dependencies =
+			typeILocalFunctionReactions.at(localFunctionIndex);
+	for (vector <pair<ReactionClass *, int> >::const_iterator it =
+			dependencies.begin(); it != dependencies.end(); ++it) {
+		if (it->first == rxn && it->second == reactionPosition)
+			return;
+	}
+	dependencies.push_back(make_pair(rxn, reactionPosition));
+}
+
+const vector <pair<ReactionClass *, int> > &
+MoleculeType::getTypeILocalFunctionReactions(int localFunctionIndex) const {
+	static const vector <pair<ReactionClass *, int> > empty;
+	if (localFunctionIndex < 0 ||
+			localFunctionIndex >= static_cast<int>(
+					typeILocalFunctionReactions.size()))
+		return empty;
+	return typeILocalFunctionReactions.at(localFunctionIndex);
 }
 
 //TypeII local function: this molecule type, when updated, changes the
@@ -1187,6 +2452,14 @@ int MoleculeType::addLocalFunc_TypeII(LocalFunction *lf) {
 	locFuncs_typeII.push_back(lf);
 	return locFuncs_typeII.size()-1;
 
+}
+
+void MoleculeType::addSimpleStateLocalFunc_TypeII(
+		LocalFunction *lf, int componentIndex) {
+	if (componentIndex < 0 ||
+			componentIndex >= static_cast<int>(locFuncs_typeIIByStateComponent.size()))
+		return;
+	locFuncs_typeIIByStateComponent.at(componentIndex).push_back(lf);
 }
 
 

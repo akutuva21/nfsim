@@ -34,6 +34,13 @@ distribution.
 
 bool TiXmlBase::condenseWhiteSpace = true;
 
+namespace {
+// TinyXML reads the complete document into memory before constructing its DOM.
+// Keep a finite guard against unbounded allocations, but allow the large XML
+// models used by NFsim's genome-scale benchmarks.
+constexpr long long kMaxDocumentBytes = 2LL * 1024LL * 1024LL * 1024LL;
+}
+
 // Microsoft compiler security
 FILE* TiXmlFOpen( const char* filename, const char* mode )
 {
@@ -962,13 +969,13 @@ bool TiXmlDocument::LoadFile( FILE* file, TiXmlEncoding encoding )
 	location.Clear();
 
 	// Get the file size, so we can pre-allocate the string. HUGE speed impact.
-	long length = 0;
+	long long length = 0;
 	fseek( file, 0, SEEK_END );
 	length = ftell( file );
 	fseek( file, 0, SEEK_SET );
 
 	// Strange case, but good to handle up front.
-	if ( length <= 0 || length >= 500 * 1024 * 1024 ) // Sentinel: Enforce safe bounds (500MB)
+	if ( length <= 0 || length > kMaxDocumentBytes )
 	{
 		SetError( TIXML_ERROR_DOCUMENT_EMPTY, 0, 0, TIXML_ENCODING_UNKNOWN );
 		return false;
@@ -1858,4 +1865,3 @@ bool TiXmlPrinter::Visit( const TiXmlUnknown& unknown )
 	DoLineBreak();
 	return true;
 }
-

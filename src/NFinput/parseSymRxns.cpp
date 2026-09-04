@@ -846,13 +846,17 @@ bool NFinput::readPatternForSymmetry(
 			{
 				//Get the basic components of this molecule
 				string compId, compName, compBondCount, compStateLabel;
-				if(!pComp->Attribute("id") || !pComp->Attribute("name") || !pComp->Attribute("numberOfBonds")) {
+				if(!pComp->Attribute("id") || !pComp->Attribute("name")) {
 					cerr<<"!!!Error.  Invalid 'Component' tag found when creating '"<<molUid<<"' of pattern '"<<patternName<<"'. Quitting"<<endl;
 					return false;
 				} else {
 					compId = pComp->Attribute("id");
 					compName = pComp->Attribute("name");
-					compBondCount = pComp->Attribute("numberOfBonds");
+					// Missing bond constraints are equivalent to '*'.  Keep the
+					// symmetry pre-pass consistent with readPattern so compact
+					// state-only observables can omit the redundant attribute.
+					compBondCount = pComp->Attribute("numberOfBonds")
+							? pComp->Attribute("numberOfBonds") : "*";
 					compStateLabel = "none";
 					if(pComp->Attribute("state")) {
 						compStateLabel = pComp->Attribute("state");
@@ -892,4 +896,3 @@ bool NFinput::readPatternForSymmetry(
 	}
 	return true;
 }
-

@@ -1,3 +1,4 @@
+#include <cstdlib>
 #include <iostream>
 #include "NFcore.hh"
 #include "compartment.hh"
@@ -41,14 +42,22 @@ Molecule::Molecule(MoleculeType * parentMoleculeType, int listId, Compartment * 
 
 	//First initialize the component states and bonds
 	this->numOfComponents = parentMoleculeType->getNumOfComponents();
-	this->component = new int [parentMoleculeType->getNumOfComponents()];
+	/* One fused allocation for the four per-site arrays; see siteBlock. */
+	{
+		const size_t n = (size_t) numOfComponents;
+		const size_t bondBytes  = ((n * sizeof(Molecule *) + 7) / 8) * 8;
+		const size_t compBytes  = ((n * sizeof(int) + 7) / 8) * 8;
+		const size_t idxBytes   = ((n * sizeof(int) + 7) / 8) * 8;
+		const size_t visitBytes = n * sizeof(bool);
+		this->siteBlock = new char [bondBytes + compBytes + idxBytes + visitBytes];
+		char *blk = this->siteBlock;
+		this->bond           = reinterpret_cast<Molecule **>(blk); blk += bondBytes;
+		this->component      = reinterpret_cast<int *>(blk);       blk += compBytes;
+		this->indexOfBond    = reinterpret_cast<int *>(blk);       blk += idxBytes;
+		this->hasVisitedBond = reinterpret_cast<bool *>(blk);
+	}
 	for(int c=0; c<numOfComponents; c++)
 		component[c] = parentMoleculeType->getDefaultComponentState(c);
-
-	// initialize bond sites
-	this->bond = new Molecule * [numOfComponents];
-	this->indexOfBond = new int [numOfComponents];
-	this->hasVisitedBond = new bool [numOfComponents];
 	for(int b=0; b<numOfComponents; b++) {
 		bond[b]=0; indexOfBond[b]=NOBOND;
 		hasVisitedBond[b] = false;
@@ -59,12 +68,14 @@ Molecule::Molecule(MoleculeType * parentMoleculeType, int listId, Compartment * 
 	hasVisitedMolecule = false;
 	hasEvaluatedMolecule = false;
 	isMatchedTo=0;
-	rxnListMappingId2 = 0;
 	nReactions = 0;
 	useComplex = parentMoleculeType->getSystem()->isUsingComplex();
 	isPrepared = false;
 	isObservable = 0;
 	localFunctionValues=0;
+	localFunctionStateValues=0;
+	deferredDORUpdateDepth=0;
+	pendingDORUpdate=false;
 	//isDead = true;
 
 	//register this molecule with moleculeType and get some ID values
@@ -81,29 +92,45 @@ Molecule::Molecule(MoleculeType * parentMoleculeType, int listId, Compartment * 
 Molecule::~Molecule()
 {
 	if(DEBUG) cout <<"   -destroying molecule instance of type " << parentMoleculeType->getName() << endl;
-	delete [] bond;
-
 	parentMoleculeType = 0;
 
-
 	delete [] isObservable;
-	delete [] component;
-	delete [] indexOfBond;
-	delete [] rxnListMappingId2;
-	delete [] hasVisitedBond;
+	delete [] siteBlock;
+	bond = 0; component = 0; indexOfBond = 0; hasVisitedBond = 0;
 
 	if(localFunctionValues!=0)
 		delete [] localFunctionValues;
+	if(localFunctionStateValues!=0)
+		delete [] localFunctionStateValues;
 }
 
+
+namespace NFcore {
+	bool shadowOn();
+	extern long long shadowEvent;
+	void shadowMutBond(Molecule *m1, int c1, Molecule *m2, int c2, bool added);
+	void shadowMutState(Molecule *m, int c, int oldValue, int newValue);
+}
+
+void Molecule::removeActiveReactionMembershipIndex(int rxnIndex)
+{
+	for (vector<int>::iterator it = activeReactionMembershipIndices.begin();
+			it != activeReactionMembershipIndices.end(); ++it) {
+		if (*it == rxnIndex) {
+			*it = activeReactionMembershipIndices.back();
+			activeReactionMembershipIndices.pop_back();
+			return;
+		}
+	}
+}
 
 void Molecule::prepareForSimulation()
 {
 	if(isPrepared) return;
 	nReactions = parentMoleculeType->getReactionCount();
 	int mappingCount = parentMoleculeType->getReactionMappingCount();
-	this->rxnListMappingId2 = mappingCount > 0
-			? new MappingIdSet[mappingCount] : 0;
+	activeReactionMembershipIndices.clear();
+	rxnListMappings.init(mappingCount);
 
 	isPrepared = true;
 
@@ -126,8 +153,10 @@ void Molecule::setUpLocalFunctionList()
 	if (parentMoleculeType->getNumOfTypeIFunctions() > 0)
 	{
 		localFunctionValues=new double[parentMoleculeType->getNumOfTypeIFunctions()];
+		localFunctionStateValues=new int[parentMoleculeType->getNumOfTypeIFunctions()];
 		for(int lf=0; lf<parentMoleculeType->getNumOfTypeIFunctions(); lf++) {
 			localFunctionValues[lf]=0;
+			localFunctionStateValues[lf]=NOSTATE;
 		}
 	}
 }
@@ -154,6 +183,28 @@ double Molecule::getLocalFunctionValue(int localFunctionIndex) {
 		exit(1);
 	}
 	return localFunctionValues[localFunctionIndex];
+}
+
+
+bool Molecule::isLocalFunctionStateCurrent(int localFunctionIndex, int stateValue) const
+{
+	if(localFunctionStateValues == 0 ||
+			localFunctionIndex < 0 ||
+			localFunctionIndex >= parentMoleculeType->getNumOfTypeIFunctions()) {
+		return false;
+	}
+	return localFunctionStateValues[localFunctionIndex] == stateValue;
+}
+
+
+void Molecule::setLocalFunctionState(int localFunctionIndex, int stateValue)
+{
+	if(localFunctionStateValues == 0 ||
+			localFunctionIndex < 0 ||
+			localFunctionIndex >= parentMoleculeType->getNumOfTypeIFunctions()) {
+		return;
+	}
+	localFunctionStateValues[localFunctionIndex] = stateValue;
 }
 
 
@@ -202,30 +253,93 @@ void Molecule::updateTypeIIFunctions( vector <Complex *> & productComplexes )
 
 void Molecule::updateDORRxnValues()
 {
-	ReactionClass *rxn=0; int rxnIndex=-1, rxnPos=-1;
-	//cout<<"Looping over :"<<parentMoleculeType->getNumOfDORrxns()<<" dor rxns "<<endl;
-	for(int i=0; i<parentMoleculeType->getNumOfDORrxns(); i++) {
-		rxn=parentMoleculeType->getDORrxn(i);
-		rxnIndex=parentMoleculeType->getDORrxnIndex(i);
-		rxnPos=parentMoleculeType->getDORrxnPosition(i);
-		//cout<<"\t\ti="<<i<<" rxn="<<rxn->getName()<<" rxnIndex="<<rxnIndex<<" rxnPos="<<rxnPos<<endl;
+	if (deferredDORUpdateDepth > 0) {
+		pendingDORUpdate = true;
+		return;
+	}
+	if (!isPrepared)
+		return;
+	for(int i=0; i<parentMoleculeType->getNumOfDORrxns(); i++)
+		updateDORRxnValue(parentMoleculeType->getDORrxn(i),
+				parentMoleculeType->getDORrxnPosition(i));
+}
 
-		if(isPrepared) {
-			//If we are in this reaction, then we have to update our value...
-			if(getRxnListMappingId(rxnIndex)>=0) {
-				//iterate over all mappings
-				const MappingIdSet& tempSet = getRxnListMappingSet(rxnIndex);
-				//iterate over all agent-mappings  for the same reaction
-				for(MappingIdSet::const_iterator it= tempSet.begin();it!= tempSet.end(); ++it){
+void Molecule::updateDORRxnValue(ReactionClass *rxn, int rxnPos)
+{
+	if (!isPrepared || rxn == 0 || rxnPos < 0)
+		return;
+	int rxnIndex = parentMoleculeType->getRxnIndex(rxn, rxnPos);
+	if(getRxnListMappingId(rxnIndex) < 0)
+		return;
+	const MappingIdSet& tempSet = getRxnListMappingSet(rxnIndex);
+	for(MappingIdSet::const_iterator it= tempSet.begin();
+			it!= tempSet.end(); ++it){
+		double oldA = rxn->get_a();
+		rxn->notifyRateFactorChange(this,rxnPos,*it);
+		parentMoleculeType->getSystem()->update_A_tot(
+				rxn,oldA,rxn->update_a());
+	}
+}
 
-				//Careful here!  remember to update the propensity of this
-				//reaction in the system after we notify of the rate factor change!
-					double oldA = rxn->get_a();
-					rxn->notifyRateFactorChange(this,rxnPos,*it);
-					parentMoleculeType->getSystem()->update_A_tot(rxn,oldA,rxn->update_a());
-				}
+void Molecule::updateDORRxnValues(int localFunctionIndex)
+{
+	if (deferredDORUpdateDepth > 0) {
+		const vector<int>::const_iterator existing =
+				find(pendingDORLocalFunctionIndices.begin(),
+					pendingDORLocalFunctionIndices.end(), localFunctionIndex);
+		if (existing == pendingDORLocalFunctionIndices.end())
+			pendingDORLocalFunctionIndices.push_back(localFunctionIndex);
+		return;
+	}
+	if (!isPrepared)
+		return;
+	const vector<pair<ReactionClass *, int> > &dependencies =
+			parentMoleculeType->getTypeILocalFunctionReactions(
+					localFunctionIndex);
+	if (dependencies.empty()) {
+		/* Keep the old behavior for callers using the legacy dependency API. */
+		updateDORRxnValues();
+		return;
+	}
+	for (vector<pair<ReactionClass *, int> >::const_iterator it =
+			dependencies.begin(); it != dependencies.end(); ++it)
+		updateDORRxnValue(it->first, it->second);
+}
+
+void Molecule::endDeferredDORUpdates()
+{
+	if (deferredDORUpdateDepth <= 0)
+		return;
+	--deferredDORUpdateDepth;
+	if (deferredDORUpdateDepth == 0 && pendingDORUpdate) {
+		pendingDORUpdate = false;
+		pendingDORLocalFunctionIndices.clear();
+		updateDORRxnValues();
+	} else if (deferredDORUpdateDepth == 0 &&
+			!pendingDORLocalFunctionIndices.empty()) {
+		vector<pair<ReactionClass *, int> > reactionsToUpdate;
+		for (vector<int>::const_iterator index =
+				pendingDORLocalFunctionIndices.begin();
+				index != pendingDORLocalFunctionIndices.end(); ++index) {
+			const vector<pair<ReactionClass *, int> > &dependencies =
+				parentMoleculeType->getTypeILocalFunctionReactions(*index);
+			if (dependencies.empty()) {
+				pendingDORLocalFunctionIndices.clear();
+				updateDORRxnValues();
+				return;
+			}
+			for (vector<pair<ReactionClass *, int> >::const_iterator dependency =
+					dependencies.begin(); dependency != dependencies.end();
+					++dependency) {
+				if (find(reactionsToUpdate.begin(), reactionsToUpdate.end(),
+						*dependency) == reactionsToUpdate.end())
+					reactionsToUpdate.push_back(*dependency);
 			}
 		}
+		pendingDORLocalFunctionIndices.clear();
+		for (vector<pair<ReactionClass *, int> >::const_iterator it =
+				reactionsToUpdate.begin(); it != reactionsToUpdate.end(); ++it)
+			updateDORRxnValue(it->first, it->second);
 	}
 }
 
@@ -288,19 +402,24 @@ bool Molecule::decrementPopulation()
 
 void Molecule::setComponentState(int cIndex, int newValue)
 {
-	this->component[cIndex]=newValue;
+	if (this->component[cIndex] != newValue) {
+		if (parentMoleculeType != 0 && parentMoleculeType->getSystem() != 0)
+			parentMoleculeType->getSystem()->recordMembershipStateMutation(
+					this, cIndex, this->component[cIndex], newValue);
+		NFcore::shadowMutState(this, cIndex, this->component[cIndex], newValue);
+		if (std::find(changedStateComponents.begin(),
+				changedStateComponents.end(), cIndex) == changedStateComponents.end())
+			changedStateComponents.push_back(cIndex);
+		this->component[cIndex]=newValue;
+	}
 	if (useComplex) {
 		getComplex()->unsetCanonical();
 		getComplex()->setSpeciesObsDirty();
 	}
 }
 void Molecule::setComponentState(string cName, int newValue) {
-	this->component[this->parentMoleculeType->getCompIndexFromName(cName)]=newValue;
-
-	if (useComplex) {
-		getComplex()->unsetCanonical();
-		getComplex()->setSpeciesObsDirty();
-	}
+	setComponentState(this->parentMoleculeType->getCompIndexFromName(cName),
+			newValue);
 }
 
 
@@ -401,10 +520,7 @@ void Molecule::printBondDetails(NFstream &o)
 //Get the number of molecules this molecule is bonded to
 int Molecule::getDegree()
 {
-	int degree = 0;
-	for(int c=0; c<numOfComponents; c++)
-		if(bond[c]!=nullptr) degree++;
-	return degree;
+	return static_cast<int>(bondedComponentIndices.size());
 }
 
 // Get a label for this molecule or one of it's components (labels are not unique)
@@ -431,39 +547,44 @@ string Molecule::getLabel ( int cIndex ) const
 }
 
 
-bool Molecule::isBindingSiteOpen(int cIndex) const
-{
-	if(bond[cIndex]==nullptr) return true;
-	return false;
+/* ---- shadow mutation tracking (NFSIM_SHADOW=1) ------------------------
+ * Records the mutations an event performs -- changed component, and both the
+ * old and new bond endpoints -- so a hypothetical topology-aware candidate
+ * set can be constructed and compared against what the full membership scan
+ * actually changed.  Nothing is skipped; this is diagnostic only. */
+namespace NFcore {
+	bool shadowOn() {
+		static int on = -1;
+		if (on < 0) on = (getenv("NFSIM_SHADOW") != 0) ? 1 : 0;
+		return on == 1;
+	}
+	long long shadowEvent = 0;
+	void shadowMutBond(Molecule *m1, int c1, Molecule *m2, int c2, bool added) {
+		if (!shadowOn()) return;
+		cout << "@MUTB " << shadowEvent
+		     << " " << m1->getUniqueID()
+		     << " " << m1->getMoleculeType()->getName()
+		     << " " << m1->getMoleculeType()->getComponentName(c1)
+		     << " " << m2->getUniqueID()
+		     << " " << m2->getMoleculeType()->getName()
+		     << " " << m2->getMoleculeType()->getComponentName(c2)
+		     << " " << (added ? "add" : "del") << endl;
+	}
+	void shadowMutState(Molecule *m, int c, int oldValue, int newValue) {
+		if (!shadowOn() || oldValue == newValue) return;
+		cout << "@MUTS " << shadowEvent
+		     << " " << m->getUniqueID()
+		     << " " << m->getMoleculeType()->getName()
+		     << " " << m->getMoleculeType()->getComponentName(c)
+		     /* State NAMES, not internal integer indices: the dependency
+		      * index is keyed on the XML state string, so logging the
+		      * integer made every state dependency silently incomparable
+		      * and suppressed loss-side state candidates entirely. */
+		     << " " << m->getMoleculeType()->getComponentStateName(c, oldValue)
+		     << " " << m->getMoleculeType()->getComponentStateName(c, newValue)
+		     << endl;
+	}
 }
-
-bool Molecule::isBindingSiteBonded(int cIndex) const
-{
-	if(bond[cIndex]==nullptr) return false;
-	return true;
-}
-
-Molecule * Molecule::getBondedMolecule(int cIndex) const
-{
-	return bond[cIndex];
-}
-
-// given the component index, look up what we are bonded to.  Then
-// in the molecule we are bonded to, look at what site we are bonded to
-//
-//  for instance
-//
-//    this(a!1).other(b!),   and we call this->getBondedMoleculeBindingSiteIndex(0)
-//
-//    where index 0 = this site a, then this function would return the
-//    component index of b in molecule other.
-//
-int Molecule::getBondedMoleculeBindingSiteIndex(int cIndex) const
-{
-	return indexOfBond[cIndex];
-}
-
-
 
 void Molecule::bind(Molecule *m1, int cIndex1, Molecule *m2, int cIndex2)
 {
@@ -492,10 +613,20 @@ void Molecule::bind(Molecule *m1, int cIndex1, Molecule *m2, int cIndex2)
 
 	m1->indexOfBond[cIndex1] = cIndex2;
 	m2->indexOfBond[cIndex2] = cIndex1;
+	if (profileSystem != 0)
+		profileSystem->recordMembershipBondMutation(
+				m1, cIndex1, m2, cIndex2, true);
+	NFcore::shadowMutBond(m1, cIndex1, m2, cIndex2, true);
 	if (cIndex1 < 64)
 		m1->boundComponentMask |= (std::uint64_t(1) << cIndex1);
 	if (cIndex2 < 64)
 		m2->boundComponentMask |= (std::uint64_t(1) << cIndex2);
+	m1->bondedComponentIndices.insert(
+			std::lower_bound(m1->bondedComponentIndices.begin(),
+				m1->bondedComponentIndices.end(), cIndex1), cIndex1);
+	m2->bondedComponentIndices.insert(
+			std::lower_bound(m2->bondedComponentIndices.begin(),
+				m2->bondedComponentIndices.end(), cIndex2), cIndex2);
 	if (profile)
 		profileSystem->recordProfileTopologyMutation();
 
@@ -559,12 +690,24 @@ vector<int> Molecule::unbind(Molecule *m1, int cIndex)
 
 	m1->indexOfBond[cIndex] = NOINDEX;
 	m2->indexOfBond[cIndex2] = NOINDEX;
+	if (profileSystem != 0)
+		profileSystem->recordMembershipBondMutation(
+				m1, cIndex, m2, cIndex2, false);
+	NFcore::shadowMutBond(m1, cIndex, m2, cIndex2, false);
 	if (cIndex < 64)
 		m1->boundComponentMask &=
 				~(std::uint64_t(1) << cIndex);
 	if (cIndex2 < 64)
 		m2->boundComponentMask &=
 				~(std::uint64_t(1) << cIndex2);
+	vector<int>::iterator occupied1 = std::lower_bound(
+			m1->bondedComponentIndices.begin(), m1->bondedComponentIndices.end(), cIndex);
+	if (occupied1 != m1->bondedComponentIndices.end() && *occupied1 == cIndex)
+		m1->bondedComponentIndices.erase(occupied1);
+	vector<int>::iterator occupied2 = std::lower_bound(
+			m2->bondedComponentIndices.begin(), m2->bondedComponentIndices.end(), cIndex2);
+	if (occupied2 != m2->bondedComponentIndices.end() && *occupied2 == cIndex2)
+		m2->bondedComponentIndices.erase(occupied2);
 	if (profile)
 		profileSystem->recordProfileTopologyMutation();
 
@@ -672,9 +815,11 @@ bool Molecule::breadthFirstSearchImpl(
 		//Make sure the depth does not exceed the limit we want to search
 		if((depth!=ReactionClass::NO_LIMIT) && (currentDepth>=depth)) {
 			if (TRACK_TRUNCATION) {
-				for (int c=0; c<cM->numOfComponents; c++) {
-					if (cM->isBindingSiteBonded(c) &&
-							!cM->getBondedMolecule(c)->hasVisitedMolecule) {
+				for (vector<int>::const_iterator bit =
+						cM->bondedComponentIndices.begin();
+						bit != cM->bondedComponentIndices.end(); ++bit) {
+					Molecule *neighbor = cM->bond[*bit];
+					if (neighbor != 0 && !neighbor->hasVisitedMolecule) {
 						traversalTruncated = true;
 						break;
 					}
@@ -683,25 +828,21 @@ bool Molecule::breadthFirstSearchImpl(
 			continue;
 		}
 
-		//Loop through the bonds
-		int cMax = cM->numOfComponents;
-		for(int c=0; c<cMax; c++)
+		// Iterate only occupied sites.  Large polymer-like molecule types can
+		// declare hundreds or thousands of components but usually have low degree.
+		for (vector<int>::const_iterator bit = cM->bondedComponentIndices.begin();
+				bit != cM->bondedComponentIndices.end(); ++bit)
 		{
-			//cM->getComp
-			if(cM->isBindingSiteBonded(c))
+			const int c = *bit;
+			Molecule *neighbor = cM->bond[c];
+			if (neighbor == 0) continue; // defensive: sparse list must mirror bond[]
+			if (PROFILE) ++edgeVisits;
+			if(!neighbor->hasVisitedMolecule)
 			{
-				if (PROFILE) ++edgeVisits;
-				Molecule *neighbor = cM->getBondedMolecule(c);
-				//cout<<"looking at neighbor: "<<endl;
-				//neighbor->printDetails();
-				if(!neighbor->hasVisitedMolecule)
-				{
-					neighbor->hasVisitedMolecule=true;
-					members.push_back(neighbor);
-					q.push(neighbor);
-					d.push(currentDepth+1);
-					//cout<<"adding... to traversal list."<<endl;
-				}
+				neighbor->hasVisitedMolecule=true;
+				members.push_back(neighbor);
+				q.push(neighbor);
+				d.push(currentDepth+1);
 			}
 		}
 	}

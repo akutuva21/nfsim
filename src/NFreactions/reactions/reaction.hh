@@ -50,15 +50,20 @@ namespace NFcore
 			virtual int checkForEquality(Molecule *m, MappingSet* ms,int rxnIndex, ReactantList*);
 
 			virtual bool tryToAdd(Molecule *m, unsigned int reactantPos);
+			virtual bool tryToAddWithIndex(Molecule *m, unsigned int reactantPos,
+					int rxnIndex);
 			virtual void remove(Molecule *m, unsigned int reactantPos);
 			virtual double update_a();
+			virtual bool propensityDependsOnlyOnMembership() const { return true; }
 			virtual void notifyRateFactorChange(Molecule * m, int reactantIndex, int rxnListIndex);
 			virtual int getReactantCount(unsigned int reactantIndex) const;
 			virtual int getCorrectedReactantCount(unsigned int reactantIndex) const;
 
 			virtual void printFullDetails() const;
 
-				protected:
+			virtual void listMatchIds(vector <int> &ids) const;
+
+		protected:
 					virtual void pickRuleMonkeyMappingSets(double randNumber) const;
 					virtual double exactRuleMonkey_a();
 
@@ -85,6 +90,10 @@ namespace NFcore
 			virtual ~FunctionalRxnClass();
 
 			virtual double update_a();
+			virtual bool propensityDependsOnlyOnMembership() const {
+				return (gf != 0 && gf->isRuntimeInvariant()) ||
+					(cf != 0 && cf->isMembershipOnlyRate());
+			}
 			virtual double exactRuleMonkey_a();
 			virtual void pickRuleMonkeyMappingSets(double randNumber) const { BasicRxnClass::pickRuleMonkeyMappingSets(randNumber); }
 			virtual void printDetails() const;
@@ -102,6 +111,7 @@ namespace NFcore
 			virtual ~MMRxnClass();
 
 			virtual double update_a();
+			virtual bool propensityDependsOnlyOnMembership() const { return true; }
 				virtual double exactRuleMonkey_a();
 				virtual void pickRuleMonkeyMappingSets(double randNumber) const { BasicRxnClass::pickRuleMonkeyMappingSets(randNumber); }
 			virtual void printDetails() const;
@@ -190,6 +200,10 @@ namespace NFcore
 			int * argIndexIntoMappingSet;
 			Molecule ** argMappedMolecule;
 			int * argScope;
+			/* Reused scratch storage for reactant-count variables.  Local-rate
+			 * evaluation is on the mapping hot path; allocating this array for
+			 * every mapping was needlessly expensive for indexed DOR rules. */
+			int * reactantCountsBuffer;
 
 	};
 
@@ -393,6 +407,7 @@ namespace NFcore
 			Molecule ** argMappedMolecule2;
 			int * argScope1;
 			int * argScope2;
+			int * reactantCountsBuffer;
 
 	};
 

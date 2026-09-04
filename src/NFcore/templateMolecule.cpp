@@ -1,5 +1,7 @@
 #include <iostream>
 #include <sstream>
+#include <functional>
+#include <unordered_map>
 
 #include "templateMolecule.hh"
 #include "compartment.hh"
@@ -29,22 +31,22 @@ TemplateMolecule::TemplateMolecule(MoleculeType * moleculeType){
 	this->uniqueTemplateID=TotalTemplateMoleculeCount++;
 
 	this->n_mapGenerators=0;
-	this->mapGenerators=new MapGenerator*[0];
+	this->mapGenerators=0;
 
 	//Start everything off with no constraints, then we will reinitialize
 	//every time we add some type of constraint
-	this->emptyComps=new int[0];
-	this->occupiedComps=new int[0];
-	this->compStateConstraint_Comp=new int[0];
-	this->compStateConstraint_Constraint=new int[0];
-	this->compStateExclusion_Comp=new int[0];
-	this->compStateExclusion_Exclusion=new int[0];
-	this->bondComp=new int[0];
-	this->bondCompName=new string[0];
-	this->bondPartner=new TemplateMolecule * [0];
-	this->bondPartnerCompName=new string[0];
-	this->bondPartnerCompIndex=new int[0];
-	this->hasVisitedBond=new bool[0];
+	this->emptyComps=0;
+	this->occupiedComps=0;
+	this->compStateConstraint_Comp=0;
+	this->compStateConstraint_Constraint=0;
+	this->compStateExclusion_Comp=0;
+	this->compStateExclusion_Exclusion=0;
+	this->bondComp=0;
+	this->bondCompName=0;
+	this->bondPartner=0;
+	this->bondPartnerCompName=0;
+	this->bondPartnerCompIndex=0;
+	this->hasVisitedBond=0;
 	//
 	this->n_emptyComps=0;
 	this->n_occupiedComps=0;
@@ -53,33 +55,38 @@ TemplateMolecule::TemplateMolecule(MoleculeType * moleculeType){
 
 	this->n_bonds=0;
 	this->n_connectedTo=0;
-	this->connectedTo=new TemplateMolecule*[n_connectedTo];
-	this->hasTraversedDownConnectedTo=new bool[n_connectedTo];
-	this->otherTemplateConnectedToIndex=new int[n_connectedTo];
-	this->connectedToHasRxnCenter=new bool[n_connectedTo];
+	this->connectedTo=0;
+	this->hasTraversedDownConnectedTo=0;
+	this->otherTemplateConnectedToIndex=0;
+	this->connectedToHasRxnCenter=0;
 
 
 
 	//Init symmetric site matchers...
 	this->n_symComps=0;
-	this->symCompName=new string[0];
-	this->symCompUniqueId=new string[0];
-	this->symCompStateConstraint=new int[0];
-	this->symCompBoundState=new int[0];  //either Empty (0) or Occupied (1);
-	this->symBondPartner=new TemplateMolecule * [0];
-	this->symBondPartnerCompName=new string[0];
-	this->symBondPartnerCompIndex=new int[0];
-	this->hasTraversedDownSym=new bool[0];
+	this->symCompName=0;
+	this->symCompUniqueId=0;
+	this->symCompStateConstraint=0;
+	this->symCompBoundState=0;  //either Empty (0) or Occupied (1);
+	this->symBondPartner=0;
+	this->symBondPartnerCompName=0;
+	this->symBondPartnerCompIndex=0;
+	this->hasTraversedDownSym=0;
 
 
 	//Get information from the moleculeType as to how we might
 	//match up each of its components
 	this->n_totalComps=moleculeType->getNumOfComponents();
-	this->isSymCompMapped=new bool[n_totalComps];
-	this->compIsAlwaysMapped=new bool[n_totalComps];
-	for(int i=0; i<n_totalComps; i++) {
-		isSymCompMapped[i]=false;
-		compIsAlwaysMapped[i]=false;
+	/* compIsAlwaysMapped is consulted only by symmetric-component matching.
+	 * Avoid a component-sized allocation for the overwhelmingly common case
+	 * where the molecule type has no equivalent components.  isSymCompMapped
+	 * was never read anywhere in the engine; keep it null for ABI/source
+	 * compatibility until the field can be removed in a cleanup change. */
+	this->isSymCompMapped=0;
+	this->compIsAlwaysMapped=0;
+	if (moleculeType->getNumOfEquivalencyClasses() > 0) {
+		this->compIsAlwaysMapped=new bool[n_totalComps];
+		for(int i=0; i<n_totalComps; i++) compIsAlwaysMapped[i]=false;
 	}
 
 	//
@@ -92,6 +99,8 @@ TemplateMolecule::TemplateMolecule(MoleculeType * moleculeType){
 
 	this->mappedTm = NULL;
 	this->compartment = NULL;
+	this->compiledSimpleMatcherBuilt = false;
+	this->compiledSimpleMatcherSafe = false;
 }
 
 
@@ -148,6 +157,148 @@ string TemplateMolecule::getCompartmentId() const {
 	return compartment ? compartment->getId() : "";
 }
 
+bool TemplateMolecule::getSimpleStateConstraint(int &componentIndex, int &stateValue) const
+{
+	if (n_mapGenerators != 0 || n_emptyComps != 0 || n_occupiedComps != 0 ||
+			n_compStateConstraint != 1 || n_compStateExclusion != 0 ||
+			n_bonds != 0 || n_connectedTo != 0 || n_symComps != 0 ||
+			compartment != 0) {
+		return false;
+	}
+	componentIndex = compStateConstraint_Comp[0];
+	stateValue = compStateConstraint_Constraint[0];
+	return true;
+}
+
+
+bool TemplateMolecule::collectRootMembershipDependencies(
+		vector<MembershipPatternDependency> &out) const
+{
+	if (n_symComps != 0 || n_connectedTo != 0 || compartment != 0)
+		return false;
+
+	for (int i = 0; i < n_compStateConstraint; ++i) {
+		MembershipPatternDependency d;
+		d.kind = MembershipPatternDependency::STATE_REQUIRED;
+		d.moleculeType = moleculeType;
+		d.componentIndex = compStateConstraint_Comp[i];
+		d.stateValue = compStateConstraint_Constraint[i];
+		out.push_back(d);
+	}
+	for (int i = 0; i < n_compStateExclusion; ++i) {
+		MembershipPatternDependency d;
+		d.kind = MembershipPatternDependency::STATE_EXCLUDED;
+		d.moleculeType = moleculeType;
+		d.componentIndex = compStateExclusion_Comp[i];
+		d.stateValue = compStateExclusion_Exclusion[i];
+		out.push_back(d);
+	}
+	for (int i = 0; i < n_emptyComps; ++i) {
+		MembershipPatternDependency d;
+		d.kind = MembershipPatternDependency::BOND_FREE;
+		d.moleculeType = moleculeType;
+		d.componentIndex = emptyComps[i];
+		out.push_back(d);
+	}
+	for (int i = 0; i < n_occupiedComps; ++i) {
+		MembershipPatternDependency d;
+		d.kind = MembershipPatternDependency::BOND_BOUND;
+		d.moleculeType = moleculeType;
+		d.componentIndex = occupiedComps[i];
+		out.push_back(d);
+	}
+	for (int i = 0; i < n_bonds; ++i) {
+		TemplateMolecule *partner = bondPartner[i];
+		if (partner == 0) continue;
+		int partnerComponent = bondPartnerCompIndex[i];
+		if (partnerComponent < 0) return false;
+		MembershipPatternDependency d;
+		d.kind = MembershipPatternDependency::TOPOLOGY;
+		d.moleculeType = moleculeType;
+		d.componentIndex = bondComp[i];
+		d.partnerType = partner->moleculeType;
+		d.partnerComponentIndex = partnerComponent;
+		out.push_back(d);
+	}
+	return true;
+}
+
+bool TemplateMolecule::collectMembershipDependencies(
+		vector<MembershipPatternDependency> &out) const
+{
+	vector<TemplateMolecule *> templates;
+	TemplateMolecule::traverse(const_cast<TemplateMolecule *>(this),
+			templates, TemplateMolecule::FIND_ALL);
+
+	/* Symmetric-site matching, connectedTo/disjoint matching, and compartment
+	 * constraints are deliberately outside the first production filter.  A
+	 * runtime reaction-role containing any of them falls back to unconditional
+	 * membership refresh. */
+	for (vector<TemplateMolecule *>::const_iterator it = templates.begin();
+			it != templates.end(); ++it) {
+		TemplateMolecule *tm = *it;
+		if (tm->n_symComps != 0 || tm->n_connectedTo != 0 ||
+				tm->compartment != 0)
+			return false;
+	}
+
+	for (vector<TemplateMolecule *>::const_iterator it = templates.begin();
+			it != templates.end(); ++it) {
+		TemplateMolecule *tm = *it;
+		MoleculeType *mt = tm->moleculeType;
+
+		for (int i = 0; i < tm->n_compStateConstraint; ++i) {
+			MembershipPatternDependency d;
+			d.kind = MembershipPatternDependency::STATE_REQUIRED;
+			d.moleculeType = mt;
+			d.componentIndex = tm->compStateConstraint_Comp[i];
+			d.stateValue = tm->compStateConstraint_Constraint[i];
+			out.push_back(d);
+		}
+		for (int i = 0; i < tm->n_compStateExclusion; ++i) {
+			MembershipPatternDependency d;
+			d.kind = MembershipPatternDependency::STATE_EXCLUDED;
+			d.moleculeType = mt;
+			d.componentIndex = tm->compStateExclusion_Comp[i];
+			d.stateValue = tm->compStateExclusion_Exclusion[i];
+			out.push_back(d);
+		}
+		for (int i = 0; i < tm->n_emptyComps; ++i) {
+			MembershipPatternDependency d;
+			d.kind = MembershipPatternDependency::BOND_FREE;
+			d.moleculeType = mt;
+			d.componentIndex = tm->emptyComps[i];
+			out.push_back(d);
+		}
+		for (int i = 0; i < tm->n_occupiedComps; ++i) {
+			MembershipPatternDependency d;
+			d.kind = MembershipPatternDependency::BOND_BOUND;
+			d.moleculeType = mt;
+			d.componentIndex = tm->occupiedComps[i];
+			out.push_back(d);
+		}
+
+		for (int i = 0; i < tm->n_bonds; ++i) {
+			TemplateMolecule *partner = tm->bondPartner[i];
+			if (partner == 0) continue;
+			int partnerComponent = tm->bondPartnerCompIndex[i];
+			if (partnerComponent < 0) {
+				/* The only expected negative case is a symmetric partner site;
+				 * the symmetric guard above should already have rejected it. */
+				return false;
+			}
+			MembershipPatternDependency d;
+			d.kind = MembershipPatternDependency::TOPOLOGY;
+			d.moleculeType = mt;
+			d.componentIndex = tm->bondComp[i];
+			d.partnerType = partner->moleculeType;
+			d.partnerComponentIndex = partnerComponent;
+			out.push_back(d);
+		}
+	}
+	return true;
+}
+
 
 void TemplateMolecule::addMapGenerator(MapGenerator *mg) {
 	MapGenerator ** newMapGenerators = new MapGenerator*[n_mapGenerators+1];
@@ -183,7 +334,7 @@ void TemplateMolecule::addEmptyComponent(const string& cName) {
 	delete [] emptyComps;
 	emptyComps=newEmptyCompArray;
 	n_emptyComps++;
-	compIsAlwaysMapped[compIndex]=true;
+	if (compIsAlwaysMapped) compIsAlwaysMapped[compIndex]=true;
 }
 void TemplateMolecule::addBoundComponent(const string& cName) {
 	if(moleculeType->isEquivalentComponent(cName)) {
@@ -197,7 +348,7 @@ void TemplateMolecule::addBoundComponent(const string& cName) {
 	delete [] occupiedComps;
 	occupiedComps=newOccupiedCompArray;
 	n_occupiedComps++;
-	compIsAlwaysMapped[compIndex]=true;
+	if (compIsAlwaysMapped) compIsAlwaysMapped[compIndex]=true;
 }
 void TemplateMolecule::addComponentConstraint(const string& cName, const string& stateName) {
 	if(moleculeType->isEquivalentComponent(cName)) {
@@ -236,7 +387,7 @@ void TemplateMolecule::addComponentConstraint(const string& cName, int stateValu
 	compStateConstraint_Comp=newConstraint_Comp;
 	compStateConstraint_Constraint=newConstraint_Constraint;
 	n_compStateConstraint++;
-	compIsAlwaysMapped[compIndex]=true;
+	if (compIsAlwaysMapped) compIsAlwaysMapped[compIndex]=true;
 }
 void TemplateMolecule::addComponentExclusion(const string& cName, const string& stateName) {
 	if(moleculeType->isEquivalentComponent(cName)) {
@@ -265,7 +416,7 @@ void TemplateMolecule::addComponentExclusion(const string& cName, int stateValue
 	compStateExclusion_Comp=newExclusion_Comp;
 	compStateExclusion_Exclusion=newExclusion_Exclusion;
 	n_compStateExclusion++;
-	compIsAlwaysMapped[compIndex]=true;
+	if (compIsAlwaysMapped) compIsAlwaysMapped[compIndex]=true;
 }
 
 void TemplateMolecule::clearConnectedTo()
@@ -275,10 +426,10 @@ void TemplateMolecule::clearConnectedTo()
 	delete [] otherTemplateConnectedToIndex;
 	delete [] connectedToHasRxnCenter;
 	this->n_connectedTo=0;
-	this->connectedTo=new TemplateMolecule*[n_connectedTo];
-	this->hasTraversedDownConnectedTo=new bool[n_connectedTo];
-	this->otherTemplateConnectedToIndex=new int[n_connectedTo];
-	this->connectedToHasRxnCenter=new bool[n_connectedTo];
+	this->connectedTo=0;
+	this->hasTraversedDownConnectedTo=0;
+	this->otherTemplateConnectedToIndex=0;
+	this->connectedToHasRxnCenter=0;
 }
 
 void TemplateMolecule::addConnectedTo(TemplateMolecule *t2, int otherConToIndex) {
@@ -564,7 +715,7 @@ void TemplateMolecule::addBond(string thisBsiteName,
 	bondPartnerCompIndex=newBondPartnerCompIndex;
 	hasVisitedBond=newHasVisitedBond;
 	n_bonds++;
-	compIsAlwaysMapped[compIndex]=true;
+	if (compIsAlwaysMapped) compIsAlwaysMapped[compIndex]=true;
 }
 
 
@@ -783,6 +934,129 @@ void TemplateMolecule::clearTemplateOnly() {
 }
 
 
+
+
+void TemplateMolecule::buildCompiledSimpleMatcher()
+{
+	if (compiledSimpleMatcherBuilt) return;
+	compiledSimpleMatcherBuilt = true;
+	compiledSimpleMatcherSafe = true;
+	compiledSimpleNodes.clear();
+	compiledSimpleBackEdges.clear();
+	compiledSimpleMapOrder.clear();
+
+	std::unordered_map<TemplateMolecule *, int> index;
+	std::function<void(TemplateMolecule *, int, int, int)> visit =
+		[&](TemplateMolecule *tm, int parent, int parentComp, int selfComp) {
+			if (!compiledSimpleMatcherSafe) return;
+			if (tm == 0 || tm->n_symComps != 0 || tm->n_connectedTo != 0 ||
+					tm->compartment != 0) {
+				compiledSimpleMatcherSafe = false;
+				return;
+			}
+			int idx = static_cast<int>(compiledSimpleNodes.size());
+			index[tm] = idx;
+			CompiledSimpleNode node;
+			node.tm = tm; node.parent = parent;
+			node.parentComp = parentComp; node.selfComp = selfComp;
+			compiledSimpleNodes.push_back(node);
+
+			/* Follow explicit bonds in the same stored order used by compare(). */
+			for (int b=0; b<tm->n_bonds; ++b) {
+				TemplateMolecule *next = tm->bondPartner[b];
+				if (next == 0 || next == tm || tm->bondPartnerCompIndex[b] < 0) {
+					compiledSimpleMatcherSafe = false;
+					return;
+				}
+				if (index.find(next) == index.end())
+					visit(next, idx, tm->bondComp[b], tm->bondPartnerCompIndex[b]);
+				if (!compiledSimpleMatcherSafe) return;
+			}
+			compiledSimpleMapOrder.push_back(idx);
+		};
+	visit(this, -1, -1, -1);
+	if (!compiledSimpleMatcherSafe) {
+		compiledSimpleNodes.clear(); compiledSimpleBackEdges.clear();
+		compiledSimpleMapOrder.clear(); return;
+	}
+
+	/* Every explicit bond is stored at both endpoints.  Record non-tree edges
+	 * exactly once; tree edges are already validated while assigning a child. */
+	for (std::size_t ai=0; ai<compiledSimpleNodes.size(); ++ai) {
+		TemplateMolecule *tm = compiledSimpleNodes[ai].tm;
+		for (int b=0; b<tm->n_bonds; ++b) {
+			auto found = index.find(tm->bondPartner[b]);
+			if (found == index.end()) { compiledSimpleMatcherSafe=false; break; }
+			int bi = found->second;
+			if (static_cast<int>(ai) >= bi) continue;
+			bool tree = false;
+			const CompiledSimpleNode &bn = compiledSimpleNodes[bi];
+			if (bn.parent == static_cast<int>(ai) &&
+					bn.parentComp == tm->bondComp[b] &&
+					bn.selfComp == tm->bondPartnerCompIndex[b]) tree = true;
+			const CompiledSimpleNode &an = compiledSimpleNodes[ai];
+			if (an.parent == bi && an.selfComp == tm->bondComp[b] &&
+					an.parentComp == tm->bondPartnerCompIndex[b]) tree = true;
+			if (!tree) {
+				CompiledSimpleEdge e; e.a=static_cast<int>(ai); e.b=bi;
+				e.compA=tm->bondComp[b]; e.compB=tm->bondPartnerCompIndex[b];
+				compiledSimpleBackEdges.push_back(e);
+			}
+		}
+		if (!compiledSimpleMatcherSafe) break;
+	}
+	if (!compiledSimpleMatcherSafe) {
+		compiledSimpleNodes.clear(); compiledSimpleBackEdges.clear();
+		compiledSimpleMapOrder.clear(); return;
+	}
+	compiledSimpleMappedScratch.resize(compiledSimpleNodes.size(), 0);
+}
+
+bool TemplateMolecule::compareCompiledSimple(Molecule *m, MappingSet *ms, bool &used)
+{
+	buildCompiledSimpleMatcher();
+	used = compiledSimpleMatcherSafe;
+	if (!used) return false;
+	if (m == 0 || compiledSimpleNodes.empty() ||
+			m->getMoleculeType() != compiledSimpleNodes[0].tm->moleculeType)
+		return false;
+
+	std::fill(compiledSimpleMappedScratch.begin(), compiledSimpleMappedScratch.end(),
+			static_cast<Molecule *>(0));
+	compiledSimpleMappedScratch[0] = m;
+	if (!compiledSimpleNodes[0].tm->checkBasicComponents(m)) return false;
+
+	for (std::size_t i=1; i<compiledSimpleNodes.size(); ++i) {
+		const CompiledSimpleNode &node = compiledSimpleNodes[i];
+		if (node.parent < 0 || static_cast<std::size_t>(node.parent) >= i) return false;
+		Molecule *pm = compiledSimpleMappedScratch[static_cast<std::size_t>(node.parent)];
+		if (pm == 0 || pm->getBondedMoleculeBindingSiteIndex(node.parentComp) !=
+				node.selfComp) return false;
+		Molecule *cm = pm->getBondedMolecule(node.parentComp);
+		if (cm == 0 || cm->getMoleculeType() != node.tm->moleculeType) return false;
+		for (std::size_t j=0; j<i; ++j)
+			if (compiledSimpleMappedScratch[j] == cm) return false;
+		if (!node.tm->checkBasicComponents(cm)) return false;
+		compiledSimpleMappedScratch[i] = cm;
+	}
+	for (vector<CompiledSimpleEdge>::const_iterator it=compiledSimpleBackEdges.begin();
+			it!=compiledSimpleBackEdges.end(); ++it) {
+		Molecule *a=compiledSimpleMappedScratch[static_cast<std::size_t>(it->a)];
+		Molecule *b=compiledSimpleMappedScratch[static_cast<std::size_t>(it->b)];
+		if (a == 0 || b == 0 || a->getBondedMolecule(it->compA) != b ||
+				a->getBondedMoleculeBindingSiteIndex(it->compA) != it->compB)
+			return false;
+	}
+	/* Map in the same DFS post-order as the recursive matcher. Mapping generators
+	 * write fixed MappingSet slots, so this is both deterministic and equivalent. */
+	for (vector<int>::const_iterator it=compiledSimpleMapOrder.begin();
+			it!=compiledSimpleMapOrder.end(); ++it) {
+		int i=*it;
+		compiledSimpleNodes[static_cast<std::size_t>(i)].tm->mapMolecule(
+				compiledSimpleMappedScratch[static_cast<std::size_t>(i)], ms, 0);
+	}
+	return true;
+}
 
 bool TemplateMolecule::compare(Molecule *m)
 {

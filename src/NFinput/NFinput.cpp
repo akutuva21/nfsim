@@ -1,4 +1,5 @@
 #include "NFinput.hh"
+#include "speciesStream.hh"
 #include "NFinput_energy.hh"
 #include "../NFcore/compartment.hh"
 
@@ -10,6 +11,91 @@
 using namespace NFinput;
 using namespace std;
 using namespace NFcore;
+
+
+/* Input-level finite state-set extension used by compact generated models.
+ * Internally this is represented as exclusions for the unlisted states, so
+ * the hot TemplateMolecule matching path remains unchanged for legacy XML.
+ * The extension is intentionally strict: it is only accepted for unique
+ * components and cannot be combined with the ordinary single-state syntax. */
+static bool addReactantStateSetConstraint(
+		TiXmlElement *pComp,
+		MoleculeType *moltype,
+		const string &molName,
+		const string &compName,
+		const string &patternName,
+		TemplateMolecule *tempmol,
+		map<string,int> &allowedStates)
+{
+	const char *stateSetText = pComp->Attribute("stateSet");
+	if (stateSetText == NULL)
+		return true;
+	if (pComp->Attribute("state") != NULL) {
+		cerr << "!!!Error. Component '" << compName << "' in pattern '"
+			 << patternName << "' cannot define both state and stateSet. Quitting."
+			 << endl;
+		return false;
+	}
+	if (moltype->isEquivalentComponent(compName)) {
+		cerr << "!!!Error. stateSet is not supported on symmetric component '"
+			 << compName << "' in pattern '" << patternName << "'. Quitting."
+			 << endl;
+		return false;
+	}
+
+	int componentIndex = moltype->getCompIndexFromName(compName);
+	vector<vector<string> > possibleStates = moltype->getPossibleCompStates();
+	if (componentIndex < 0 || componentIndex >=
+			static_cast<int>(possibleStates.size()) ||
+			possibleStates[componentIndex].empty()) {
+		cerr << "!!!Error. stateSet refers to component '" << compName
+			 << "' without enumerated states in pattern '" << patternName
+			 << "'. Quitting." << endl;
+		return false;
+	}
+
+	vector<bool> keep(possibleStates[componentIndex].size(), false);
+	stringstream entries(stateSetText);
+	string stateName;
+	bool hasState = false;
+	while (getline(entries, stateName, ',')) {
+		NFutil::trim(stateName);
+		if (stateName.empty()) {
+			cerr << "!!!Error. stateSet for component '" << compName
+				 << "' in pattern '" << patternName
+				 << "' contains an empty state. Quitting." << endl;
+			return false;
+		}
+		map<string,int>::const_iterator stateIt = allowedStates.find(
+				molName + "_" + compName + "_" + stateName);
+		if (stateIt == allowedStates.end() || stateIt->second < 0 ||
+			stateIt->second >= static_cast<int>(keep.size())) {
+			cerr << "!!!Error. stateSet for component '" << compName
+				 << "' in pattern '" << patternName
+				 << "' refers to unknown state '" << stateName
+				 << "'. Quitting." << endl;
+			return false;
+		}
+		if (keep[stateIt->second]) {
+			cerr << "!!!Error. stateSet for component '" << compName
+				 << "' in pattern '" << patternName
+				 << "' repeats state '" << stateName << "'. Quitting." << endl;
+			return false;
+		}
+		keep[stateIt->second] = true;
+		hasState = true;
+	}
+	if (!hasState) {
+		cerr << "!!!Error. stateSet for component '" << compName
+			 << "' in pattern '" << patternName << "' is empty. Quitting."
+			 << endl;
+		return false;
+	}
+	for (int state = 0; state < static_cast<int>(keep.size()); ++state)
+		if (!keep[state])
+			tempmol->addComponentExclusion(compName, state);
+	return true;
+}
 
 
 
@@ -79,8 +165,39 @@ System * NFinput::initializeFromXML(
 	if(verbose) cout<<"\tTrying to read xml model specification file: \t\n'"<<filename<<"'"<<endl;
 
 
-	TiXmlDocument doc(filename.c_str());
-	bool loadOkay = doc.LoadFile();
+	/* Read the document without materializing <ListOfSpecies> as a DOM.  On a
+	 * model whose seed state is an explicit polymer chain that subtree is
+	 * effectively the whole file and costs about ten bytes resident per byte
+	 * of XML.  If the split fails for any reason we fall back to the original
+	 * whole-file DOM load, so behaviour is unchanged on unusual inputs. */
+	string speciesSkeleton;
+	vector <SpeciesSpan> speciesSpans;
+	vector <SpeciesSpan> ruleSpans;
+	bool streamedSpecies = splitStreamedSections(filename, speciesSkeleton,
+			speciesSpans, ruleSpans);
+
+	TiXmlDocument doc;
+	bool loadOkay = false;
+	if (streamedSpecies) {
+		doc.Parse(speciesSkeleton.c_str());
+		loadOkay = !doc.Error();
+		if (!loadOkay) {
+			streamedSpecies = false;
+			speciesSkeleton.clear();
+			speciesSpans.clear();
+			ruleSpans.clear();
+		} else {
+			/* free the skeleton text now that the DOM owns its own copy */
+			string().swap(speciesSkeleton);
+		}
+	}
+	if (!loadOkay) {
+		doc.Clear();
+		doc.SetValue(filename.c_str());
+		loadOkay = doc.LoadFile(filename.c_str());
+		streamedSpecies = false;
+		ruleSpans.clear();
+	}
 	if (loadOkay)
 	{
 		if(verbose) cout<<"\t\tread was successful... beginning parse..."<<endl<<endl;
@@ -182,7 +299,12 @@ System * NFinput::initializeFromXML(
 		else cout<<"\n\tReading list of Species..."<<endl;
 		// AS2023 - initialize log string, get the starting species
 		string logstr="";
-		logstr = initStartSpecies(pListOfSpecies, s, parameter, allowedStates, verbose);
+		if (streamedSpecies) {
+			logstr = initStartSpeciesStreamed(filename, speciesSpans, s,
+					parameter, allowedStates, verbose);
+		} else {
+			logstr = initStartSpecies(pListOfSpecies, s, parameter, allowedStates, verbose);
+		}
 		// AS2023 - an empty log is a failed initStartSpecies call now
 		if(logstr.empty())
 		{
@@ -229,7 +351,17 @@ System * NFinput::initializeFromXML(
 			return NULL;
 		}
 
-		if(!initReactionRules(pListOfReactionRules, s, parameter, allowedStates, blockSameComplexBinding, verbose, suggestedTraversalLimit))
+		bool rulesOk;
+		if (streamedSpecies) {
+			rulesOk = initReactionRulesStreamed(filename, ruleSpans, s,
+					parameter, allowedStates, blockSameComplexBinding, verbose,
+					suggestedTraversalLimit);
+		} else {
+			rulesOk = initReactionRules(pListOfReactionRules, s, parameter,
+					allowedStates, blockSameComplexBinding, verbose,
+					suggestedTraversalLimit);
+		}
+		if(!rulesOk)
 		{
 			cout<<"\n\nI failed at parsing your reaction rules.  Check standard error for a report."<<endl;
 			if(s!=NULL) delete s;
@@ -708,7 +840,7 @@ bool NFinput::initMoleculeTypes(
 // log of the initial species to be written into the event
 // log file eventually
 
-static bool processSingleSpecies(
+bool processSingleSpecies(
 		TiXmlElement * pSpec,
 		System * s,
 		map <string,double> &parameter,
@@ -1269,6 +1401,71 @@ string NFinput::initStartSpecies(
 		return "";
 	}
 	return "";
+}
+
+/* Streaming counterpart to initStartSpecies.
+ *
+ * Parses each <Species> element from its own small TiXmlDocument and releases
+ * it before moving to the next, so peak memory is one species rather than the
+ * entire <ListOfSpecies> subtree.  Semantics are identical: the same
+ * processSingleSpecies call runs on the same element content in the same
+ * document order, accumulating into the same operations/mgids/mids vectors. */
+string NFinput::initStartSpeciesStreamed(
+		const string &filename,
+		const vector <SpeciesSpan> &spans,
+		System * s,
+		map <string,double> &parameter,
+		map<string,int> &allowedStates,
+		bool verbose)
+{
+	FILE *handle = fopen(filename.c_str(), "rb");
+	if (handle == 0) {
+		cerr<<"Could not reopen "<<filename<<" for streamed species parsing."<<endl;
+		return "";
+	}
+	string result;
+	try {
+		vector <string> operations;
+		vector <int> mgids;
+		vector <int> mids;
+		string fragment;
+
+		for (size_t i = 0; i < spans.size(); ++i) {
+			if (!readSpeciesSpan(handle, spans[i], fragment)) {
+				cerr<<"Failed to read Species block "<<i<<" from "<<filename<<endl;
+				fclose(handle);
+				return "";
+			}
+			TiXmlDocument frag;
+			frag.Parse(fragment.c_str());
+			if (frag.Error()) {
+				cerr<<"Failed to parse Species block "<<i<<": "
+				    <<frag.ErrorDesc()<<endl;
+				fclose(handle);
+				return "";
+			}
+			TiXmlElement *pSpec = frag.FirstChildElement("Species");
+			if (pSpec == 0) {
+				cerr<<"Species block "<<i<<" had no Species element."<<endl;
+				fclose(handle);
+				return "";
+			}
+			if (!processSingleSpecies(pSpec, s, parameter, allowedStates,
+					verbose, operations, mgids, mids)) {
+				fclose(handle);
+				return "";
+			}
+			/* frag is destroyed here, so the DOM for this species is released
+			 * before the next one is read. */
+		}
+		result = buildInitialStateLog(mgids, mids, operations);
+	} catch (...) {
+		cerr<<"Caught some unknown error when creating Species."<<endl;
+		fclose(handle);
+		return "";
+	}
+	fclose(handle);
+	return result;
 }
 
 bool NFinput::initReactionRulePermutation(
@@ -2914,6 +3111,71 @@ bool NFinput::initReactionRules(
 	return false;
 }
 
+/* Streaming counterpart to initReactionRules.  Each <ReactionRule> is parsed
+ * from its own small document and released before the next is read, so the
+ * rule DOM does not accumulate.  This is the indexed-model analogue of the
+ * streamed species path: on a 500-site TASEP the rules are the bulk of the
+ * file, not the seed state. */
+bool NFinput::initReactionRulesStreamed(
+		const string &filename,
+		const vector <SpeciesSpan> &spans,
+		System * s,
+		map <string,double> &parameter,
+		map<string,int> &allowedStates,
+		bool blockSameComplexBinding,
+		bool verbose,
+		int &suggestedTraversalLimit)
+{
+	FILE *handle = fopen(filename.c_str(), "rb");
+	if (handle == 0) {
+		cerr<<"Could not reopen "<<filename<<" for streamed rule parsing."<<endl;
+		return false;
+	}
+	try {
+		map <string, int> reaction_name_id_map;
+		int reaction_count = 0;
+		string fragment;
+
+		for (size_t i = 0; i < spans.size(); ++i) {
+			if (!readSpeciesSpan(handle, spans[i], fragment)) {
+				cerr<<"Failed to read ReactionRule block "<<i<<endl;
+				fclose(handle); return false;
+			}
+			TiXmlDocument frag;
+			frag.Parse(fragment.c_str());
+			if (frag.Error()) {
+				cerr<<"Failed to parse ReactionRule block "<<i<<": "<<frag.ErrorDesc()<<endl;
+				fclose(handle); return false;
+			}
+			TiXmlElement *pRxnRule = frag.FirstChildElement("ReactionRule");
+			if (pRxnRule == 0) {
+				cerr<<"ReactionRule block "<<i<<" had no ReactionRule element."<<endl;
+				fclose(handle); return false;
+			}
+
+			map <string, component> symComps;
+			map <string, component> symRxnCenter;
+			if(!FindReactionRuleSymmetry(pRxnRule, s, parameter, allowedStates,
+					symComps, symRxnCenter, verbose)) { fclose(handle); return false; }
+			vector < map <string,component> > permutations;
+			generateRxnPermutations(permutations, symComps, symRxnCenter, verbose);
+			for (unsigned int pp = 0; pp < permutations.size(); ++pp) {
+				if (!initReactionRulePermutation(pRxnRule, s, parameter,
+						allowedStates, blockSameComplexBinding, verbose,
+						suggestedTraversalLimit, reaction_name_id_map,
+						reaction_count, permutations, pp)) {
+					fclose(handle); return false;
+				}
+			}
+		}
+	} catch (...) {
+		cerr<<"Caught some unknown error when creating ReactionRules."<<endl;
+		fclose(handle); return false;
+	}
+	fclose(handle);
+	return true;
+}
+
 
 bool NFinput::readObservableForTemplateMolecules(TiXmlElement *pObs,
 		string observableName,
@@ -3064,6 +3326,19 @@ bool NFinput::initObservables(
 				observableType = pObs->Attribute("type");
 			}
 			if(verbose) cout<<"\t\tCreating Observable: '"<<observableName<<"' of type: '"<<observableType<<"'"<<endl;
+			bool outputEnabled = true;
+			if (pObs->Attribute("output")) {
+				string outputValue = pObs->Attribute("output");
+				outputEnabled = !(outputValue == "0" || outputValue == "false" ||
+						outputValue == "False");
+			}
+			bool localOnly = false;
+			if (pObs->Attribute("localOnly")) {
+				string localOnlyValue = pObs->Attribute("localOnly");
+				localOnly = (localOnlyValue == "1" || localOnlyValue == "true" ||
+						localOnlyValue == "True");
+				if (localOnly) outputEnabled = false;
+			}
 
 			//Depending on the type of observable, we have to create it in a particular way
 			NFutil::trim(observableType);
@@ -3103,16 +3378,23 @@ bool NFinput::initObservables(
 				} else {
 					mo = new MoleculesObservable(observableName, tmList);
 				}
+				mo->setOutputEnabled(outputEnabled);
 
-				//Add the observable to each molecule type that will have to check in with this observable
-				//Generally, there is just one - but if there are multiple patterns, then we have to match
-				//each one separately...
+				// Ordinary molecule observables are maintained incrementally by each
+				// affected MoleculeType.  Local-only observables are evaluator
+				// predicates owned by a LocalFunction clone, so attaching them here
+				// would add a compare/count update to every product event.
+				if (!localOnly) {
+					//Add the observable to each molecule type that will have to check in with this observable
+					//Generally, there is just one - but if there are multiple patterns, then we have to match
+					//each one separately...
 					unordered_set <MoleculeType *> addedMolTypes;
 					for(unsigned int k=0; k<tmList.size(); k++) {
 						if (addedMolTypes.insert(tmList.at(k)->getMoleculeType()).second) {
 							tmList.at(k)->getMoleculeType()->addMolObs(mo);
 						}
 					}
+				}
 
 				//Finally, add the observable to the system so that we can keep track of it for output
 				s->addObservableForOutput(mo);
@@ -3137,6 +3419,7 @@ bool NFinput::initObservables(
 				if(!readObservableForTemplateMolecules(pObs,observableName,tmList,stochRelation,stochQuantity,s,parameter,allowedStates,Observable::SPECIES,verbose, suggestedTraversalLimit)) {return false;}
 
 				SpeciesObservable *so = new SpeciesObservable(observableName,tmList,stochRelation,stochQuantity);
+				so->setOutputEnabled(outputEnabled);
 				s->addObservableForOutput(so);
 
 			}
@@ -3263,13 +3546,18 @@ TemplateMolecule *NFinput::readPattern(
 				{
 					//Get the basic components of this molecule
 					string compId, compName, compBondCount;
-					if(!pComp->Attribute("id") || !pComp->Attribute("name") || !pComp->Attribute("numberOfBonds")) {
+					if(!pComp->Attribute("id") || !pComp->Attribute("name")) {
 						cerr<<"!!!Error.  Invalid 'Component' tag found when creating '"<<molUid<<"' of pattern '"<<patternName<<"'. Quitting"<<endl;
 						return NULL;
 					} else {
 						compId = pComp->Attribute("id");
 						compName = pComp->Attribute("name");
-						compBondCount = pComp->Attribute("numberOfBonds");
+						// An omitted bond constraint is the same as the existing
+						// wildcard forms.  Patterns use the absence of a constraint
+						// to express state-only predicates without manufacturing a
+						// binding-site constraint in the XML generator.
+						compBondCount = pComp->Attribute("numberOfBonds")
+								? pComp->Attribute("numberOfBonds") : "*";
 					}
 
 					//Set up basic component info so we can go back to it if need be...
@@ -3348,6 +3636,10 @@ TemplateMolecule *NFinput::readPattern(
 					//////////////////////////////////////////////////////
 					//////////////////////////////////////////////////////
 					} else {
+						if (!addReactantStateSetConstraint(
+								pComp, moltype, molName, compName, patternName,
+								tempmol, allowedStates))
+							return NULL;
 						//Read in a state, if it is in fact has an associated state
 						if(pComp->Attribute("state")) {
 							string compStateValue = pComp->Attribute("state");
@@ -3737,13 +4029,14 @@ bool NFinput::readProductPattern(
 				{
 					//Get the basic components of this molecule
 					string compId, compName, compBondCount;
-					if(!pComp->Attribute("id") || !pComp->Attribute("name") || !pComp->Attribute("numberOfBonds")) {
+					if(!pComp->Attribute("id") || !pComp->Attribute("name")) {
 						cerr<<"!!!Error.  Invalid 'Component' tag found when creating '"<<molUid<<"' of pattern '"<<patternName<<"'. Quitting"<<endl;
 						return false;
 					} else {
 						compId = pComp->Attribute("id");
 						compName = pComp->Attribute("name");
-						compBondCount = pComp->Attribute("numberOfBonds");
+						compBondCount = pComp->Attribute("numberOfBonds")
+								? pComp->Attribute("numberOfBonds") : "*";
 					}
 
 
@@ -4217,13 +4510,14 @@ int NFinput::readTemplatePattern(
 				{
 					//Get the basic components of this molecule
 					string compId, compName, compBondCount;
-					if(!pComp->Attribute("id") || !pComp->Attribute("name") || !pComp->Attribute("numberOfBonds")) {
+					if(!pComp->Attribute("id") || !pComp->Attribute("name")) {
 						cerr<<"!!!Error.  Invalid 'Component' tag found when creating '"<<molUid<<"' of pattern '"<<patternName<<"'. Quitting"<<endl;
 						return 0;
 					} else {
 						compId = pComp->Attribute("id");
 						compName = pComp->Attribute("name");
-						compBondCount = pComp->Attribute("numberOfBonds");
+						compBondCount = pComp->Attribute("numberOfBonds")
+								? pComp->Attribute("numberOfBonds") : "*";
 					}
 
 					//Set up basic component info so we can go back to it if need be...

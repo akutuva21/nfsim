@@ -31,6 +31,8 @@ using namespace NFcore;
  */
 namespace NFinput {
 
+	struct SpeciesSpan;
+
 	//! Maintains information about a component of a TemplateMolecule.
 	/*!
     	@author Michael Sneddon
@@ -164,6 +166,16 @@ namespace NFinput {
 			map<string,int> &allowedStates,
 			bool verbose);
 
+	//! Streaming variant: parses each <Species> block from its own small
+	//! document so peak memory is one species instead of the whole subtree.
+	string initStartSpeciesStreamed(
+			const std::string &filename,
+			const std::vector <SpeciesSpan> &spans,
+			System * system,
+			map <string,double> &parameter,
+			map<string,int> &allowedStates,
+			bool verbose);
+
 	//! Reads a reactionRule XML block and adds the rules to the system.
 	/*!
     	@author Michael Sneddon
@@ -181,6 +193,18 @@ namespace NFinput {
 			int &reaction_count,
 			vector < map <string,component> > &permutations,
 			unsigned int p);
+
+	//! Streaming variant: parses each <ReactionRule> from its own small
+	//! document so the rule DOM does not accumulate.
+	bool initReactionRulesStreamed(
+			const std::string &filename,
+			const std::vector <SpeciesSpan> &spans,
+			System * s,
+			map <string,double> &parameter,
+			map<string,int> &allowedStates,
+			bool blockSameComplexBinding,
+			bool verbose,
+			int &suggestedTraversalLimit);
 
 	bool initReactionRules(
 			TiXmlElement * pListOfReactionRules,

@@ -71,6 +71,14 @@ LocalFunction::LocalFunction(System *s,
 	this->parsedExpression=parsedExpression;
 	// default to false
 	this->isEverEvaluatedOnSpeciesScope=false;
+	this->hasSimpleStateDependency=false;
+	this->directStateLookup=false;
+	this->simpleStateMoleculeType=0;
+	this->simpleStateComponent=-1;
+	this->simpleStateCacheEnabled=false;
+	this->simpleStateCacheSize=0;
+	this->simpleStateCacheValues=0;
+	this->simpleStateCacheValid=0;
 	this->n_typeImolecules=0;
 	this->typeI_mol=new MoleculeType *[s->getNumOfMoleculeTypes()];
 	this->typeI_localFunctionIndex=new int[s->getNumOfMoleculeTypes()];
@@ -89,6 +97,9 @@ LocalFunction::LocalFunction(System *s,
 	this->varObservableNames = new string[n_varRefs];
 	this->varLocalObservables = new Observable *[n_varRefs];
 	this->varRefScope = new int[n_varRefs];
+	this->simpleStateValues = n_varRefs > 0 ? new int[n_varRefs] : 0;
+	for (unsigned int i=0; i<n_varRefs; ++i)
+		this->simpleStateValues[i] = -1;
 	for(unsigned int i=0; i<n_varRefs; i++) {
 		this->varRefNames[i] = varRefNames.at(i);
 		this->varObservableNames[i] = varObservableNames.at(i);
@@ -169,6 +180,163 @@ LocalFunction::LocalFunction(System *s,
 		this->typeII_localFunctionIndex[m]=index;
 	}
 
+	/* Detect a narrowly defined state-only dependency.  It is safe to skip
+	 * reevaluation when the argument molecule's relevant state is unchanged;
+	 * any global, bond, stoichiometric, multi-molecule, or complex-scoped
+	 * dependency deliberately falls back to the generic path. */
+	if (n_varRefs > 0) {
+		bool simple = true;
+		MoleculeType *dependencyType = 0;
+		int dependencyComponent = -1;
+		for (unsigned int i=0; i<n_varRefs; ++i) {
+			if (varRefScope[i] < 0 || varLocalObservables[i] == 0) {
+				simple = false;
+				break;
+			}
+			MoleculeType *candidateType = 0;
+			int candidateComponent = -1;
+			int candidateState = -1;
+			if (!varLocalObservables[i]->getSimpleStatePredicate(
+					candidateType, candidateComponent, candidateState)) {
+				simple = false;
+				break;
+			}
+			if (dependencyType == 0) {
+				dependencyType = candidateType;
+				dependencyComponent = candidateComponent;
+			} else if (dependencyType != candidateType ||
+					dependencyComponent != candidateComponent) {
+				simple = false;
+				break;
+			}
+			if (simpleStateValues != 0)
+				simpleStateValues[i] = candidateState;
+		}
+		if (simple && dependencyType != 0) {
+			hasSimpleStateDependency = true;
+			simpleStateMoleculeType = dependencyType;
+			simpleStateComponent = dependencyComponent;
+			/* The value of a state-only function is molecule-independent
+			 * once constants are fixed.  Do not use this cache for time()
+			 * expressions; parameter updates invalidate it below. */
+			simpleStateCacheEnabled = !containsTimeExpression(originalExpression);
+			vector<vector<string> > possibleStates =
+					dependencyType->getPossibleCompStates();
+			if (dependencyComponent >= 0 &&
+					dependencyComponent < (int)possibleStates.size())
+				simpleStateCacheSize = possibleStates[dependencyComponent].size();
+			for (unsigned int i = 0; i < n_varRefs; ++i)
+				if (simpleStateValues[i] >= simpleStateCacheSize)
+					simpleStateCacheSize = simpleStateValues[i] + 1;
+			if (simpleStateCacheSize > 0) {
+				simpleStateCacheValues = new double[simpleStateCacheSize];
+				simpleStateCacheValid = new bool[simpleStateCacheSize];
+				for (int i = 0; i < simpleStateCacheSize; ++i) {
+					simpleStateCacheValues[i] = 0.0;
+					simpleStateCacheValid[i] = false;
+				}
+			}
+			dependencyType->addSimpleStateLocalFunc_TypeII(this,
+					dependencyComponent);
+		}
+	}
+}
+
+bool LocalFunction::configureSimpleStateLookup(
+		MoleculeType *moleculeType,
+		int componentIndex,
+		const vector<double> &stateValues)
+{
+	if (moleculeType == 0 || componentIndex < 0 ||
+			componentIndex >= moleculeType->getNumOfComponents() ||
+			stateValues.empty() || n_args != 1 || n_varRefs != 0 ||
+			n_typeIImolecules != 0 || directStateLookup)
+		return false;
+
+	/* The parser-level lookup is still a normal local function from the
+	 * simulator's point of view.  It has one Type-II dependency, one
+	 * state-indexed invalidation slot, and can later acquire Type-I
+	 * dependencies when a DOR rate law references it. */
+	directStateLookup = true;
+	hasSimpleStateDependency = true;
+	simpleStateMoleculeType = moleculeType;
+	simpleStateComponent = componentIndex;
+	simpleStateCacheEnabled = true;
+	simpleStateCacheSize = static_cast<int>(stateValues.size());
+	simpleStateCacheValues = new double[simpleStateCacheSize];
+	simpleStateCacheValid = new bool[simpleStateCacheSize];
+	for (int state = 0; state < simpleStateCacheSize; ++state) {
+		simpleStateCacheValues[state] = stateValues[state];
+		simpleStateCacheValid[state] = true;
+	}
+
+	delete [] typeII_mol;
+	delete [] typeII_localFunctionIndex;
+	typeII_mol = new MoleculeType *[1];
+	typeII_localFunctionIndex = new int[1];
+	typeII_localFunctionIndex[0] = moleculeType->addLocalFunc_TypeII(this);
+	typeII_mol[0] = moleculeType;
+	n_typeIImolecules = 1;
+	moleculeType->addSimpleStateLocalFunc_TypeII(this, componentIndex);
+	return true;
+}
+
+double LocalFunction::evaluateSimpleStateValue(int stateValue)
+{
+	if (directStateLookup) {
+		if (stateValue >= 0 && stateValue < simpleStateCacheSize)
+			return simpleStateCacheValues[stateValue];
+		return 0.0;
+	}
+	if (simpleStateCacheEnabled && stateValue >= 0 &&
+			stateValue < simpleStateCacheSize &&
+			simpleStateCacheValid[stateValue])
+		return simpleStateCacheValues[stateValue];
+
+	for (unsigned int i=0; i<n_varRefs; ++i) {
+		/* The constructor only enables this path for molecule observables that
+		 * are one state predicate on the same molecule type/component.  Update
+		 * their parser-backed counters directly and avoid template matching. */
+		varLocalObservables[i]->clear();
+		if (stateValue == simpleStateValues[i])
+			varLocalObservables[i]->straightAdd();
+	}
+	double value = FuncFactory::Eval(p);
+	if (simpleStateCacheEnabled && stateValue >= 0 &&
+			stateValue < simpleStateCacheSize) {
+		simpleStateCacheValues[stateValue] = value;
+		simpleStateCacheValid[stateValue] = true;
+	}
+	return value;
+}
+
+double LocalFunction::evaluateSimpleState(Molecule *m)
+{
+	return evaluateSimpleStateValue(m->getComponentState(simpleStateComponent));
+}
+
+double LocalFunction::getSimpleStateValueForState(int stateValue)
+{
+	return evaluateSimpleStateValue(stateValue);
+}
+
+void LocalFunction::cacheSimpleStateValue(Molecule *m)
+{
+	if (!directStateLookup || m == 0 ||
+			m->getMoleculeType() != simpleStateMoleculeType)
+		return;
+
+	int stateValue = m->getComponentState(simpleStateComponent);
+	double value = evaluateSimpleStateValue(stateValue);
+	for (int ti = 0; ti < n_typeImolecules; ++ti) {
+		if (typeI_mol[ti] == m->getMoleculeType()) {
+			int localIndex = typeI_localFunctionIndex[ti];
+			if (!m->isLocalFunctionStateCurrent(localIndex, stateValue)) {
+				m->setLocalFunctionValue(value, localIndex);
+				m->setLocalFunctionState(localIndex, stateValue);
+			}
+		}
+	}
 }
 
 // set/get whether this evaluates on complex complex
@@ -186,6 +354,8 @@ void LocalFunction::setEvaluateComplexScope( bool val ) {
 
 
 void LocalFunction::prepareForSimulation(System *s) {
+	if (directStateLookup)
+		return;
 
 	//Finally, we can create the local function
 	try {
@@ -228,6 +398,15 @@ double LocalFunction::getValue(Molecule *m, int scope)
 	//cout<<"getting local function value: "<<this->nicename<<endl;
 	//cout<<"using molecule: "<<m->getUniqueID()<<" with scope: "<<scope<<endl;
 
+	/* A parser-level state lookup has no muParser object by design.  Legacy
+	 * callers can still ask for it on a molecule of the wrong type; the old
+	 * observable-backed implementation returned zero for that case. */
+	if (directStateLookup) {
+		if (m == 0 || m->getMoleculeType() != simpleStateMoleculeType)
+			return 0.0;
+		return evaluateSimpleState(m);
+	}
+
 	if(scope==LocalFunction::SPECIES) {
 		//cout<<"Species scope"<<endl;
 		for(int ti=0; ti<n_typeImolecules; ti++) {
@@ -243,6 +422,10 @@ double LocalFunction::getValue(Molecule *m, int scope)
 
 	} else if(scope==LocalFunction::MOLECULE) {
 		//cout<<"Molecule scope."<<endl;
+		if (hasSimpleStateDependency && m != 0 &&
+				m->getMoleculeType() == simpleStateMoleculeType) {
+			return evaluateSimpleState(m);
+		}
 
 		//For each of our variables
 		int matches = 0;
@@ -291,6 +474,11 @@ double LocalFunction::evaluateOn(Molecule *m, int scope) {
 	//this->printDetails(m->getMoleculeType()->getSystem());
 	//cout<<"using molecule: "<<m->getUniqueID()<<" with scope: "<<scope<<endl;
 
+	if (directStateLookup) {
+		if (m == 0 || m->getMoleculeType() != simpleStateMoleculeType)
+			return 0.0;
+	}
+
 	if(scope==LocalFunction::SPECIES) {
 
 		if(!isEverEvaluatedOnSpeciesScope) {
@@ -307,6 +495,23 @@ double LocalFunction::evaluateOn(Molecule *m, int scope) {
 
 	} else if(scope==LocalFunction::MOLECULE) {
 		//cout<<"evaluating on Molecule scope."<<endl;
+
+		if (hasSimpleStateDependency && m != 0 &&
+				m->getMoleculeType() == simpleStateMoleculeType) {
+			double newValue = evaluateSimpleState(m);
+			for (int ti=0; ti<n_typeImolecules; ++ti) {
+				if (m->getMoleculeType() == typeI_mol[ti]) {
+					m->setLocalFunctionValue(newValue,
+							this->typeI_localFunctionIndex[ti]);
+					m->setLocalFunctionState(
+							this->typeI_localFunctionIndex[ti],
+							m->getComponentState(simpleStateComponent));
+					m->updateDORRxnValues(
+							this->typeI_localFunctionIndex[ti]);
+				}
+			}
+			return newValue;
+		}
 
 
 		int matches = 0;
@@ -335,7 +540,13 @@ double LocalFunction::evaluateOn(Molecule *m, int scope) {
 		for(int ti=0; ti<n_typeImolecules; ti++) {
 			if(m->getMoleculeType()==typeI_mol[ti]) {
 				m->setLocalFunctionValue(newValue,this->typeI_localFunctionIndex[ti]);
-				m->updateDORRxnValues();
+				if (hasSimpleStateDependency &&
+						m->getMoleculeType() == simpleStateMoleculeType) {
+					m->setLocalFunctionState(this->typeI_localFunctionIndex[ti],
+							m->getComponentState(simpleStateComponent));
+				}
+				m->updateDORRxnValues(
+						this->typeI_localFunctionIndex[ti]);
 			}
 		}
 
@@ -354,7 +565,67 @@ double LocalFunction::evaluateOn(Molecule *m, int scope) {
 }
 
 double LocalFunction::evaluateOn(Molecule *m, const list <Molecule *> &members) {
-	if(!isEverEvaluatedOnSpeciesScope) {
+	if(!isEverEvaluatedOnSpeciesScope || directStateLookup) {
+		if (hasSimpleStateDependency) {
+			Molecule *stateMolecule = 0;
+			if (m != 0 && m->getMoleculeType() == simpleStateMoleculeType)
+				stateMolecule = m;
+			if (stateMolecule == 0) {
+				for (list<Molecule *>::const_iterator memberIter = members.begin();
+						memberIter != members.end(); ++memberIter) {
+					if (*memberIter != 0 &&
+							(*memberIter)->getMoleculeType() == simpleStateMoleculeType) {
+						stateMolecule = *memberIter;
+						break;
+					}
+				}
+			}
+			if (stateMolecule != 0) {
+				int stateValue =
+						stateMolecule->getComponentState(simpleStateComponent);
+				Molecule *cachedMolecule = 0;
+				bool cacheValid = true;
+				for (list<Molecule *>::const_iterator memberIter = members.begin();
+						memberIter != members.end(); ++memberIter) {
+					for (int ti=0; ti<n_typeImolecules; ++ti) {
+						if (*memberIter != 0 &&
+								(*memberIter)->getMoleculeType() == typeI_mol[ti]) {
+							if (cachedMolecule == 0)
+								cachedMolecule = *memberIter;
+							if (!(*memberIter)->isLocalFunctionStateCurrent(
+									this->typeI_localFunctionIndex[ti], stateValue))
+								cacheValid = false;
+						}
+					}
+				}
+				if (cachedMolecule != 0 && cacheValid) {
+					for (int ti=0; ti<n_typeImolecules; ++ti) {
+						if (typeI_mol[ti] == cachedMolecule->getMoleculeType())
+							return cachedMolecule->getLocalFunctionValue(
+									this->typeI_localFunctionIndex[ti]);
+					}
+				}
+				double newValue = evaluateSimpleState(stateMolecule);
+				for (list<Molecule *>::const_iterator memberIter = members.begin();
+						memberIter != members.end(); ++memberIter) {
+					for (int ti=0; ti<n_typeImolecules; ++ti) {
+						if (*memberIter != 0 &&
+								(*memberIter)->getMoleculeType() == typeI_mol[ti]) {
+							int localIndex = typeI_localFunctionIndex[ti];
+							if (!(*memberIter)->isLocalFunctionStateCurrent(
+									localIndex, stateValue)) {
+								(*memberIter)->setLocalFunctionValue(newValue,
+										localIndex);
+								(*memberIter)->setLocalFunctionState(localIndex,
+										stateValue);
+								(*memberIter)->updateDORRxnValues(localIndex);
+							}
+						}
+					}
+				}
+				return newValue;
+			}
+		}
 		return this->evaluateOn(m, LocalFunction::MOLECULE);
 	}
 
@@ -403,7 +674,8 @@ double LocalFunction::evaluateOn(Molecule *m, const list <Molecule *> &members) 
 		for(int ti=0; ti<n_typeImolecules; ti++) {
 			if((*memberIter)->getMoleculeType()==typeI_mol[ti]) {
 				(*memberIter)->setLocalFunctionValue(newValue,this->typeI_localFunctionIndex[ti]);
-				(*memberIter)->updateDORRxnValues();
+				(*memberIter)->updateDORRxnValues(
+						this->typeI_localFunctionIndex[ti]);
 			}
 		}
 	}
@@ -418,6 +690,13 @@ double LocalFunction::evaluateOn(Complex *c) {
 	if (!isEverEvaluatedOnSpeciesScope) {
 		// If this is a molecule-scoped function, we still might want to update
 		// all molecules in the complex if this was called.
+		if (hasSimpleStateDependency) {
+			for (molIter = (c->complexMembers).begin();
+					molIter != (c->complexMembers).end(); ++molIter) {
+				if ((*molIter)->getMoleculeType() == simpleStateMoleculeType)
+					return this->evaluateOn(*molIter, c->complexMembers);
+			}
+		}
 		double val = 0;
 		for ( molIter = (c->complexMembers).begin(); molIter!=(c->complexMembers).end(); ++molIter) {
 			val = this->evaluateOn((*molIter), LocalFunction::MOLECULE);
@@ -467,7 +746,8 @@ double LocalFunction::evaluateOn(Complex *c) {
 		for(int ti=0; ti<n_typeImolecules; ti++) {
 			if ((*molIter)->getMoleculeType()==typeI_mol[ti]) {
 				(*molIter)->setLocalFunctionValue(newValue,this->typeI_localFunctionIndex[ti]);
-				(*molIter)->updateDORRxnValues();
+				(*molIter)->updateDORRxnValues(
+						this->typeI_localFunctionIndex[ti]);
 			}
 		}
 	}
@@ -489,6 +769,9 @@ LocalFunction::~LocalFunction() {
 	delete [] varObservableNames;
 	delete [] varRefScope;
 	delete [] varLocalObservables;
+	delete [] simpleStateValues;
+	delete [] simpleStateCacheValues;
+	delete [] simpleStateCacheValid;
 	delete [] typeII_mol;
 	delete [] typeII_localFunctionIndex;
 	delete [] typeI_mol;
@@ -516,17 +799,25 @@ LocalFunction::~LocalFunction() {
 //This function is generally called by a DOR reaction class once the
 //DOR reaction class has established that the value of this function
 //is required for some moleculetype...
-void LocalFunction::addTypeIMoleculeDependency(MoleculeType *mt) {
+void LocalFunction::addTypeIMoleculeDependency(MoleculeType *mt,
+		ReactionClass *rxn, int reactionPosition) {
 
 	//First, make sure we haven't added this bad boy yet
 	for(int i=0; i<this->n_typeImolecules; i++) {
-		if(typeI_mol[i]==mt) return;
+		if(typeI_mol[i]==mt) {
+			if (rxn != 0 && reactionPosition >= 0)
+				mt->addTypeILocalFunctionReaction(
+						typeI_localFunctionIndex[i], rxn, reactionPosition);
+			return;
+		}
 	}
 
 	//First, add myself to the moleculeType
 	int index = mt->addLocalFunc_TypeI(this);
 	this->typeI_mol[this->n_typeImolecules]=mt;
 	this->typeI_localFunctionIndex[this->n_typeImolecules]=index;
+	if (rxn != 0 && reactionPosition >= 0)
+		mt->addTypeILocalFunctionReaction(index, rxn, reactionPosition);
 	this->n_typeImolecules++;
 }
 
@@ -545,7 +836,12 @@ int LocalFunction::getIndexOfTypeIFunctionValue(Molecule *m) {
 
 void LocalFunction::updateParameters(System *s)
 {
-	cout<<"Updating parameters for function: "<<name<<endl;
+	if (directStateLookup)
+		return;
+	if (simpleStateCacheValid != 0) {
+		for (int i = 0; i < simpleStateCacheSize; ++i)
+			simpleStateCacheValid[i] = false;
+	}
 	for(unsigned int i=0; i<n_params; i++) {
 		p->DefineConst(paramNames[i],s->getParameter(paramNames[i]));
 	}

@@ -88,7 +88,17 @@ DirectSelector::DirectSelector(vector <ReactionClass *> &rxns, System *sys) :
 	this->n_reactions = rxns.size();
 	this->reactionIndexMode = -1;
 	this->reactionClassList = new ReactionClass *[n_reactions];
-	this->selectionBlockSize = 16;
+	/* A wider prefix block reduces block-scan overhead on large rule sets while
+	 * preserving DirectSelector's single RNG draw and native reaction order.
+	 * 128 was selected by fixed-seed profiling across Rasi/flat/chain/simple
+	 * models. The environment override remains useful for diagnostics. */
+	this->selectionBlockSize = 128;
+	if (const char *blockEnv = getenv("NFSIM_SELECTOR_BLOCK_SIZE")) {
+		char *end = 0;
+		long parsed = strtol(blockEnv, &end, 10);
+		if (end != blockEnv && parsed >= 1 && parsed <= 1024)
+			this->selectionBlockSize = static_cast<unsigned int>(parsed);
+	}
 	this->selectionBlockPropensities.assign(
 			(static_cast<std::size_t>(n_reactions) + selectionBlockSize - 1) /
 					selectionBlockSize, 0.0);
@@ -515,36 +525,34 @@ double DirectSelector::getNextReactionClass(ReactionClass *&rc)
 				std::size_t last = std::min<std::size_t>(
 						first + selectionBlockSize,
 						static_cast<std::size_t>(n_reactions));
-				/* Enumerate only active rules in the selected block.  The normal
-				 * compact selector uses 16-rule blocks, so a block fits in one
-				 * active-bit word and ctz preserves the legacy reaction order while
-				 * avoiding a branch for every inactive rule. */
-				if (sparseSelectionSafe && selectionBlockSize <= 64 &&
-						(first >> 6) == ((last - 1) >> 6)) {
-					unsigned int bitOffset =
-						static_cast<unsigned int>(first & 63);
-					std::uint64_t active = activeReactionBits[first >> 6] >> bitOffset;
-					unsigned int bitCount =
-						static_cast<unsigned int>(last - first);
-					if (bitCount < 64)
-						active &= (std::uint64_t(1) << bitCount) - 1;
-					while (active != 0) {
-						unsigned int bit = directSelectorTrailingZeroCount(active);
-						std::size_t r = first + bit;
-						active &= active - 1;
-						a_sum += getSelectionPropensity(r);
-						if (randNum <= a_sum) {
-							rc = reactionClassList[r];
-							return (randNum-last_a_sum);
+				/* Enumerate only active rules in the selected block.  Blocks may span
+				 * several 64-bit words (the tuned default is 128).  Mask the boundary
+				 * words and enumerate set bits in ascending reaction order, preserving
+				 * exactly the scalar accumulation/RNG protocol while avoiding branches
+				 * over inactive rules. */
+				if (sparseSelectionSafe) {
+					std::size_t firstWord = first >> 6;
+					std::size_t lastWord = (last - 1) >> 6;
+					for (std::size_t wordIndex = firstWord; wordIndex <= lastWord; ++wordIndex) {
+						std::uint64_t active = activeReactionBits[wordIndex];
+						if (wordIndex == firstWord && (first & 63) != 0)
+							active &= (~std::uint64_t(0) << (first & 63));
+						if (wordIndex == lastWord && (last & 63) != 0)
+							active &= (std::uint64_t(1) << (last & 63)) - 1;
+						while (active != 0) {
+							unsigned int bit = directSelectorTrailingZeroCount(active);
+							std::size_t r = (wordIndex << 6) + bit;
+							active &= active - 1;
+							a_sum += getSelectionPropensity(r);
+							if (randNum <= a_sum) {
+								rc = reactionClassList[r];
+								return (randNum-last_a_sum);
+							}
+							last_a_sum = a_sum;
 						}
-						last_a_sum = a_sum;
 					}
 				} else {
 					for (std::size_t r = first; r < last; ++r) {
-						if (sparseSelectionSafe &&
-								(activeReactionBits[r >> 6] &
-										(std::uint64_t(1) << (r & 63))) == 0)
-							continue;
 						a_sum += getSelectionPropensity(r);
 						if (randNum <= a_sum) {
 							rc = reactionClassList[r];

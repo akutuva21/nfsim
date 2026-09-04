@@ -457,6 +457,13 @@ int BasicRxnClass::checkForEquality(Molecule *m, MappingSet* ms, int rxnIndex, R
  */
 bool BasicRxnClass::tryToAdd(Molecule *m, unsigned int reactantPos)
 {
+	int rxnIndex = m->getMoleculeType()->getRxnIndex(this, reactantPos);
+	return tryToAddWithIndex(m, reactantPos, rxnIndex);
+}
+
+bool BasicRxnClass::tryToAddWithIndex(Molecule *m, unsigned int reactantPos,
+		int rxnIndex)
+{
 	if (system != 0 && system->isProfilingEnabled())
 		system->recordProfileMatchCandidate();
 
@@ -470,8 +477,8 @@ bool BasicRxnClass::tryToAdd(Molecule *m, unsigned int reactantPos)
 	//Get the specified reactantList
 	ReactantList *rl = reactantLists[reactantPos];
 
-	//Check if the molecule is in this list
-	int rxnIndex = m->getMoleculeType()->getRxnIndex(this,reactantPos);
+	// The caller may already know the MoleculeType-local registration index.
+	// Avoid the legacy reaction/position lookup on hot sparse-membership paths.
 	//cout<<" got mappingSetId: " << m->getRxnListMappingId(rxnIndex)<<" size: " <<rl->size()<<endl;
 	//cout<< " testing whether to add molecule ";
 	//m->printDetails();
@@ -502,7 +509,12 @@ bool BasicRxnClass::tryToAdd(Molecule *m, unsigned int reactantPos)
 	//Try to map it!
 	MappingSet *ms = rl->pushNextAvailableMappingSet();
 	symmetricMappingSet.clear();
-	comparisonResult = reactantTemplates[reactantPos]->compare(m,rl,ms,false,&symmetricMappingSet);
+	bool usedCompiledSimple = false;
+	comparisonResult = reactantTemplates[reactantPos]->compareCompiledSimple(
+			m, ms, usedCompiledSimple);
+	if (!usedCompiledSimple)
+		comparisonResult = reactantTemplates[reactantPos]->compare(
+				m,rl,ms,false,&symmetricMappingSet);
 	if(!comparisonResult) {
 		//cout << "no mapping in normal reaction, remove"<<endl;
 		//we must remove, if we did not match.  This will also remove
@@ -779,6 +791,30 @@ void BasicRxnClass::pickMappingSets(double random_A_number) const
 			reactantLists[i]->pickRandomFromPopulation(mappingSet[i]);
 		} else {
 			reactantLists[i]->pickRandom(mappingSet[i]);
+		}
+	}
+}
+
+/*! Report the reaction-center molecule of every current match.  A rule that
+ *  collapses many physically distinct transitions into one channel still holds
+ *  one match per transition, so this is what allows q(s->s') to be compared
+ *  per successor state rather than only aggregated by channel. */
+void BasicRxnClass::listMatchIds(vector <int> &ids) const
+{
+	if (reactantLists == 0 || reactantLists[0] == 0) return;
+	int n = reactantLists[0]->size();
+	for (int i = 0; i < n; ++i) {
+		MappingSet *ms = reactantLists[0]->getMappingSetByIndex((unsigned int) i);
+		if (ms == 0 || ms->getNumOfMappings() == 0) continue;
+		/* -1 separates one match from the next.  Every mapped molecule is
+		 * reported, not just mapping 0, because the mapping order is not a
+		 * stable function of position: the harness identifies the mover as the
+		 * 5'-most molecule of the match instead of trusting that order. */
+		if (i > 0) ids.push_back(-1);
+		for (unsigned int k = 0; k < ms->getNumOfMappings(); ++k) {
+			Mapping *m = ms->get(k);
+			if (m == 0 || m->getMolecule() == 0) continue;
+			ids.push_back(m->getMolecule()->getUniqueID());
 		}
 	}
 }

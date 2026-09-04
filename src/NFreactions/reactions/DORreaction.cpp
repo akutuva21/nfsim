@@ -172,11 +172,14 @@ DORRxnClass::DORRxnClass(
 
 	//Set the actual function
 	this->cf = function;
+	this->reactantCountsBuffer = new int[n_reactants > 0 ? n_reactants : 1];
 
 	//Add type I molecule dependencies, so that when this function
 	//is reevaluated on a molecule, the molecule knows to update this reaction.
 	//This is only necessary for the DOR reactant.
-	cf->addTypeIMoleculeDependency( reactantTemplates[DORreactantIndex]->getMoleculeType() );
+	cf->addTypeIMoleculeDependency(
+			reactantTemplates[DORreactantIndex]->getMoleculeType(),
+			this, DORreactantIndex);
 
 }
 
@@ -230,6 +233,7 @@ DORRxnClass::DORRxnClass(
 		}
 	}
 	this->a = 0;
+	this->reactantCountsBuffer = new int[n_reactants > 0 ? n_reactants : 1];
 }
 
 DORRxnClass::~DORRxnClass() {
@@ -245,6 +249,7 @@ DORRxnClass::~DORRxnClass() {
 	delete [] argIndexIntoMappingSet;
 	delete [] argMappedMolecule;
 	delete [] argScope;
+	delete [] reactantCountsBuffer;
 	delete [] msPairBuffer;
 
 }
@@ -556,6 +561,13 @@ double DORRxnClass::pickLocalFunctionParameter(MappingSet* ms, int index, Molecu
 //functions based on the local functions that were defined
 double DORRxnClass::evaluateLocalFunctions(MappingSet *ms)
 {
+	if (cf != 0 && cf->isSimpleStateSelector() &&
+			n_argMolecules == 1 && ms != 0) {
+		Mapping *mapping = ms->get(argIndexIntoMappingSet[0]);
+		if (mapping != 0)
+			return cf->evaluateSimpleStateSelector(mapping->getMolecule());
+	}
+
 	//Go through each function, and set the value of the function
 	//this->argMappedMolecule
 
@@ -567,7 +579,7 @@ double DORRxnClass::evaluateLocalFunctions(MappingSet *ms)
 		this->argMappedMolecule[i] = ms->get(this->argIndexIntoMappingSet[i])->getMolecule();
 	}
 
-	int * reactantCounts = new int[this->n_reactants];
+	int * reactantCounts = reactantCountsBuffer;
 	for(unsigned int r=0; r<n_reactants; r++) {
 		if(r==this->DORreactantIndex) {
 			reactantCounts[r]= reactantTree->size();
@@ -585,9 +597,6 @@ double DORRxnClass::evaluateLocalFunctions(MappingSet *ms)
 		//solution here: just try everything taht we reference in ms for the parameter in question
 		value = this->pickLocalFunctionParameter(ms, lfe.getIndex(), lfe.getType1_Mol(), lfe.get_n_type1_Mol(), reactantCounts);
 	}
-	endloop:
-	delete [] reactantCounts;
-
 	return value;
 
 
@@ -843,8 +852,6 @@ void DORRxnClass::printDetails() const
 	if(n_reactants==0)
 		cout<<"      >No Reactants: so this rule either creates new species or does nothing."<<endl;
 }
-
-
 
 
 
@@ -1957,12 +1964,17 @@ DOR2RxnClass::DOR2RxnClass(
 	//Set the actual functions
 	this->cf1 = function1;
 	this->cf2 = function2;
+	this->reactantCountsBuffer = new int[n_reactants > 0 ? n_reactants : 1];
 
 	//Add type I molecule dependencies, so that when this function
 	//is reevaluated on a molecule, the molecule knows to update this reaction.
 	//This is only necessary for the DOR reactants.
-	cf1->addTypeIMoleculeDependency( reactantTemplates[DORreactantIndex1]->getMoleculeType() );
-	cf2->addTypeIMoleculeDependency( reactantTemplates[DORreactantIndex2]->getMoleculeType() );
+	cf1->addTypeIMoleculeDependency(
+			reactantTemplates[DORreactantIndex1]->getMoleculeType(),
+			this, DORreactantIndex1);
+	cf2->addTypeIMoleculeDependency(
+			reactantTemplates[DORreactantIndex2]->getMoleculeType(),
+			this, DORreactantIndex2);
 
 }
 
@@ -1985,6 +1997,7 @@ DOR2RxnClass::~DOR2RxnClass() {
 	delete [] argMappedMolecule2;
 	delete [] argScope1;
 	delete [] argScope2;
+	delete [] reactantCountsBuffer;
 	delete [] msPairBuffer;
 }
 
@@ -2195,7 +2208,7 @@ double DOR2RxnClass::evaluateLocalFunctions1(MappingSet *ms)
 	}
 
 	// done setting molecules, so now calling the composite function evaluate method
-	int * reactantCounts = new int[n_reactants];
+	int * reactantCounts = reactantCountsBuffer;
 	for(unsigned int r=0; r<n_reactants; r++) {
 		if(r==(unsigned int)DORreactantIndex1) {
 			reactantCounts[r] = reactantTree1->size();
@@ -2210,7 +2223,6 @@ double DOR2RxnClass::evaluateLocalFunctions1(MappingSet *ms)
 
 	double value = cf1->evaluateOn(argMappedMolecule1, argScope1, reactantCounts, n_reactants);
 
-	delete [] reactantCounts;
 	return value;
 }
 
@@ -2227,7 +2239,7 @@ double DOR2RxnClass::evaluateLocalFunctions2(MappingSet *ms)
 	}
 
 	// done setting molecules, so now calling the composite function evaluate method
-	int * reactantCounts = new int[n_reactants];
+	int * reactantCounts = reactantCountsBuffer;
 	for(unsigned int r=0; r<n_reactants; r++) {
 		if(r==DORreactantIndex1) {
 			reactantCounts[r] = reactantTree1->size();
@@ -2242,7 +2254,6 @@ double DOR2RxnClass::evaluateLocalFunctions2(MappingSet *ms)
 
 	double value = cf2->evaluateOn(argMappedMolecule2, argScope2, reactantCounts, n_reactants);
 
-	delete [] reactantCounts;
 	return value;
 }
 

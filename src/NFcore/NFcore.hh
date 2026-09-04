@@ -120,6 +120,20 @@ namespace NFcore
 		bool isBoundAfter2;
 	};
 
+	/* Mutations performed by the currently firing reaction. */
+	struct MembershipEventMutation {
+		enum Kind { BOND_ADD = 0, BOND_DEL = 1, STATE_CHANGE = 2 };
+		MembershipEventMutation() : kind(STATE_CHANGE), type1(0), component1(-1),
+				type2(0), component2(-1), oldState(-1), newState(-1) {}
+		Kind kind;
+		MoleculeType *type1;
+		int component1;
+		MoleculeType *type2;
+		int component2;
+		int oldState;
+		int newState;
+	};
+
 	class Observable;  /* object that moniters counts of things we want to keep track of */
 
 	class Complex;  /* collection of molecules that are bonded to each
@@ -305,6 +319,128 @@ namespace NFcore
 			unsigned int extraCapacity;
 	};
 
+	/* Lazy paged storage for per-molecule reaction mappings.  Most molecule/reaction
+	 * registration pairs are empty, especially in large rule families.  Allocate a
+	 * small pointer directory eagerly and 64-slot MappingIdSet pages only when a
+	 * molecule actually acquires a mapping in that page. */
+	class PagedMappingIdTable {
+		public:
+#ifndef NFSIM_MAPPING_PAGE_SHIFT
+#define NFSIM_MAPPING_PAGE_SHIFT 5
+#endif
+			static const unsigned int PAGE_SHIFT = NFSIM_MAPPING_PAGE_SHIFT;
+			static const unsigned int PAGE_SIZE = 1u << PAGE_SHIFT;
+			static const unsigned int PAGE_MASK = PAGE_SIZE - 1u;
+			static const unsigned int GROUP_SHIFT = 4;
+			static const unsigned int GROUP_SIZE = 1u << GROUP_SHIFT;
+			static const unsigned int GROUP_MASK = GROUP_SIZE - 1u;
+
+			PagedMappingIdTable()
+				: groups(0), groupCount(0), mappingCount(0) {}
+			~PagedMappingIdTable() { reset(); }
+
+			void init(int count) {
+				reset();
+				mappingCount = count > 0 ? static_cast<unsigned int>(count) : 0;
+				const unsigned int pageCount =
+					(mappingCount + PAGE_SIZE - 1u) >> PAGE_SHIFT;
+				groupCount = (pageCount + GROUP_SIZE - 1u) >> GROUP_SHIFT;
+				if (groupCount > 0) {
+					groups = new PageGroup *[groupCount];
+					for (unsigned int i = 0; i < groupCount; ++i) groups[i] = 0;
+				}
+			}
+
+			const MappingIdSet *get(unsigned int index) const {
+				if (index >= mappingCount || groups == 0) return 0;
+				const unsigned int pageIndex = index >> PAGE_SHIFT;
+				PageGroup *group = groups[pageIndex >> GROUP_SHIFT];
+				if (!group) return 0;
+				Page *page = group->pages[pageIndex & GROUP_MASK];
+				return page ? &page->sets[index & PAGE_MASK] : 0;
+			}
+
+			MappingIdSet *ensure(unsigned int index) {
+				if (index >= mappingCount || groups == 0) return 0;
+				const unsigned int pageIndex = index >> PAGE_SHIFT;
+				const unsigned int groupIndex = pageIndex >> GROUP_SHIFT;
+				PageGroup *&group = groups[groupIndex];
+				if (!group) group = new PageGroup();
+				Page *&page = group->pages[pageIndex & GROUP_MASK];
+				if (!page) {
+					page = new Page();
+					++group->allocatedPages;
+				}
+				return &page->sets[index & PAGE_MASK];
+			}
+
+			void noteBecameNonempty(unsigned int index) {
+				const unsigned int pageIndex = index >> PAGE_SHIFT;
+				PageGroup *group = groups[pageIndex >> GROUP_SHIFT];
+				if (!group) return;
+				Page *page = group->pages[pageIndex & GROUP_MASK];
+				if (page) ++page->nonemptyCount;
+			}
+
+			void noteBecameEmpty(unsigned int index) {
+				if (index >= mappingCount || groups == 0) return;
+				const unsigned int pageIndex = index >> PAGE_SHIFT;
+				const unsigned int groupIndex = pageIndex >> GROUP_SHIFT;
+				PageGroup *group = groups[groupIndex];
+				if (!group) return;
+				const unsigned int localPage = pageIndex & GROUP_MASK;
+				Page *page = group->pages[localPage];
+				if (!page) return;
+				if (page->nonemptyCount > 0) --page->nonemptyCount;
+				if (page->nonemptyCount == 0) {
+					delete page;
+					group->pages[localPage] = 0;
+					if (group->allocatedPages > 0) --group->allocatedPages;
+					if (group->allocatedPages == 0) {
+						delete group;
+						groups[groupIndex] = 0;
+					}
+				}
+			}
+
+		private:
+			struct Page {
+				Page() : nonemptyCount(0) {}
+				MappingIdSet sets[PAGE_SIZE];
+				unsigned int nonemptyCount;
+			};
+			struct PageGroup {
+				PageGroup() : allocatedPages(0) {
+					for (unsigned int i = 0; i < GROUP_SIZE; ++i) pages[i] = 0;
+				}
+				Page *pages[GROUP_SIZE];
+				unsigned int allocatedPages;
+			};
+
+			void reset() {
+				if (groups) {
+					for (unsigned int g = 0; g < groupCount; ++g) {
+						PageGroup *group = groups[g];
+						if (!group) continue;
+						for (unsigned int p = 0; p < GROUP_SIZE; ++p)
+							delete group->pages[p];
+						delete group;
+					}
+					delete [] groups;
+				}
+				groups = 0;
+				groupCount = 0;
+				mappingCount = 0;
+			}
+
+			PageGroup **groups;
+			unsigned int groupCount;
+			unsigned int mappingCount;
+
+			PagedMappingIdTable(const PagedMappingIdTable &);
+			PagedMappingIdTable& operator=(const PagedMappingIdTable &);
+	};
+
 
 	//exception for the handling of local functions and mapping sets
 	class LocalFunctionException: public exception
@@ -466,8 +602,8 @@ namespace NFcore
 			 * their counts without going through the file/stream output path.
 			 * Both methods are pure read access into the existing obsToOutput
 			 * vector and do not change simulation behavior. */
-			int getNumOfObsForOutput() const { return static_cast<int>(obsToOutput.size()); }
-			Observable * getObsForOutput(int index) const { return obsToOutput.at(index); }
+			int getNumOfObsForOutput() const;
+			Observable * getObsForOutput(int index) const;
 			bool getOnTheFlyObservables() const { return onTheFlyObservables; }
 			double getAverageGroupValue(string groupName, int valIndex);
 			
@@ -496,6 +632,27 @@ namespace NFcore
 			// molecule with the UID doesn't exist
 			Molecule * getMoleculeByUid(int uid, bool warn);
 		    int getNumOfMolecules();
+
+			/* Event-local mutation capture for topology-aware membership refresh. */
+			void beginMembershipMutationCapture();
+			void endMembershipMutationCapture();
+			void recordMembershipBondMutation(Molecule *m1, int c1,
+					Molecule *m2, int c2, bool added);
+			void recordMembershipStateMutation(Molecule *m, int component,
+					int oldState, int newState);
+			void recordNewMembershipMolecule(Molecule *m);
+			const vector<MembershipEventMutation>& getMembershipEventMutations() const {
+				return membershipEventMutations;
+			}
+			unsigned long long getMembershipMutationGeneration() const {
+				return membershipMutationGeneration;
+			}
+			bool isNewMembershipMolecule(Molecule *m) const {
+				return newMembershipMolecules.find(m) != newMembershipMolecules.end();
+			}
+			bool isMembershipMutationCaptureActive() const {
+				return membershipMutationCaptureActive;
+			}
 
 			//Functions used when setting up the system.  Note that most of these methods
 			//are called automatically when you create an object (notable exception are
@@ -1019,6 +1176,12 @@ namespace NFcore
 					deferredCompactPartnerPoolUpdates;
 			unsigned long long deferredMembershipUpdateGeneration = 0;
 
+
+			bool membershipMutationCaptureActive = false;
+			unsigned long long membershipMutationGeneration = 0;
+			vector<MembershipEventMutation> membershipEventMutations;
+			unordered_set<Molecule *> newMembershipMolecules;
+
 			// To look up connected reactions quickly
 			vector <vector <bool> > connectedReactions;
 
@@ -1281,13 +1444,27 @@ namespace NFcore
 			 */
 			int addLocalFunc_TypeI(LocalFunction *lf);
 			int addLocalFunc_TypeII(LocalFunction *lf);
+			void addTypeILocalFunctionReaction(int localFunctionIndex,
+					ReactionClass *rxn, int reactionPosition);
+			const vector <pair<ReactionClass *, int> > &
+					getTypeILocalFunctionReactions(int localFunctionIndex) const;
+			void addSimpleStateLocalFunc_TypeII(LocalFunction *lf,
+					int componentIndex);
 			vector <LocalFunction *> locFuncs_typeI;
 			vector <LocalFunction *> locFuncs_typeII;
+			/* State-only Type-II functions are indexed by the component that
+			 * invalidates them.  This lets reaction firing update only the
+			 * functions affected by an actual state transition. */
+			vector <vector <LocalFunction *> > locFuncs_typeIIByStateComponent;
 
 			int getNumOfTypeIFunctions() const {return locFuncs_typeI.size(); };
 			LocalFunction *getTypeILocalFunction(int index) { return locFuncs_typeI.at(index); };
 			int getNumOfTypeIIFunctions() const {return locFuncs_typeII.size(); };
 			LocalFunction *getTypeIILocalFunction(int index) { return locFuncs_typeII.at(index); };
+			const vector <LocalFunction *> &getSimpleStateLocalFunctions(
+					int componentIndex) const {
+				return locFuncs_typeIIByStateComponent.at(componentIndex);
+			};
 
 			int getNumOfDORrxns() const { return indexOfDORrxns.size(); };
 			ReactionClass * getDORrxn(int dorRxnIndex) const { return reactions.at(indexOfDORrxns.at(dorRxnIndex)); };
@@ -1315,6 +1492,217 @@ namespace NFcore
 				vector < vector<string> > &possibleCompStates,
 				vector <bool> isIntegerComponent,
 				System *system);
+
+
+			struct MembershipComponentKey {
+				MembershipComponentKey() : type(0), component(-1) {}
+				MembershipComponentKey(MoleculeType *t, int c) : type(t), component(c) {}
+				MoleculeType *type;
+				int component;
+				bool operator==(const MembershipComponentKey &o) const {
+					return type == o.type && component == o.component;
+				}
+			};
+			struct MembershipStateKey {
+				MembershipStateKey() : type(0), component(-1), state(-1) {}
+				MembershipStateKey(MoleculeType *t, int c, int s)
+					: type(t), component(c), state(s) {}
+				MoleculeType *type;
+				int component;
+				int state;
+				bool operator==(const MembershipStateKey &o) const {
+					return type == o.type && component == o.component && state == o.state;
+				}
+			};
+			struct MembershipTopologyKey {
+				MembershipTopologyKey() : type(0), component(-1), partnerType(0), partnerComponent(-1) {}
+				MembershipTopologyKey(MoleculeType *t, int c, MoleculeType *pt, int pc)
+					: type(t), component(c), partnerType(pt), partnerComponent(pc) {}
+				MoleculeType *type;
+				int component;
+				MoleculeType *partnerType;
+				int partnerComponent;
+				bool operator==(const MembershipTopologyKey &o) const {
+					return type == o.type && component == o.component &&
+						partnerType == o.partnerType && partnerComponent == o.partnerComponent;
+				}
+			};
+			struct MembershipComponentKeyHash {
+				size_t operator()(const MembershipComponentKey &k) const {
+					return std::hash<MoleculeType *>()(k.type) ^
+						(std::hash<int>()(k.component) << 1);
+				}
+			};
+			struct MembershipStateKeyHash {
+				size_t operator()(const MembershipStateKey &k) const {
+					size_t h = std::hash<MoleculeType *>()(k.type);
+					h ^= std::hash<int>()(k.component) << 1;
+					h ^= std::hash<int>()(k.state) << 2;
+					return h;
+				}
+			};
+			struct MembershipTopologyKeyHash {
+				size_t operator()(const MembershipTopologyKey &k) const {
+					size_t h = std::hash<MoleculeType *>()(k.type);
+					h ^= std::hash<int>()(k.component) << 1;
+					h ^= std::hash<MoleculeType *>()(k.partnerType) << 2;
+					h ^= std::hash<int>()(k.partnerComponent) << 3;
+					return h;
+				}
+			};
+			struct MembershipBondContextKey {
+				MembershipBondContextKey() : triggerType(0), triggerComponent(-1),
+					anchorComponent(-1), partnerType(0), partnerComponent(-1) {}
+				MembershipBondContextKey(MoleculeType *tt, int tc, int ac,
+					MoleculeType *pt, int pc)
+					: triggerType(tt), triggerComponent(tc), anchorComponent(ac),
+					  partnerType(pt), partnerComponent(pc) {}
+				MoleculeType *triggerType;
+				int triggerComponent;
+				int anchorComponent;
+				MoleculeType *partnerType;
+				int partnerComponent;
+				bool operator==(const MembershipBondContextKey &o) const {
+					return triggerType == o.triggerType &&
+						triggerComponent == o.triggerComponent &&
+						anchorComponent == o.anchorComponent &&
+						partnerType == o.partnerType &&
+						partnerComponent == o.partnerComponent;
+				}
+			};
+			struct MembershipBondContextKeyHash {
+				size_t operator()(const MembershipBondContextKey &k) const {
+					size_t h = std::hash<MoleculeType *>()(k.triggerType);
+					h ^= std::hash<int>()(k.triggerComponent) << 1;
+					h ^= std::hash<int>()(k.anchorComponent) << 2;
+					h ^= std::hash<MoleculeType *>()(k.partnerType) << 3;
+					h ^= std::hash<int>()(k.partnerComponent) << 4;
+					return h;
+				}
+			};
+			struct MembershipTopologyContextKey {
+				MembershipTopologyContextKey() : triggerType(0), triggerComponent(-1),
+					triggerPartnerType(0), triggerPartnerComponent(-1),
+					anchorComponent(-1), anchorPartnerType(0), anchorPartnerComponent(-1) {}
+				MembershipTopologyContextKey(MoleculeType *tt, int tc, MoleculeType *tpt, int tpc,
+					int ac, MoleculeType *apt, int apc)
+					: triggerType(tt), triggerComponent(tc), triggerPartnerType(tpt),
+					  triggerPartnerComponent(tpc), anchorComponent(ac),
+					  anchorPartnerType(apt), anchorPartnerComponent(apc) {}
+				MoleculeType *triggerType;
+				int triggerComponent;
+				MoleculeType *triggerPartnerType;
+				int triggerPartnerComponent;
+				int anchorComponent;
+				MoleculeType *anchorPartnerType;
+				int anchorPartnerComponent;
+				bool operator==(const MembershipTopologyContextKey &o) const {
+					return triggerType == o.triggerType &&
+						triggerComponent == o.triggerComponent &&
+						triggerPartnerType == o.triggerPartnerType &&
+						triggerPartnerComponent == o.triggerPartnerComponent &&
+						anchorComponent == o.anchorComponent &&
+						anchorPartnerType == o.anchorPartnerType &&
+						anchorPartnerComponent == o.anchorPartnerComponent;
+				}
+			};
+			struct MembershipTopologyContextKeyHash {
+				size_t operator()(const MembershipTopologyContextKey &k) const {
+					size_t h = std::hash<MoleculeType *>()(k.triggerType);
+					h ^= std::hash<int>()(k.triggerComponent) << 1;
+					h ^= std::hash<MoleculeType *>()(k.triggerPartnerType) << 2;
+					h ^= std::hash<int>()(k.triggerPartnerComponent) << 3;
+					h ^= std::hash<int>()(k.anchorComponent) << 4;
+					h ^= std::hash<MoleculeType *>()(k.anchorPartnerType) << 5;
+					h ^= std::hash<int>()(k.anchorPartnerComponent) << 6;
+					return h;
+				}
+			};
+			/* Root-local necessary conditions are stored in NFcore.hh rather than
+			 * TemplateMolecule's dependency type to avoid the legacy cyclic header
+			 * include between NFcore.hh and templateMolecule.hh. */
+			struct MembershipRootPredicate {
+				int kind;
+				int componentIndex;
+				int stateValue;
+				MoleculeType *partnerType;
+				int partnerComponentIndex;
+			};
+			/* For small root molecule types, prefilter gain vectors by the molecule's
+			 * complete local occupancy mask.  The filtered vectors are stable ordered
+			 * subsequences, so selecting one does not perturb reaction update order. */
+			struct MembershipCandidateView {
+				MembershipCandidateView() : candidates(0), byBoundMask() {}
+				const vector<unsigned int> *candidates;
+				vector<vector<unsigned int> > byBoundMask;
+			};
+
+			/* Pre-resolved gain lookup.  Composite dependency maps are convenient while
+			 * building the static index but expensive on the event path because every
+			 * walked molecule reconstructs and hashes a multi-field key.  Resolve each
+			 * trigger once into its fallback vector plus tiny anchor/partner tables. */
+			struct MembershipPartnerCandidateEntry {
+				MembershipPartnerCandidateEntry() : partnerType(0), partnerComponent(-1), candidates(0) {}
+				MoleculeType *partnerType;
+				int partnerComponent;
+				const vector<unsigned int> *candidates;
+				const MembershipCandidateView *candidateView = 0;
+			};
+			struct MembershipAnchorCandidateLookup {
+				MembershipAnchorCandidateLookup() : anchorComponent(-1), entries() {}
+				int anchorComponent;
+				vector<MembershipPartnerCandidateEntry> entries;
+			};
+			struct MembershipGainLookup {
+				MembershipGainLookup() : fallback(0), fallbackView(0), anchors() {}
+				const vector<unsigned int> *fallback;
+				const MembershipCandidateView *fallbackView;
+				vector<MembershipAnchorCandidateLookup> anchors;
+			};
+
+			/* Root-independent lookup work for one firing is shared by every molecule
+			 * this MoleculeType refreshes.  Store resolved dependency vectors once per
+			 * System mutation generation; molecule-local root context and current
+			 * membership are still evaluated separately for each walked molecule. */
+			struct MembershipEventCandidateAction {
+				enum Kind { DIRECT = 0, BOND_FREE_GAIN = 1,
+					BOND_BOUND_GAIN = 2, TOPOLOGY_GAIN = 3 };
+				MembershipEventCandidateAction() : kind(DIRECT), candidates(0), anchors(0),
+					gainLookup(0), lossOnly(false), requireRoot(false), type1(0), component1(-1),
+					type2(0), component2(-1) {}
+				Kind kind;
+				const vector<unsigned int> *candidates;
+				const vector<int> *anchors;
+				const MembershipGainLookup *gainLookup;
+				const MembershipCandidateView *candidateView = 0;
+				bool lossOnly;
+				bool requireRoot;
+				MoleculeType *type1;
+				int component1;
+				MoleculeType *type2;
+				int component2;
+			};
+
+			void buildMembershipDependencyIndex();
+			void prepareMembershipEventPlan(unsigned long long eventGeneration);
+			void applyMembershipEventPlan(Molecule *m);
+			void prepareMembershipCandidates(Molecule *m);
+			void appendMembershipCandidateVector(
+					const vector<unsigned int> *candidates, Molecule *m, bool lossOnly,
+					bool requireCurrentRootContext = false,
+					const MembershipCandidateView *candidateView = 0);
+			void appendMembershipBondFreeGainCandidates(
+					const MembershipComponentKey &trigger, Molecule *m);
+			void appendMembershipBondBoundGainCandidates(
+					const MembershipComponentKey &trigger, Molecule *m);
+			void appendMembershipTopologyGainCandidates(
+					const MembershipTopologyKey &trigger, Molecule *m);
+			bool membershipRootContextMatches(
+					Molecule *m, unsigned int reactionIndex) const;
+			bool isPreparedMembershipCandidate(unsigned int reactionIndex) const {
+				return reactionIndex < membershipCandidateSeen.size() &&
+					membershipCandidateSeen[reactionIndex] == membershipCandidateGeneration;
+			}
 
 
 			//basic info
@@ -1354,6 +1742,11 @@ namespace NFcore
 			vector <int> reactionMappingIndices;
 			int reactionMappingCount;
 			vector <CompactPartnerPool *> compactPartnerPools;
+			/* Reverse index built while the XML parser wires a local function into
+			 * a DOR reaction.  State-indexed functions can then refresh only the
+			 * reaction channels that actually depend on the changed slot. */
+			vector <vector <pair<ReactionClass *, int> > >
+					typeILocalFunctionReactions;
 
 			vector <int> indexOfDORrxns;
 
@@ -1390,6 +1783,78 @@ namespace NFcore
 			vector<unsigned int> compactEnergyContextMinimumRequiredBits;
 			vector<std::uint64_t> nonCompactMembershipCandidateBits;
 			bool hasCompactEnergyMembershipIndex;
+
+
+			/* General topology/state membership dependency index.  Unlike the older
+			 * compact EnergyPattern bitsets, component indices are unbounded and keys
+			 * may refer to any molecule type appearing in the full reactant pattern. */
+			unordered_map<MembershipStateKey, vector<unsigned int>, MembershipStateKeyHash>
+				membershipStateRequiredCandidates;
+			unordered_map<MembershipStateKey, vector<unsigned int>, MembershipStateKeyHash>
+				membershipStateExcludedCandidates;
+			unordered_map<MembershipComponentKey, vector<unsigned int>, MembershipComponentKeyHash>
+				membershipBondFreeCandidates;
+			unordered_map<MembershipComponentKey, vector<unsigned int>, MembershipComponentKeyHash>
+				membershipBondFreeGainFallbackCandidates;
+			unordered_map<MembershipComponentKey, vector<int>, MembershipComponentKeyHash>
+				membershipBondFreeGainAnchorComponents;
+			unordered_map<MembershipBondContextKey, vector<unsigned int>, MembershipBondContextKeyHash>
+				membershipBondFreeGainCompositeCandidates;
+			unordered_map<MembershipComponentKey, vector<unsigned int>, MembershipComponentKeyHash>
+				membershipBondBoundCandidates;
+			/* Gain-side refinement for generic bound predicates.  Rules on small
+			 * machinery molecules can be partitioned by one explicit root topology
+			 * anchor (e.g. ribosome.asite->mRNA.p137), avoiding a scan of thousands
+			 * of position-enumerated hit/collision rules.  The broad map above is
+			 * retained for loss-side membership intersection. */
+			unordered_map<MembershipComponentKey, vector<unsigned int>, MembershipComponentKeyHash>
+				membershipBondBoundGainFallbackCandidates;
+			unordered_map<MembershipComponentKey, vector<int>, MembershipComponentKeyHash>
+				membershipBondBoundGainAnchorComponents;
+			unordered_map<MembershipBondContextKey, vector<unsigned int>, MembershipBondContextKeyHash>
+				membershipBondBoundGainCompositeCandidates;
+			unordered_map<MembershipTopologyKey, vector<unsigned int>, MembershipTopologyKeyHash>
+				membershipTopologyCandidates;
+			unordered_map<MembershipTopologyKey, vector<unsigned int>, MembershipTopologyKeyHash>
+				membershipTopologyGainFallbackCandidates;
+			unordered_map<MembershipTopologyKey, vector<int>, MembershipTopologyKeyHash>
+				membershipTopologyGainAnchorComponents;
+			unordered_map<MembershipTopologyContextKey, vector<unsigned int>, MembershipTopologyContextKeyHash>
+				membershipTopologyGainCompositeCandidates;
+			unordered_map<MembershipComponentKey, MembershipGainLookup, MembershipComponentKeyHash>
+				membershipBondFreeGainLookups;
+			unordered_map<MembershipComponentKey, MembershipGainLookup, MembershipComponentKeyHash>
+				membershipBondBoundGainLookups;
+			unordered_map<MembershipTopologyKey, MembershipGainLookup, MembershipTopologyKeyHash>
+				membershipTopologyGainLookups;
+			vector<unsigned int> unconditionalMembershipCandidates;
+			/* Local entries whose propensity can change even when this molecule's
+			 * role-local match set is unchanged.  The sparse membership loop merges
+			 * these with the dependency candidates so it can avoid scanning every
+			 * registration without suppressing functional/DOR rate updates. */
+			vector<unsigned int> membershipNonlocalPropensityCandidates;
+			vector<vector<MembershipRootPredicate> > membershipRootContexts;
+			vector<unsigned char> membershipRootContextSafe;
+			/* Cheap necessary-condition masks for root bond predicates on the first
+			 * 64 components.  Molecule already maintains the same compact bound mask.
+			 * These reject most small-machinery candidates before walking predicate
+			 * vectors; predicates outside the mask remain on the generic path. */
+			vector<std::uint64_t> membershipRootRequiredBoundMasks;
+			vector<std::uint64_t> membershipRootRequiredFreeMasks;
+			unordered_map<const vector<unsigned int> *, MembershipCandidateView>
+				membershipCandidateViews;
+			vector<std::uint32_t> membershipCandidateSeen;
+			/* Root-context predicates are often reached through several dependency
+			 * vectors in the same molecule update. Cache the boolean result for the
+			 * current generation so each (molecule,reaction) context is evaluated at
+			 * most once per update. */
+			vector<std::uint32_t> membershipRootContextChecked;
+			vector<unsigned char> membershipRootContextResult;
+			vector<unsigned int> membershipCandidateScratch;
+			vector<MembershipEventCandidateAction> membershipEventCandidatePlan;
+			unsigned long long membershipEventPlanGeneration = ~0ULL;
+			std::uint32_t membershipCandidateGeneration = 0;
+			bool membershipDependencyIndexBuilt = false;
 
 
 
@@ -1433,6 +1898,9 @@ namespace NFcore
 			int getComplexID() const { return ID_complex; };
 			Complex * getComplex() const { return (parentMoleculeType->getSystem()->getAllComplexes()).getComplex(ID_complex); };
 			int getDegree();
+			const vector<int>& getBondedComponentIndices() const {
+				return bondedComponentIndices;
+			}
 
 			// get (non-unqiue) label for this molecule (cIndex==-1) or one of it's components (cIndex>=0)
 			string getLabel(int cIndex) const;
@@ -1455,6 +1923,12 @@ namespace NFcore
 			bool getVisitedMolecule() const { return hasVisitedMolecule; }
 			void setVisitedMolecule(bool visit) { hasVisitedMolecule = visit; }
 			bool * hasVisitedBond;
+			/* Single fused backing block for bond/component/indexOfBond/
+			 * hasVisitedBond.  Four separate new[] calls on a 4-component
+			 * molecule cost ~144 bytes of allocator space to hold 68 bytes of
+			 * data, because glibc rounds every request to a 16-byte granule
+			 * with an 8-byte header.  One allocation costs 80. */
+			char * siteBlock;
 			TemplateMolecule *isMatchedTo;
 
 			/* used when reevaluating local functions */
@@ -1464,32 +1938,43 @@ namespace NFcore
 			int getComponentState(int cIndex) const { return component[cIndex]; };
 			int getComponentIndexOfBond(int cIndex) const { return indexOfBond[cIndex]; };
 			std::uint64_t getBoundComponentMask() const { return boundComponentMask; };
+			const vector <int> &getChangedStateComponents() const {
+				return changedStateComponents;
+			};
+			void clearChangedStateComponents() { changedStateComponents.clear(); };
 			void setComponentState(int cIndex, int newValue);
 			void setComponentState(string cName, int newValue);
 
 			///////////// local function methods...
-			void setLocalFunctionValue(double newValue,int localFunctionIndex);
-			double getLocalFunctionValue(int localFunctionIndex);
-			LocalFunction * getLocalFunction(int localFunctionIndex);
+				void setLocalFunctionValue(double newValue,int localFunctionIndex);
+				double getLocalFunctionValue(int localFunctionIndex);
+				bool isLocalFunctionStateCurrent(int localFunctionIndex, int stateValue) const;
+				void setLocalFunctionState(int localFunctionIndex, int stateValue);
+				/* Several state-indexed local functions can be invalidated by one
+				 * transformation.  Defer the expensive DOR notification fan-out
+				 * until all of those values have been refreshed. */
+				void beginDeferredDORUpdates() { ++deferredDORUpdateDepth; };
+				void endDeferredDORUpdates();
+				LocalFunction * getLocalFunction(int localFunctionIndex);
 			void setUpLocalFunctionList();
 
 
 			////////////////////////////////////////////////////////////////////
 
 			/* accessor functions for checking binding sites */
-			bool isBindingSiteOpen(int bIndex) const;
-			bool isBindingSiteBonded(int bIndex) const;
-			Molecule * getBondedMolecule(int bSiteIndex) const;
-			int getBondedMoleculeBindingSiteIndex(int cIndex) const;
+			bool isBindingSiteOpen(int bIndex) const { return bond[bIndex] == nullptr; }
+			bool isBindingSiteBonded(int bIndex) const { return bond[bIndex] != nullptr; }
+			Molecule * getBondedMolecule(int bSiteIndex) const { return bond[bSiteIndex]; }
+			int getBondedMoleculeBindingSiteIndex(int cIndex) const { return indexOfBond[cIndex]; }
 
 			int getRxnListMappingId(int rxnIndex) { 
 				//return rxnListMappingId[rxnIndex];
 				int mappingIndex = parentMoleculeType->getReactionMappingIndex(
 						rxnIndex);
 				if (mappingIndex < 0) return -1;
-				MappingIdSet &mappingIds = rxnListMappingId2[mappingIndex];
-				return (mappingIds.size() > 0) ?
-					*mappingIds.begin() : -1;  //JJT: changing to handle multiple mappings per reaction
+				const MappingIdSet *mappingIds = rxnListMappings.get(mappingIndex);
+				return (mappingIds && !mappingIds->empty()) ?
+					*mappingIds->begin() : -1;  //JJT: changing to handle multiple mappings per reaction
 			};
 
 			const MappingIdSet& getRxnListMappingSet(int rxnIndex) const {
@@ -1499,7 +1984,16 @@ namespace NFcore
 					static const MappingIdSet emptyMappingSet;
 					return emptyMappingSet;
 				}
-				return rxnListMappingId2[mappingIndex];
+				const MappingIdSet *mappingIds = rxnListMappings.get(mappingIndex);
+				if (!mappingIds) {
+					static const MappingIdSet emptyMappingSet;
+					return emptyMappingSet;
+				}
+				return *mappingIds;
+			}
+
+			const vector<int>& getActiveReactionMembershipIndices() const {
+				return activeReactionMembershipIndices;
 			}
 
 			bool setRxnListMappingId(int rxnIndex, int rxnListMappingId) {
@@ -1507,13 +2001,24 @@ namespace NFcore
 						rxnIndex);
 				if (mappingIndex < 0) return rxnListMappingId == -1;
 				if(rxnListMappingId == -1){
-						this->rxnListMappingId2[mappingIndex].clear();
-						//this->rxnListMappingId3[rxnIndex].clear();
+						const MappingIdSet *existing = rxnListMappings.get(mappingIndex);
+						if (!existing || existing->empty()) return true;
+						MappingIdSet *mappingIds = rxnListMappings.ensure(mappingIndex);
+						mappingIds->clear();
+						rxnListMappings.noteBecameEmpty(mappingIndex);
+						removeActiveReactionMembershipIndex(rxnIndex);
 						return true;
 					}
 					else{
+						MappingIdSet *mappingIds = rxnListMappings.ensure(mappingIndex);
+						if (!mappingIds) return false;
+						bool wasEmpty = mappingIds->empty();
 						pair<MappingIdSet::iterator,bool> it =
-							this->rxnListMappingId2[mappingIndex].insert(rxnListMappingId); //JJT: using a set* instead of int* to deal with multiple mappings per reaction
+							mappingIds->insert(rxnListMappingId); //JJT: using a set* instead of int* to deal with multiple mappings per reaction
+						if (wasEmpty && it.second) {
+							rxnListMappings.noteBecameNonempty(mappingIndex);
+							activeReactionMembershipIndices.push_back(rxnIndex);
+						}
 						return it.second; //JJT:  return whether it is a new insert or not
 					}
 			};
@@ -1523,8 +2028,17 @@ namespace NFcore
 			void deleteRxnListMappingId(int rxnIndex, int rxnListMappingId){
 				int mappingIndex = parentMoleculeType->getReactionMappingIndex(
 						rxnIndex);
-				if (mappingIndex >= 0)
-					rxnListMappingId2[mappingIndex].erase(rxnListMappingId);
+				if (mappingIndex >= 0) {
+					const MappingIdSet *existing = rxnListMappings.get(mappingIndex);
+					if (!existing || existing->empty()) return;
+					MappingIdSet *mappingIds = rxnListMappings.ensure(mappingIndex);
+					bool hadMembership = !mappingIds->empty();
+					mappingIds->erase(rxnListMappingId);
+					if (hadMembership && mappingIds->empty()) {
+						rxnListMappings.noteBecameEmpty(mappingIndex);
+						removeActiveReactionMembershipIndex(rxnIndex);
+					}
+				}
 			}
 
 			/* set functions for states, bonds, and complexes */
@@ -1577,6 +2091,8 @@ namespace NFcore
 			// update DOR reaction propensity that depends on this molecule (type I),
 			// i.e. this molecule is an argument passed to a local function.
 			void updateDORRxnValues();
+			void updateDORRxnValues(int localFunctionIndex);
+			void updateDORRxnValue(ReactionClass *rxn, int rxnPosition);
 
 
 
@@ -1640,13 +2156,25 @@ namespace NFcore
 			/* list of components */
 			int *component;
 			int numOfComponents;
+			/* Components changed by the current transformation.  This is
+			 * intentionally sparse: most molecules never change state, and
+			 * indexed translation rules change at most one site per firing. */
+			vector <int> changedStateComponents;
 			Molecule **bond;
 			int *indexOfBond; /* gives the index of the component that is bonded to this molecule */
 			std::uint64_t boundComponentMask;
+			/* Sparse list of occupied binding-site indices.  Bond lookup by component
+			 * remains O(1) through bond[], while graph traversal becomes proportional
+			 * to molecular degree instead of the number of declared components. */
+			vector<int> bondedComponentIndices;
 
 
 			//////////// keep track of local function values
-			double *localFunctionValues;
+				double *localFunctionValues;
+				int *localFunctionStateValues;
+				int deferredDORUpdateDepth;
+				bool pendingDORUpdate;
+				vector <int> pendingDORLocalFunctionIndices;
 
 
 			//keep track of which observables I match (and how many times I match it)
@@ -1654,9 +2182,16 @@ namespace NFcore
 
 
 			//Used to keep track of which reactions this molecule is in...
-			MappingIdSet* rxnListMappingId2;
+			PagedMappingIdTable rxnListMappings;
 			map<vector<Molecule *>, int>* rxnListMappingId3;
 			int nReactions;
+			/* Sparse list of local reaction registrations with at least one mapping.
+			 * This makes broad loss-side dependency intersections proportional to
+			 * current memberships rather than total rules, without another dense
+			 * per-molecule array. */
+			vector<int> activeReactionMembershipIndices;
+
+			void removeActiveReactionMembershipIndex(int rxnIndex);
 
 		private:
 			template <bool PROFILE, bool TRACKING, bool TRACK_TRUNCATION>
@@ -1838,12 +2373,24 @@ namespace NFcore
 			int getRxnType() const { return reactionType; };
 
 			MoleculeType *getMoleculeTypeOfReactantTemplate(int pos) const;
+			TemplateMolecule *getReactantTemplate(int pos) const {
+				return (pos >= 0 && static_cast<unsigned int>(pos) < n_reactants)
+					? reactantTemplates[pos] : 0;
+			}
 			void setBaseRate(double newBaseRate,string newBaseRateName);
 			void resetBaseRateFromSystemParamter();
 
 			void setTraversalLimit(int limit) { this->traversalLimit = limit; };
 
 			virtual double get_a() const { return a; };
+
+			/*! Report the unique IDs of the reaction-center molecules of every
+			 *  currently matched instance of this rule.  Default is empty; rule
+			 *  classes that keep reactant lists override it.  This is what lets the
+			 *  state-local equivalence probe compare q(s->s') per physical successor
+			 *  instead of only per channel, which matters because a compact encoding
+			 *  collapses many distinct transitions into a single channel. */
+			virtual void listMatchIds(vector <int> &ids) const { }
 			virtual void printDetails() const;
 			void fire(double random_A_number);
 			// AS2023 - additional call sig to use with reaction firing tracking. The call
@@ -1893,6 +2440,10 @@ namespace NFcore
 			virtual void remove(Molecule *m, unsigned int reactantPos) = 0;
 
 			virtual double update_a() = 0;
+			/* True only when update_a() can change solely because this reaction's
+			 * own membership/multiplicity changed.  The general membership filter
+			 * may then skip propensity bookkeeping for a proven non-candidate. */
+			virtual bool propensityDependsOnlyOnMembership() const { return false; }
 			/* Whether this reaction can use a conservative, endpoint-local
 			 * membership refresh after it fires. */
 			virtual bool usesIncrementalMembership() const { return false; }

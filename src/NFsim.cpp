@@ -172,6 +172,7 @@
 
 
 #include "NFsim.hh"
+namespace NFcore { void memprofReport(); }
 #include "NFtest/rng/test_rng.hh"
 #include "NFtest/util/test_util.hh"
 #include "NFtest/mapping/test_mapping.hh"
@@ -873,6 +874,33 @@ bool runFromArgs(System *s, const map<string,string>& argMap, bool verbose)
 	else {
 		// Do the run
 		cout<<endl<<endl<<endl<<"Equilibrating for :"<<eqTime<<"s.  Please wait."<<endl<<endl;
+	if (getenv("NFSIM_DUMP_STATE") != 0) {
+		// propensities are already current after prepareForSimulation
+		cout.precision(17);
+		cout<<"#DUMP_BEGIN"<<endl;
+		vector <ReactionClass *> rxns = s->getAllReactions();
+		double atot = 0.0;
+		for (unsigned int r = 0; r < rxns.size(); ++r) {
+			double a = rxns[r]->get_a();
+			atot += a;
+			cout<<"RXN\t"<<rxns[r]->getName()<<"\t"<<scientific<<a<<endl;
+			vector <int> mids;
+			rxns[r]->listMatchIds(mids);
+			if (!mids.empty()) {
+				cout<<"MATCH\t"<<rxns[r]->getName();
+				for (unsigned int q = 0; q < mids.size(); ++q) cout<<"\t"<<mids[q];
+				cout<<endl;
+			}
+		}
+		cout<<"ATOT\t"<<scientific<<atot<<endl;
+		for (int o = 0; o < s->getNumOfObsForOutput(); ++o) {
+			Observable *ob = s->getObsForOutput(o);
+			cout<<"OBS\t"<<ob->getName()<<"\t"<<ob->getCount()<<endl;
+		}
+		cout<<"#DUMP_END"<<endl;
+		if (getenv("NFSIM_DUMP_ONLY") != 0) return true;
+	}
+
 		s->equilibrate(eqTime);
 		if (s->isProfilingEnabled()) s->resetProfiling();
 
@@ -899,6 +927,18 @@ bool runFromArgs(System *s, const map<string,string>& argMap, bool verbose)
 			s->sim(sTime,oSteps);
 		}
 	}
+
+	/* State-local semantic probe.
+	 *
+	 * With NFSIM_DUMP_STATE set, print an exact, machine-readable description
+	 * of the simulator state *before* any event fires: every reaction channel
+	 * with its propensity, the total propensity, and every observable count.
+	 * This is what makes encoding candidates comparable independent of RNG
+	 * ordering: two encodings of the same CTMC must agree on total exit rate
+	 * and on the propensity mass assigned to each physically distinct event,
+	 * even though their channel partitions and RNG consumption differ. */
+
+	NFcore::memprofReport();
 
 	if (s->isProfilingEnabled() && !s->writeProfile()) return false;
 
