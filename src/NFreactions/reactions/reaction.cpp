@@ -506,20 +506,41 @@ bool BasicRxnClass::tryToAddWithIndex(Molecule *m, unsigned int reactantPos,
 		rl->noteMappedComplexSize(m->getComplex()->getComplexSize());
 	}
 
-	//Try to map it!
-	MappingSet *ms = rl->pushNextAvailableMappingSet();
+	// Match before activating a MappingSet when the conservative compiled path is
+	// available. Rejected candidates then avoid MappingSet setup/clear entirely.
+	MappingSet *ms = 0;
+	int reusedMappingId = -1;
 	symmetricMappingSet.clear();
 	bool usedCompiledSimple = false;
-	comparisonResult = reactantTemplates[reactantPos]->compareCompiledSimple(
-			m, ms, usedCompiledSimple);
-	if (!usedCompiledSimple)
+	comparisonResult = reactantTemplates[reactantPos]->matchesCompiledSimple(
+			m, usedCompiledSimple);
+	if (usedCompiledSimple && comparisonResult) {
+		/* If the event did not change the compiled molecule assignment, retain the
+		 * live mapping and its stable id instead of materializing an equivalent one. */
+		for (MappingIdSet::iterator it=deleteMs.begin();
+				it!=deleteMs.end(); ++it) {
+			MappingSet *existing = rl->getMappingSet(*it);
+			if (reactantTemplates[reactantPos]->compiledSimpleMappingEquals(existing)) {
+				reusedMappingId = static_cast<int>(*it);
+				break;
+			}
+		}
+		if (reusedMappingId >= 0) {
+			deleteMs.erase(static_cast<unsigned int>(reusedMappingId));
+		} else {
+			ms = rl->pushNextAvailableMappingSet();
+			reactantTemplates[reactantPos]->materializeCompiledSimple(ms);
+		}
+	} else if (!usedCompiledSimple) {
+		ms = rl->pushNextAvailableMappingSet();
 		comparisonResult = reactantTemplates[reactantPos]->compare(
 				m,rl,ms,false,&symmetricMappingSet);
+	}
 	if(!comparisonResult) {
 		//cout << "no mapping in normal reaction, remove"<<endl;
 		//we must remove, if we did not match.  This will also remove
 		//everything that was cloned off of the mapping set
-		rl->removeMappingSet(ms->getId());
+		if (ms != 0) rl->removeMappingSet(ms->getId());
 		//JJT: removes any symmetric mapping sets that might have been added since we are not using them
 		for(vector<MappingSet *>::iterator it=symmetricMappingSet.begin();it!=symmetricMappingSet.end();++it){
 			rl->removeMappingSet((*it)->getId());
@@ -541,7 +562,7 @@ bool BasicRxnClass::tryToAddWithIndex(Molecule *m, unsigned int reactantPos,
 					}
             }
 		}
-		else{
+		else if (reusedMappingId < 0) {
 			int mapIndex = checkForEquality(m,ms,rxnIndex,rl);
 			if(mapIndex >= 0){
 				deleteMs.erase(mapIndex);

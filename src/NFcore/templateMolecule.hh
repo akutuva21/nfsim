@@ -139,6 +139,12 @@ namespace NFcore
 		 * constraints.  `used` is false when the pattern is outside that proven-safe
 		 * subset, in which case callers must use compare(). */
 		bool compareCompiledSimple(Molecule *m, MappingSet *ms, bool &used);
+		/* Split matching from mapping materialization so rejected candidates do not
+		 * activate and clear a MappingSet.  A successful match leaves the proven
+		 * molecule assignment in compiledSimpleMappedScratch until the next match. */
+		bool matchesCompiledSimple(Molecule *m, bool &used);
+		void materializeCompiledSimple(MappingSet *ms);
+		bool compiledSimpleMappingEquals(MappingSet *ms) const;
 		void clear();
 		void clearTemplateOnly();
 		bool tryToMap(Molecule *toMap, string toMapComponent,

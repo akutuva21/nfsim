@@ -1012,7 +1012,7 @@ void TemplateMolecule::buildCompiledSimpleMatcher()
 	compiledSimpleMappedScratch.resize(compiledSimpleNodes.size(), 0);
 }
 
-bool TemplateMolecule::compareCompiledSimple(Molecule *m, MappingSet *ms, bool &used)
+bool TemplateMolecule::matchesCompiledSimple(Molecule *m, bool &used)
 {
 	buildCompiledSimpleMatcher();
 	used = compiledSimpleMatcherSafe;
@@ -1047,6 +1047,12 @@ bool TemplateMolecule::compareCompiledSimple(Molecule *m, MappingSet *ms, bool &
 				a->getBondedMoleculeBindingSiteIndex(it->compA) != it->compB)
 			return false;
 	}
+	return true;
+}
+
+void TemplateMolecule::materializeCompiledSimple(MappingSet *ms)
+{
+	if (ms == 0) return;
 	/* Map in the same DFS post-order as the recursive matcher. Mapping generators
 	 * write fixed MappingSet slots, so this is both deterministic and equivalent. */
 	for (vector<int>::const_iterator it=compiledSimpleMapOrder.begin();
@@ -1055,6 +1061,41 @@ bool TemplateMolecule::compareCompiledSimple(Molecule *m, MappingSet *ms, bool &
 		compiledSimpleNodes[static_cast<std::size_t>(i)].tm->mapMolecule(
 				compiledSimpleMappedScratch[static_cast<std::size_t>(i)], ms, 0);
 	}
+}
+
+bool TemplateMolecule::compiledSimpleMappingEquals(MappingSet *ms) const
+{
+	if (ms == 0) return false;
+	unsigned int expectedMappings = 0;
+	for (vector<int>::const_iterator it=compiledSimpleMapOrder.begin();
+			it!=compiledSimpleMapOrder.end(); ++it)
+		expectedMappings += static_cast<unsigned int>(
+				compiledSimpleNodes[static_cast<std::size_t>(*it)].tm->n_mapGenerators);
+	if (ms->getNumOfMappings() != expectedMappings) return false;
+
+	/* MappingSet::checkForEquality compares the mapped molecule multiset without
+	 * depending on Mapping slots.  Perform the same comparison directly against
+	 * the compiled scratch assignment, avoiding temporary MappingSet creation. */
+	for (unsigned int mi=0; mi<ms->getNumOfMappings(); ++mi) {
+		Molecule *mapped = ms->get(mi)->getMolecule();
+		bool found = false;
+		for (vector<int>::const_iterator it=compiledSimpleMapOrder.begin();
+				it!=compiledSimpleMapOrder.end() && !found; ++it) {
+			const CompiledSimpleNode &node =
+					compiledSimpleNodes[static_cast<std::size_t>(*it)];
+			if (node.tm->n_mapGenerators > 0 &&
+					compiledSimpleMappedScratch[static_cast<std::size_t>(*it)] == mapped)
+				found = true;
+		}
+		if (!found) return false;
+	}
+	return true;
+}
+
+bool TemplateMolecule::compareCompiledSimple(Molecule *m, MappingSet *ms, bool &used)
+{
+	if (!matchesCompiledSimple(m, used)) return false;
+	materializeCompiledSimple(ms);
 	return true;
 }
 

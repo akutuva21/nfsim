@@ -773,6 +773,7 @@ void MoleculeType::buildMembershipDependencyIndex()
 	membershipRootRequiredBoundMasks.assign(reactions.size(), 0);
 	membershipRootRequiredFreeMasks.assign(reactions.size(), 0);
 	membershipCandidateViews.clear();
+	membershipLossCandidateBitmaps.clear();
 	membershipCandidateSeen.assign(reactions.size(), 0);
 	membershipRootContextChecked.assign(reactions.size(), 0);
 	membershipRootContextResult.assign(reactions.size(), 0);
@@ -978,20 +979,37 @@ void MoleculeType::buildMembershipDependencyIndex()
 		it->second.erase(std::unique(it->second.begin(), it->second.end()),
 			it->second.end());
 	}
-	/* Small machinery has only a handful of occupancy states.  Precompute the
-	 * exact ordered subsequence compatible with each complete bound mask for
-	 * root-filtered gain vectors.  Avoid doing this for large roots or tiny
-	 * vectors where an extra indirection would cost more than the checks. */
-	if (numOfComponents > 0 && numOfComponents <= 6) {
-		const unsigned int maskCount = 1u << numOfComponents;
-		auto ensureView = [&](const vector<unsigned int> *vec) {
-			if (vec == 0 || vec->size() < 4 || membershipCandidateViews.count(vec)) return;
-			MembershipCandidateView view; view.candidates = vec;
+	/* Retain the validated iteration23 loss-vector cutoff and active-side
+	 * crossover. Large vectors get O(1) membership tests; smaller ones keep the
+	 * existing binary-search path. */
+	auto ensureLossBitmap = [&](const vector<unsigned int> *vec) {
+		if (vec == 0 || vec->size() < 64 || membershipLossCandidateBitmaps.count(vec))
+			return;
+		vector<std::uint64_t> bitmap((reactions.size() + 63u) / 64u, 0);
+		for (vector<unsigned int>::const_iterator it=vec->begin(); it!=vec->end(); ++it)
+			if (*it < reactions.size())
+				bitmap[*it >> 6] |= std::uint64_t(1) << (*it & 63u);
+		membershipLossCandidateBitmaps.emplace(vec, std::move(bitmap));
+	};
+	for (auto &kv : membershipStateRequiredCandidates) ensureLossBitmap(&kv.second);
+	for (auto &kv : membershipStateExcludedCandidates) ensureLossBitmap(&kv.second);
+	for (auto &kv : membershipBondFreeCandidates) ensureLossBitmap(&kv.second);
+	for (auto &kv : membershipBondBoundCandidates) ensureLossBitmap(&kv.second);
+	for (auto &kv : membershipTopologyCandidates) ensureLossBitmap(&kv.second);
+
+	/* Gain-vector views carry two independent proofs: complete small-root
+	 * occupancy and one common first residual topology predicate. */
+	const bool smallOccupancyRoot = numOfComponents > 0 && numOfComponents <= 6;
+	const unsigned int maskCount = smallOccupancyRoot ? (1u << numOfComponents) : 0;
+	auto ensureView = [&](const vector<unsigned int> *vec) {
+		if (vec == 0 || vec->empty() || membershipCandidateViews.count(vec)) return;
+		MembershipCandidateView view; view.candidates = vec;
+		if (smallOccupancyRoot && vec->size() >= 4) {
 			view.byBoundMask.resize(maskCount);
 			for (unsigned int mask = 0; mask < maskCount; ++mask) {
 				vector<unsigned int> &out = view.byBoundMask[mask];
 				out.reserve(vec->size());
-				for (vector<unsigned int>::const_iterator it = vec->begin(); it != vec->end(); ++it) {
+				for (vector<unsigned int>::const_iterator it=vec->begin(); it!=vec->end(); ++it) {
 					unsigned int r = *it;
 					std::uint64_t bound = membershipRootRequiredBoundMasks[r];
 					std::uint64_t free = membershipRootRequiredFreeMasks[r];
@@ -999,17 +1017,42 @@ void MoleculeType::buildMembershipDependencyIndex()
 							(std::uint64_t(mask) & free) == 0) out.push_back(r);
 				}
 			}
+		}
+		const MembershipRootPredicate *common = 0;
+		bool commonTopology = true;
+		for (vector<unsigned int>::const_iterator it=vec->begin();
+				it!=vec->end(); ++it) {
+			unsigned int r = *it;
+			if (r >= membershipRootContexts.size() || !membershipRootContextSafe[r] ||
+					membershipRootContexts[r].empty() ||
+					membershipRootContexts[r][0].kind != MembershipPatternDependency::TOPOLOGY) {
+				commonTopology = false;
+				break;
+			}
+			const MembershipRootPredicate &candidate = membershipRootContexts[r][0];
+			if (common == 0) common = &candidate;
+			else if (common->componentIndex != candidate.componentIndex ||
+					common->partnerType != candidate.partnerType ||
+					common->partnerComponentIndex != candidate.partnerComponentIndex) {
+				commonTopology = false;
+				break;
+			}
+		}
+		if (commonTopology && common != 0) {
+			view.hasCommonRootTopology = true;
+			view.commonRootTopology = *common;
+		}
+		if (!view.byBoundMask.empty() || view.hasCommonRootTopology)
 			membershipCandidateViews.emplace(vec, std::move(view));
-		};
-		for (auto &kv : membershipStateRequiredCandidates) ensureView(&kv.second);
-		for (auto &kv : membershipStateExcludedCandidates) ensureView(&kv.second);
-		for (auto &kv : membershipBondFreeGainFallbackCandidates) ensureView(&kv.second);
-		for (auto &kv : membershipBondBoundGainFallbackCandidates) ensureView(&kv.second);
-		for (auto &kv : membershipTopologyGainFallbackCandidates) ensureView(&kv.second);
-		for (auto &kv : membershipBondFreeGainCompositeCandidates) ensureView(&kv.second);
-		for (auto &kv : membershipBondBoundGainCompositeCandidates) ensureView(&kv.second);
-		for (auto &kv : membershipTopologyGainCompositeCandidates) ensureView(&kv.second);
-	}
+	};
+	for (auto &kv : membershipStateRequiredCandidates) ensureView(&kv.second);
+	for (auto &kv : membershipStateExcludedCandidates) ensureView(&kv.second);
+	for (auto &kv : membershipBondFreeGainFallbackCandidates) ensureView(&kv.second);
+	for (auto &kv : membershipBondBoundGainFallbackCandidates) ensureView(&kv.second);
+	for (auto &kv : membershipTopologyGainFallbackCandidates) ensureView(&kv.second);
+	for (auto &kv : membershipBondFreeGainCompositeCandidates) ensureView(&kv.second);
+	for (auto &kv : membershipBondBoundGainCompositeCandidates) ensureView(&kv.second);
+	for (auto &kv : membershipTopologyGainCompositeCandidates) ensureView(&kv.second);
 	auto candidateViewFor = [&](const vector<unsigned int> *vec) -> const MembershipCandidateView * {
 		auto it = membershipCandidateViews.find(vec);
 		return it == membershipCandidateViews.end() ? 0 : &it->second;
@@ -1081,58 +1124,56 @@ void MoleculeType::buildMembershipDependencyIndex()
 	membershipDependencyIndexBuilt = true;
 }
 
+bool MoleculeType::membershipRootPredicateMatches(
+		Molecule *m, const MembershipRootPredicate &d) const
+{
+	if (m == 0 || d.componentIndex < 0 ||
+			d.componentIndex >= m->getMoleculeType()->getNumOfComponents())
+		return false;
+	switch (d.kind) {
+	case MembershipPatternDependency::STATE_REQUIRED:
+		return m->getComponentState(d.componentIndex) == d.stateValue;
+	case MembershipPatternDependency::STATE_EXCLUDED:
+		return m->getComponentState(d.componentIndex) != d.stateValue;
+	case MembershipPatternDependency::BOND_FREE:
+		return !m->isBindingSiteBonded(d.componentIndex);
+	case MembershipPatternDependency::BOND_BOUND:
+		return m->isBindingSiteBonded(d.componentIndex);
+	case MembershipPatternDependency::TOPOLOGY: {
+		/* Check the stored endpoint before dereferencing the partner. */
+		if (m->getBondedMoleculeBindingSiteIndex(d.componentIndex) !=
+				d.partnerComponentIndex)
+			return false;
+		Molecule *partner = m->getBondedMolecule(d.componentIndex);
+		return partner != 0 && partner->getMoleculeType() == d.partnerType;
+	}
+	}
+	return false;
+}
+
 bool MoleculeType::membershipRootContextMatches(
-		Molecule *m, unsigned int reactionIndex) const
+		Molecule *m, unsigned int reactionIndex, bool skipFirstPredicate,
+		bool skipOccupancyMasks) const
 {
 	if (m == 0 || reactionIndex >= membershipRootContexts.size() ||
 			reactionIndex >= membershipRootContextSafe.size() ||
 			!membershipRootContextSafe[reactionIndex])
 		return true;
-	const std::uint64_t boundMask = m->getBoundComponentMask();
-	const std::uint64_t requiredBound = membershipRootRequiredBoundMasks[reactionIndex];
-	const std::uint64_t requiredFree = membershipRootRequiredFreeMasks[reactionIndex];
-	if ((boundMask & requiredBound) != requiredBound ||
-			(boundMask & requiredFree) != 0)
-		return false;
+	if (!skipOccupancyMasks) {
+		const std::uint64_t boundMask = m->getBoundComponentMask();
+		const std::uint64_t requiredBound = membershipRootRequiredBoundMasks[reactionIndex];
+		const std::uint64_t requiredFree = membershipRootRequiredFreeMasks[reactionIndex];
+		if ((boundMask & requiredBound) != requiredBound ||
+				(boundMask & requiredFree) != 0)
+			return false;
+	}
 	const vector<MembershipRootPredicate> &context =
 		membershipRootContexts[reactionIndex];
-	for (vector<MembershipRootPredicate>::const_iterator it = context.begin();
+	vector<MembershipRootPredicate>::const_iterator begin = context.begin();
+	if (skipFirstPredicate && begin != context.end()) ++begin;
+	for (vector<MembershipRootPredicate>::const_iterator it = begin;
 			it != context.end(); ++it) {
-		const MembershipRootPredicate &d = *it;
-		if (d.componentIndex < 0 ||
-				d.componentIndex >= m->getMoleculeType()->getNumOfComponents())
-			return false;
-		switch (d.kind) {
-		case MembershipPatternDependency::STATE_REQUIRED:
-			if (m->getComponentState(d.componentIndex) != d.stateValue)
-				return false;
-			break;
-		case MembershipPatternDependency::STATE_EXCLUDED:
-			if (m->getComponentState(d.componentIndex) == d.stateValue)
-				return false;
-			break;
-		case MembershipPatternDependency::BOND_FREE:
-			if (d.componentIndex >= 64 && m->isBindingSiteBonded(d.componentIndex))
-				return false;
-			break;
-		case MembershipPatternDependency::BOND_BOUND:
-			if (d.componentIndex >= 64 && !m->isBindingSiteBonded(d.componentIndex))
-				return false;
-			break;
-		case MembershipPatternDependency::TOPOLOGY: {
-			/* indexOfBond is -1 for an open site, so the partner-component test
-			 * simultaneously proves occupancy and is much more selective than the
-			 * partner type in positional polymer models.  Only dereference the bonded
-			 * molecule after this cheap exact endpoint check succeeds. */
-			if (m->getBondedMoleculeBindingSiteIndex(d.componentIndex) !=
-					d.partnerComponentIndex)
-				return false;
-			Molecule *partner = m->getBondedMolecule(d.componentIndex);
-			if (partner == 0 || partner->getMoleculeType() != d.partnerType)
-				return false;
-			break;
-		}
-		}
+		if (!membershipRootPredicateMatches(m, *it)) return false;
 	}
 	return true;
 }
@@ -1142,17 +1183,28 @@ void MoleculeType::appendMembershipCandidateVector(
 		bool requireCurrentRootContext, const MembershipCandidateView *candidateView)
 {
 	if (candidates == 0) return;
+	bool occupancyProven = false;
 	if (requireCurrentRootContext && candidateView != 0 && m != 0) {
 		unsigned int mask = static_cast<unsigned int>(m->getBoundComponentMask());
-		if (mask < candidateView->byBoundMask.size())
+		if (mask < candidateView->byBoundMask.size()) {
 			candidates = &candidateView->byBoundMask[mask];
+			occupancyProven = true;
+		}
+	}
+	bool commonTopologyProven = false;
+	if (requireCurrentRootContext && candidateView != 0 &&
+			candidateView->hasCommonRootTopology) {
+		if (!membershipRootPredicateMatches(m, candidateView->commonRootTopology))
+			return;
+		commonTopologyProven = true;
 	}
 	auto rootContextMatchesCached = [&](unsigned int r) -> bool {
 		if (!requireCurrentRootContext) return true;
 		if (membershipRootContextChecked[r] != membershipCandidateGeneration) {
 			membershipRootContextChecked[r] = membershipCandidateGeneration;
 			membershipRootContextResult[r] =
-				membershipRootContextMatches(m, r) ? 1 : 0;
+				membershipRootContextMatches(m, r, commonTopologyProven,
+						occupancyProven) ? 1 : 0;
 		}
 		return membershipRootContextResult[r] != 0;
 	};
@@ -1166,6 +1218,9 @@ void MoleculeType::appendMembershipCandidateVector(
 		 * local-index order, making binary_search valid. */
 		if (active.empty()) return;
 		if (candidates->size() > active.size() * 8) {
+			auto bitmapIt = membershipLossCandidateBitmaps.find(candidates);
+			const vector<std::uint64_t> *bitmap = bitmapIt ==
+					membershipLossCandidateBitmaps.end() ? 0 : &bitmapIt->second;
 			if (memprofEnabled())
 				NFcore::memprofCandidateProbe(name, 0,
 						static_cast<long long>(active.size()), 0);
@@ -1173,8 +1228,15 @@ void MoleculeType::appendMembershipCandidateVector(
 					ait != active.end(); ++ait) {
 				if (*ait < 0) continue;
 				unsigned int r = static_cast<unsigned int>(*ait);
-				if (!std::binary_search(candidates->begin(), candidates->end(), r))
+				if (bitmap != 0) {
+					if ((r >> 6) >= bitmap->size() ||
+							((*bitmap)[r >> 6] &
+							 (std::uint64_t(1) << (r & 63u))) == 0)
+						continue;
+				} else if (!std::binary_search(
+						candidates->begin(), candidates->end(), r)) {
 					continue;
+				}
 				if (membershipCandidateSeen[r] == membershipCandidateGeneration) continue;
 				if (!rootContextMatchesCached(r)) continue;
 				membershipCandidateSeen[r] = membershipCandidateGeneration;

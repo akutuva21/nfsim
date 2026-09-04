@@ -1632,9 +1632,18 @@ namespace NFcore
 			 * complete local occupancy mask.  The filtered vectors are stable ordered
 			 * subsequences, so selecting one does not perturb reaction update order. */
 			struct MembershipCandidateView {
-				MembershipCandidateView() : candidates(0), byBoundMask() {}
+				MembershipCandidateView() : candidates(0), byBoundMask(),
+					hasCommonRootTopology(false) {
+					commonRootTopology.kind = -1;
+					commonRootTopology.componentIndex = -1;
+					commonRootTopology.stateValue = -1;
+					commonRootTopology.partnerType = 0;
+					commonRootTopology.partnerComponentIndex = -1;
+				}
 				const vector<unsigned int> *candidates;
 				vector<vector<unsigned int> > byBoundMask;
+				bool hasCommonRootTopology;
+				MembershipRootPredicate commonRootTopology;
 			};
 
 			/* Pre-resolved gain lookup.  Composite dependency maps are convenient while
@@ -1698,7 +1707,11 @@ namespace NFcore
 			void appendMembershipTopologyGainCandidates(
 					const MembershipTopologyKey &trigger, Molecule *m);
 			bool membershipRootContextMatches(
-					Molecule *m, unsigned int reactionIndex) const;
+					Molecule *m, unsigned int reactionIndex,
+					bool skipFirstPredicate = false,
+					bool skipOccupancyMasks = false) const;
+			bool membershipRootPredicateMatches(
+					Molecule *m, const MembershipRootPredicate &predicate) const;
 			bool isPreparedMembershipCandidate(unsigned int reactionIndex) const {
 				return reactionIndex < membershipCandidateSeen.size() &&
 					membershipCandidateSeen[reactionIndex] == membershipCandidateGeneration;
@@ -1843,6 +1856,8 @@ namespace NFcore
 			vector<std::uint64_t> membershipRootRequiredFreeMasks;
 			unordered_map<const vector<unsigned int> *, MembershipCandidateView>
 				membershipCandidateViews;
+			unordered_map<const vector<unsigned int> *, vector<std::uint64_t> >
+				membershipLossCandidateBitmaps;
 			vector<std::uint32_t> membershipCandidateSeen;
 			/* Root-context predicates are often reached through several dependency
 			 * vectors in the same molecule update. Cache the boolean result for the
