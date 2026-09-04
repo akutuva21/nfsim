@@ -1,0 +1,36 @@
+{
+  "binary_sha256": "5df697a45cea78ee0fbd41109e66d3863a5f7cb1d9501b2a91dc71965ecfe1b3",
+  "command": [
+    "/private/tmp/nfsim-rasi-build-candidate/NFsim",
+    "-xml",
+    "/Users/akutuva/Documents/NFsim-vis/rasi_local_function_package_20260902/models/rasi_500/tasep.original.xml",
+    "-sim",
+    "10",
+    "-oSteps",
+    "3",
+    "-seed",
+    "1339",
+    "-o",
+    "/private/tmp/nfsim-rasi-rss-final-rasi500-rootfast/simulation.gdat",
+    "-utl",
+    "3",
+    "-gml",
+    "5000000",
+    "-maxcputime",
+    "600"
+  ],
+  "engine": "rootfast",
+  "environment": {
+    "NFSIM_MEMFILTER": "1"
+  },
+  "mode": "normal",
+  "model": "rasi500",
+  "output_sha256": "88b9d95a3ed94fb9a431d05576fc7b0314ff1be6dd7754952de63033150e9189",
+  "peak_rss_kb": 115712.0,
+  "returncode": 0,
+  "seed": 1339,
+  "system_seconds": 0.029047,
+  "user_seconds": 0.535508,
+  "wall_seconds": 0.5756029589999999,
+  "xml_sha256": "cb9c6aa55a2a10b7433676696d41c4cb869c8d137e76a18bd32e281ea1f11c4d"
+}
