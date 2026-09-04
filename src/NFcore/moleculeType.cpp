@@ -733,6 +733,29 @@ namespace {
 		}
 		return static_cast<unsigned int>(threshold);
 	}
+	static unsigned int generalMembershipFilterTuning(
+			const char *name, unsigned int fallback) {
+		const char *value = getenv(name);
+		if (value != 0) {
+			char *end = 0;
+			long parsed = strtol(value, &end, 10);
+			if (end != value && *end == '\0' && parsed >= 0 &&
+					static_cast<unsigned long>(parsed) <=
+					static_cast<unsigned long>(numeric_limits<unsigned int>::max()))
+				return static_cast<unsigned int>(parsed);
+		}
+		return fallback;
+	}
+	static unsigned int generalMembershipFilterLossBitmapMin() {
+		static unsigned int threshold =
+				generalMembershipFilterTuning("NFSIM_MEMFILTER_LOSS_BITMAP_MIN", 64);
+		return threshold;
+	}
+	static unsigned int generalMembershipFilterLossActiveMultiplier() {
+		static unsigned int multiplier = generalMembershipFilterTuning(
+				"NFSIM_MEMFILTER_LOSS_ACTIVE_MULTIPLIER", 8);
+		return multiplier;
+	}
 	static bool candidateTraceEnabled() {
 		static int enabled = -1;
 		if (enabled < 0)
@@ -983,7 +1006,8 @@ void MoleculeType::buildMembershipDependencyIndex()
 	 * crossover. Large vectors get O(1) membership tests; smaller ones keep the
 	 * existing binary-search path. */
 	auto ensureLossBitmap = [&](const vector<unsigned int> *vec) {
-		if (vec == 0 || vec->size() < 64 || membershipLossCandidateBitmaps.count(vec))
+		if (vec == 0 || vec->size() < generalMembershipFilterLossBitmapMin() ||
+				membershipLossCandidateBitmaps.count(vec))
 			return;
 		vector<std::uint64_t> bitmap((reactions.size() + 63u) / 64u, 0);
 		for (vector<unsigned int>::const_iterator it=vec->begin(); it!=vec->end(); ++it)
@@ -1217,7 +1241,8 @@ void MoleculeType::appendMembershipCandidateVector(
 		 * smaller side. Candidate vectors are built in monotonically increasing
 		 * local-index order, making binary_search valid. */
 		if (active.empty()) return;
-		if (candidates->size() > active.size() * 8) {
+		if (candidates->size() > active.size() *
+				generalMembershipFilterLossActiveMultiplier()) {
 			auto bitmapIt = membershipLossCandidateBitmaps.find(candidates);
 			const vector<std::uint64_t> *bitmap = bitmapIt ==
 					membershipLossCandidateBitmaps.end() ? 0 : &bitmapIt->second;

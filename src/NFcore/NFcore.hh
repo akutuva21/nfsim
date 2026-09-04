@@ -583,6 +583,7 @@ namespace NFcore
 
 			// Basic functions to get the properties and objects of the system
 			string getName() const { return name; };
+			list<Molecule *> &getRecycledProductNodes() { return recycledProductNodes; }
 			bool isUsingComplex() { return useComplex; };   // NETGEN -- is this needed?
 			void setUsingComplex(bool val);  // Added to enable auto-enabling complex bookkeeping for Species observables
 			bool isOutputtingBinary() { return useBinaryOutput; };
@@ -1072,6 +1073,8 @@ namespace NFcore
 			double numberPerQuantityUnit;  // 0.0 means unset (no conversion)
 
 		    int globalEventCounter;
+			/* Bounded scratch nodes shared by reaction firings in this system. */
+			list<Molecule *> recycledProductNodes;
 
 			string speciesLog; /* AS2023 - log string for initial species */
 			
@@ -2075,10 +2078,12 @@ namespace NFcore
 			/* functions needed to traverse a complex and get all components
 			 * which is important when we want to update reactions and complexes */
 			/* returns true when a finite traversal limit excluded a bonded neighbor */
-			bool traverseBondedNeighborhood(list <Molecule *> &members, int traversalLimit);
+			bool traverseBondedNeighborhood(list <Molecule *> &members, int traversalLimit,
+					list <Molecule *> *recycledNodes = 0);
 			// AS2023 - additional call sig to use with reaction firing logging
 			void traverseBondedNeighborhood(list <Molecule *> &members, int traversalLimit, string &logstr);
-			static bool breadthFirstSearch(list <Molecule *> &members, Molecule *m, int depth);
+			static bool breadthFirstSearch(list <Molecule *> &members, Molecule *m, int depth,
+					list <Molecule *> *recycledNodes = 0);
 			// AS2023 - additional call sig to use with reaction firing logging
 			static void breadthFirstSearch(list <Molecule *> &members, Molecule *m, int depth, string &logstr);
 			void depthFirstSearch(list <Molecule *> &members);
@@ -2212,7 +2217,8 @@ namespace NFcore
 			template <bool PROFILE, bool TRACKING, bool TRACK_TRUNCATION>
 			static bool breadthFirstSearchImpl(
 					list <Molecule *> &members, Molecule *m, int depth,
-					string *logstr, System *profileSystem);
+					string *logstr, System *profileSystem,
+					list <Molecule *> *recycledNodes);
 
 			static queue <Molecule *> q;
 			static queue <int> d;
@@ -2619,6 +2625,7 @@ namespace NFcore
 			bool isTemplateCompatible(TemplateMolecule * t);
 			bool isDirectProductMolecule(Molecule *molecule,
 					bool compactDirectProducts) const;
+			void recycleProductNodes();
 
 		protected:
 			virtual void pickMappingSets(double randNumber) const=0;

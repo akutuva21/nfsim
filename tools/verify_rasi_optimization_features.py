@@ -6,6 +6,7 @@ useful when moving patches between branches: if a merge silently drops one of
 the optimized representations/paths, this script fails loudly.
 """
 from pathlib import Path
+import re
 import sys
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -36,6 +37,7 @@ CHECKS = [
     ("streamed reaction XML", "src/NFinput/NFinput.cpp", "initReactionRulesStreamed"),
     ("initial candidate cache", "src/NFcore/moleculeType.cpp", "initialCandidateCache"),
     ("single-mapping reactant-tree path", "src/NFreactions/reactantLists/reactantTree.cpp", "singleMappingFastPath"),
+    ("shared product-node pool", "src/NFcore/reactionClass.cpp", "NFSIM_PRODUCT_NODE_REUSE"),
 ]
 
 failed = []
@@ -52,9 +54,13 @@ for label, rel, token in CHECKS:
 # Also verify the retained defaults that distinguish the validated endpoint from
 # rejected late experiments.
 mtype = (ROOT / "src/NFcore/moleculeType.cpp").read_text(errors="replace")
-if "vec->size() < 64" not in mtype:
+if not re.search(
+        r'generalMembershipFilterTuning\(\s*'
+        r'"NFSIM_MEMFILTER_LOSS_BITMAP_MIN"\s*,\s*64\s*\)', mtype):
     failed.append(("validated loss bitmap cutoff", "src/NFcore/moleculeType.cpp", "expected cutoff 64"))
-if "candidates->size() > active.size() * 8" not in mtype:
+if not re.search(
+        r'generalMembershipFilterTuning\(\s*'
+        r'"NFSIM_MEMFILTER_LOSS_ACTIVE_MULTIPLIER"\s*,\s*8\s*\)', mtype):
     failed.append(("validated active-side crossover", "src/NFcore/moleculeType.cpp", "expected factor 8"))
 
 selector = (ROOT / "src/NFcore/reactionSelector/directSelector.cpp").read_text(errors="replace")

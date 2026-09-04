@@ -8,6 +8,32 @@
 using namespace std;
 using namespace NFcore;
 
+namespace {
+
+bool productNodeReuseEnabled()
+{
+	static int enabled = -1;
+	if (enabled < 0) {
+		const char *value = getenv("NFSIM_PRODUCT_NODE_REUSE");
+		enabled = value == 0 || value[0] != '0' ? 1 : 0;
+	}
+	return enabled == 1;
+}
+
+inline void appendRecycledProductNode(list<Molecule *> &products,
+		Molecule *molecule, list<Molecule *> *recycledNodes)
+{
+	if (recycledNodes == 0 || recycledNodes->empty()) {
+		products.push_back(molecule);
+		return;
+	}
+	list<Molecule *>::iterator node = recycledNodes->begin();
+	*node = molecule;
+	products.splice(products.end(), *recycledNodes, node);
+}
+
+}
+
 
 
 ReactionClass::ReactionClass(string name, double baseRate, string baseRateParameterName, TransformationSet *transformationSet, System *s)
@@ -390,6 +416,20 @@ bool ReactionClass::isDirectProductMolecule(Molecule *molecule,
 		directProductMolecules->find(molecule) != directProductMolecules->end();
 }
 
+void ReactionClass::recycleProductNodes()
+{
+	list<Molecule *> &recycledProductNodes = system->getRecycledProductNodes();
+	if (!productNodeReuseEnabled()) {
+		products.clear();
+		recycledProductNodes.clear();
+		return;
+	}
+	recycledProductNodes.splice(recycledProductNodes.end(), products);
+	const std::size_t retainedNodeLimit = 16;
+	while (recycledProductNodes.size() > retainedNodeLimit)
+		recycledProductNodes.pop_back();
+}
+
 
 void ReactionClass::printDetails() const {
 	cout << name << "  (id=" << this->rxnId << ", baseRate=" << baseRate
@@ -488,6 +528,8 @@ string ReactionClass::fire(double random_A_number, bool track) {
 	// already proven that no observable, Type-II function, or indirect
 	// membership dependency needs the rest of the bonded complex.
 	bool directProductsPrepared = false;
+	list<Molecule *> *productNodePool = productNodeReuseEnabled()
+		? &system->getRecycledProductNodes() : 0;
 	if (this->canUseDirectProductList()) {
 		ProfileTime directProductStart = system->isProfileReactionActive()
 			? profileNow() : ProfileTime();
@@ -505,7 +547,7 @@ string ReactionClass::fire(double random_A_number, bool track) {
 						directProductMoleculeList.end())
 				{
 					directProductMoleculeList.push_back(molecule);
-					products.push_back(molecule);
+					appendRecycledProductNode(products, molecule, productNodePool);
 				}
 			}
 		}
@@ -517,13 +559,13 @@ string ReactionClass::fire(double random_A_number, bool track) {
 	} else {
 		this->transformationSet->getListOfProducts(
 				mappingSet, products, traversalLimit, &productComponentSizes,
-				&productComponentsTruncated);
+				&productComponentsTruncated, productNodePool);
 	}
 
 	// Check product-side filters (include_products / exclude_products).
 	// If the resulting products don't pass the filter, treat this as a null event.
 	if (!transformationSet->checkProductFilters(products)) {
-		products.clear();
+		recycleProductNodes();
 		++(System::NULL_EVENT_COUNTER);
 		return string("");
 	}
@@ -610,7 +652,8 @@ string ReactionClass::fire(double random_A_number, bool track) {
 	}
 
 	// Add newly created molecules to the list of products
-	this->transformationSet->getListOfAddedMolecules(mappingSet,products,traversalLimit);
+	this->transformationSet->getListOfAddedMolecules(
+			mappingSet, products, traversalLimit, productNodePool);
 
 	// Track molecules that were explicitly mapped by this firing when either
 	// connectivity-aware membership or a compact energy reaction may use the
@@ -991,13 +1034,13 @@ string ReactionClass::fire(double random_A_number, bool track) {
 			// close firing 
 			track_str += std::string(level,' ') + "}";
 			//Tidy up
-			products.clear();
+			recycleProductNodes();
 			productComplexes.clear();
 			return track_str;
 		}
 	}
 	//Tidy up
-	products.clear();
+	recycleProductNodes();
 	productComplexes.clear();
 	// AS2023 - returning empty, if we are here logging was off
 	return "";

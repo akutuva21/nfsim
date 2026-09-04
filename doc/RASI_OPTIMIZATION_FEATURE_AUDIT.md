@@ -21,7 +21,8 @@ handoff from mistaking the optimized snapshot for an older pre-iteration23 tree.
 | Common-root topology proof/skip | `MembershipCandidateView::hasCommonRootTopology`; `skipFirstPredicate` |
 | Propagate proven occupancy | `skipOccupancyMasks` / `occupancyProven` in candidate application |
 | Pre-resolved gain lookup | `MembershipGainLookup`, `membership*GainLookups` |
-| Loss-side static bitmaps | `membershipLossCandidateBitmaps`; current validated cutoff 64 |
+| Loss-side static bitmaps | `membershipLossCandidateBitmaps`; current validated cutoff 64; opt-in `NFSIM_MEMFILTER_LOSS_BITMAP_MIN` |
+| Loss-side active/vector crossover | current validated factor 8; opt-in `NFSIM_MEMFILTER_LOSS_ACTIVE_MULTIPLIER` |
 | 32-bit hot generation stamps | `vector<std::uint32_t> membershipCandidateSeen`, `membershipRootContextChecked` |
 | Event-level candidate plan | `membershipEventCandidatePlan`, `membershipEventPlanGeneration` |
 | Initial population root filtering/cache | `sparseInitialMembership`, `initialCandidateCache` in `MoleculeType::prepareForSimulation` |
@@ -37,6 +38,7 @@ handoff from mistaking the optimized snapshot for an older pre-iteration23 tree.
 | Sparse active reaction memberships | `activeReactionMembershipIndices` |
 | Template symmetry allocation cleanup | conditional `compIsAlwaysMapped` / symmetric structures in `templateMolecule.cpp` |
 | Fused molecule per-site allocation | `Molecule::siteBlock` in `molecule.cpp` |
+| Shared bounded product-list node reuse | `System::recycledProductNodes`; `ReactionClass::recycleProductNodes`; default on with `NFSIM_PRODUCT_NODE_REUSE=0` control |
 
 ## Graph / matcher optimizations
 
@@ -81,15 +83,23 @@ changes that were previously feared lost:
 - loss-side static bitmaps;
 - common-root topology proof/skip.
 
-The validated iteration23 loss policy remains unchanged:
+The validated iteration23 loss policy remains unchanged by default:
 
 ```text
 loss bitmap cutoff: 64 entries
 active-side crossover: candidate_size > 8 * active_membership_size
 ```
 
-The later experimental 1x crossover was not retained. The proposed lower-bitmap-
-cutoff/crossover matrix was also not promoted without another Rasi/uORF gate.
+Both values can be varied per process with the environment variables named in
+the table above; invalid values fall back to the validated defaults. The
+iteration24 Rasi/uORF sweep found no robust cross-model replacement, so these
+remain tuning controls rather than new defaults. The later experimental 1x
+crossover was not retained.
+
+Product-list construction reuses at most 16 `std::list` nodes per `System`.
+Sharing the bounded pool across reactions avoids retaining a separate cold pool
+for every rule. Set `NFSIM_PRODUCT_NODE_REUSE=0` to restore allocate/free behavior
+for benchmark attribution or troubleshooting.
 
 ## Quick automated audit
 

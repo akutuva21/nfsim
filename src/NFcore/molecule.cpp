@@ -20,6 +20,18 @@ unsigned long long profileMoleculeSignature(int id)
 	return value ^ (value >> 31);
 }
 
+inline void appendRecycledListNode(list<Molecule *> &members, Molecule *molecule,
+		list<Molecule *> *recycledNodes)
+{
+	if (recycledNodes == 0 || recycledNodes->empty()) {
+		members.push_back(molecule);
+		return;
+	}
+	list<Molecule *>::iterator node = recycledNodes->begin();
+	*node = molecule;
+	members.splice(members.end(), *recycledNodes, node);
+}
+
 }
 
 int Molecule::uniqueIdCount = 0;
@@ -749,7 +761,8 @@ vector<int> Molecule::unbind(Molecule *m1, char * compName)
 template <bool PROFILE, bool TRACKING, bool TRACK_TRUNCATION>
 bool Molecule::breadthFirstSearchImpl(
 		list <Molecule *> &members, Molecule *m, int depth,
-		string *logstr, System *profileSystem)
+		string *logstr, System *profileSystem,
+		list <Molecule *> *recycledNodes)
 {
 	static queue <Molecule *> q;
 	static queue <int> d;
@@ -785,7 +798,7 @@ bool Molecule::breadthFirstSearchImpl(
 
 	//First add this molecule
 	q.push(m);
-	members.push_back(m);
+	appendRecycledListNode(members, m, recycledNodes);
 	d.push(currentDepth+1);
 	m->hasVisitedMolecule=true;
 
@@ -840,7 +853,7 @@ bool Molecule::breadthFirstSearchImpl(
 			if(!neighbor->hasVisitedMolecule)
 			{
 				neighbor->hasVisitedMolecule=true;
-				members.push_back(neighbor);
+				appendRecycledListNode(members, neighbor, recycledNodes);
 				q.push(neighbor);
 				d.push(currentDepth+1);
 			}
@@ -857,15 +870,16 @@ bool Molecule::breadthFirstSearchImpl(
 	return traversalTruncated;
 }
 
-bool Molecule::breadthFirstSearch(list <Molecule *> &members, Molecule *m, int depth)
+bool Molecule::breadthFirstSearch(list <Molecule *> &members, Molecule *m, int depth,
+		list <Molecule *> *recycledNodes)
 {
 	System *profileSystem = m != 0 && m->getMoleculeType() != 0
 		? m->getMoleculeType()->getSystem() : 0;
 	if (profileSystem != 0 && profileSystem->isProfileReactionActive())
 		return breadthFirstSearchImpl<true, false, true>(
-				members, m, depth, 0, profileSystem);
+				members, m, depth, 0, profileSystem, recycledNodes);
 	return breadthFirstSearchImpl<false, false, true>(
-				members, m, depth, 0, 0);
+				members, m, depth, 0, 0, recycledNodes);
 }
 
 // AS2023 - alternative call sig for logging that includes a log string
@@ -875,22 +889,24 @@ void Molecule::breadthFirstSearch(list <Molecule *> &members, Molecule *m, int d
 		? m->getMoleculeType()->getSystem() : 0;
 	if (profileSystem != 0 && profileSystem->isProfileReactionActive()) {
 		breadthFirstSearchImpl<true, true, false>(
-				members, m, depth, &logstr, profileSystem);
+				members, m, depth, &logstr, profileSystem, 0);
 		return;
 	}
 	breadthFirstSearchImpl<false, true, false>(
-			members, m, depth, &logstr, 0);
+			members, m, depth, &logstr, 0, 0);
 }
 
 
 
 
 
-bool Molecule::traverseBondedNeighborhood(list <Molecule *> &members, int traversalLimit)
+bool Molecule::traverseBondedNeighborhood(list <Molecule *> &members, int traversalLimit,
+		list <Molecule *> *recycledNodes)
 {
 	//always call breadth first search, it is a bit faster
 	//if(traversalLimit>=0)
-		return Molecule::breadthFirstSearch(members, this, traversalLimit);
+		return Molecule::breadthFirstSearch(
+				members, this, traversalLimit, recycledNodes);
 	//else
 	//	this->depthFirstSearch(members);
 }
