@@ -365,10 +365,10 @@ namespace NFcore
 				const unsigned int pageIndex = index >> PAGE_SHIFT;
 				const unsigned int groupIndex = pageIndex >> GROUP_SHIFT;
 				PageGroup *&group = groups[groupIndex];
-				if (!group) group = new PageGroup();
+				if (!group) group = acquireGroup();
 				Page *&page = group->pages[pageIndex & GROUP_MASK];
 				if (!page) {
-					page = new Page();
+					page = acquirePage();
 					++group->allocatedPages;
 				}
 				return &page->sets[index & PAGE_MASK];
@@ -393,12 +393,12 @@ namespace NFcore
 				if (!page) return;
 				if (page->nonemptyCount > 0) --page->nonemptyCount;
 				if (page->nonemptyCount == 0) {
-					delete page;
 					group->pages[localPage] = 0;
+					releasePage(page);
 					if (group->allocatedPages > 0) --group->allocatedPages;
 					if (group->allocatedPages == 0) {
-						delete group;
 						groups[groupIndex] = 0;
+						releaseGroup(group);
 					}
 				}
 			}
@@ -416,6 +416,44 @@ namespace NFcore
 				Page *pages[GROUP_SIZE];
 				unsigned int allocatedPages;
 			};
+
+			/* Mapping membership moves between sparse pages frequently in generated
+			 * rule families. Recycle a bounded process-wide working set instead of
+			 * repeatedly allocating already-empty pages and groups. */
+			static const unsigned int RECYCLE_CAPACITY = 256;
+			struct RecyclePool {
+				RecyclePool() : pageCount(0), groupCount(0) {}
+				~RecyclePool() {
+					for (unsigned int i = 0; i < pageCount; ++i) delete pages[i];
+					for (unsigned int i = 0; i < groupCount; ++i) delete pageGroups[i];
+				}
+				Page *pages[RECYCLE_CAPACITY];
+				PageGroup *pageGroups[RECYCLE_CAPACITY];
+				unsigned int pageCount;
+				unsigned int groupCount;
+			};
+			static RecyclePool& recyclePool() {
+				static RecyclePool pool;
+				return pool;
+			}
+			static Page *acquirePage() {
+				RecyclePool &pool = recyclePool();
+				return pool.pageCount ? pool.pages[--pool.pageCount] : new Page();
+			}
+			static void releasePage(Page *page) {
+				RecyclePool &pool = recyclePool();
+				if (pool.pageCount < RECYCLE_CAPACITY) pool.pages[pool.pageCount++] = page;
+				else delete page;
+			}
+			static PageGroup *acquireGroup() {
+				RecyclePool &pool = recyclePool();
+				return pool.groupCount ? pool.pageGroups[--pool.groupCount] : new PageGroup();
+			}
+			static void releaseGroup(PageGroup *group) {
+				RecyclePool &pool = recyclePool();
+				if (pool.groupCount < RECYCLE_CAPACITY) pool.pageGroups[pool.groupCount++] = group;
+				else delete group;
+			}
 
 			void reset() {
 				if (groups) {
@@ -1299,7 +1337,7 @@ namespace NFcore
 
 			int getCompIndexFromName(const string& cName) const;
 			string getComponentStateName(int cIndex, int cValue);
-			int getStateValueFromName(int cIndex, string stateName) const;
+			int getStateValueFromName(int cIndex, const string& stateName) const;
 
 
 
@@ -1630,21 +1668,45 @@ namespace NFcore
 				int stateValue;
 				MoleculeType *partnerType;
 				int partnerComponentIndex;
+				int partnerStateComponentIndex;
 			};
 			/* For small root molecule types, prefilter gain vectors by the molecule's
 			 * complete local occupancy mask.  The filtered vectors are stable ordered
 			 * subsequences, so selecting one does not perturb reaction update order. */
 			struct MembershipCandidateView {
 				MembershipCandidateView() : candidates(0), byBoundMask(),
+					stateComponentIndex(-1), byStateValue(),
+					partnerStateRootComponentIndex(-1), partnerStateType(0),
+					partnerStateBondComponentIndex(-1), partnerStateComponentIndex(-1),
+					byPartnerStateValue(), statePartnerStride(0), byStatePartnerValue(),
 					hasCommonRootTopology(false) {
 					commonRootTopology.kind = -1;
 					commonRootTopology.componentIndex = -1;
 					commonRootTopology.stateValue = -1;
 					commonRootTopology.partnerType = 0;
 					commonRootTopology.partnerComponentIndex = -1;
+					commonRootTopology.partnerStateComponentIndex = -1;
 				}
 				const vector<unsigned int> *candidates;
 				vector<vector<unsigned int> > byBoundMask;
+				/* Optional finite-state partition for one selective root component.
+				 * Each bucket is an ordered subsequence of candidates that can match
+				 * that exact component state.  This avoids re-testing thousands of
+				 * mutually-exclusive state predicates in generated rule families. */
+				int stateComponentIndex;
+				vector<vector<unsigned int> > byStateValue;
+				/* Optional state partition on the molecule directly bonded at one
+				 * root component.  Generated rule families frequently encode a
+				 * partner state as their only distinguishing condition. */
+				int partnerStateRootComponentIndex;
+				MoleculeType *partnerStateType;
+				int partnerStateBondComponentIndex;
+				int partnerStateComponentIndex;
+				vector<vector<unsigned int> > byPartnerStateValue;
+				/* Optional exact intersection of the root-state and partner-state views.
+				 * This targets cross-product rule families without a runtime merge. */
+				size_t statePartnerStride;
+				vector<vector<unsigned int> > byStatePartnerValue;
 				bool hasCommonRootTopology;
 				MembershipRootPredicate commonRootTopology;
 			};
@@ -1712,7 +1774,12 @@ namespace NFcore
 			bool membershipRootContextMatches(
 					Molecule *m, unsigned int reactionIndex,
 					bool skipFirstPredicate = false,
-					bool skipOccupancyMasks = false) const;
+					bool skipOccupancyMasks = false,
+					int skipStateComponent = -1,
+					int skipPartnerStateRootComponent = -1,
+					MoleculeType *skipPartnerStateType = 0,
+					int skipPartnerStateBondComponent = -1,
+					int skipPartnerStateComponent = -1) const;
 			bool membershipRootPredicateMatches(
 					Molecule *m, const MembershipRootPredicate &predicate) const;
 			bool isPreparedMembershipCandidate(unsigned int reactionIndex) const {
@@ -2472,6 +2539,10 @@ namespace NFcore
 			 * order-preserving direct-selector scan.  Reaction classes with
 			 * unusual update paths keep the legacy selector behavior. */
 			virtual bool supportsSparseSelection() const { return false; }
+			/* True when selector-side propensity/active-bit mirrors may be built lazily.
+			 * Basic-family reactions always report propensity changes through the
+			 * selector, so tracking can start only if dense scans prove expensive. */
+			virtual bool supportsLazySparseSelection() const { return false; }
 			/* Whether the product list can be limited to explicitly mapped
 			 * molecules for this firing. */
 			virtual bool canUseDirectProductList() const { return false; }

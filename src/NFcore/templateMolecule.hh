@@ -26,17 +26,20 @@ namespace NFcore
 			STATE_EXCLUDED = 1,
 			BOND_FREE = 2,
 			BOND_BOUND = 3,
-			TOPOLOGY = 4
+			TOPOLOGY = 4,
+			PARTNER_STATE_REQUIRED = 5,
+			PARTNER_STATE_EXCLUDED = 6
 		};
 		MembershipPatternDependency() : kind(STATE_REQUIRED), moleculeType(0),
 				componentIndex(-1), stateValue(-1), partnerType(0),
-				partnerComponentIndex(-1) {}
+				partnerComponentIndex(-1), partnerStateComponentIndex(-1) {}
 		Kind kind;
 		MoleculeType *moleculeType;
 		int componentIndex;
 		int stateValue;
 		MoleculeType *partnerType;
 		int partnerComponentIndex;
+		int partnerStateComponentIndex;
 	};
 
 	struct PairHasher {
@@ -92,7 +95,7 @@ namespace NFcore
 		void addComponentConstraint(const string& cName, int stateValue);
 		void addComponentExclusion(const string& cName, const string& stateName);
 		void addComponentExclusion(const string& cName, int stateValue);
-		void addBond(string thisBsiteName,TemplateMolecule *t2, string bSiteName2);
+		void addBond(const string& thisBsiteName,TemplateMolecule *t2, const string& bSiteName2);
 
 		/* Methods for adding a disjoint component to a template pattern
 		 *  e.g.  X.Y
@@ -108,12 +111,12 @@ namespace NFcore
 		const static int NO_CONSTRAINT=-1;
 		void addSymCompConstraint(string cName, string uniqueId,
 				int bondState,int stateConstraint);
-		void addSymBond(string thisBsiteName, string thisCompId,
-				TemplateMolecule *t2, string bSiteName2);
+		void addSymBond(const string& thisBsiteName, const string& thisCompId,
+				TemplateMolecule *t2, const string& bSiteName2);
 
 		/* static function for binding two templates together */
-		static void bind(TemplateMolecule *t1, string bSiteName1, string compId1,
-				TemplateMolecule *t2, string bSiteName2, string compId2);
+		static void bind(TemplateMolecule *t1, const string& bSiteName1, const string& compId1,
+				TemplateMolecule *t2, const string& bSiteName2, const string& compId2);
 
 		/* functions that provide mapping capabilities */
 		void addMapGenerator(MapGenerator *mg);

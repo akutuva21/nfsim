@@ -9,6 +9,22 @@ ReactantList::ReactantList(unsigned int reactantIndex, TransformationSet *ts,
 	this->anyMultiMoleculeComplex = false;
 
 	this->n_mappingSets = 0;
+	/* Ordinary reaction lists historically reserve 25 MappingSets eagerly.
+	 * Generated rule families usually use only a small fraction of that reserve,
+	 * so expose the historical reserve for same-binary capacity sweeps. */
+	if (init_capacity == 25) {
+		/* One pointer slot covers inactive and single-match lists while the existing
+		 * geometric growth path handles wider lists. MappingSets are materialized
+		 * only when a slot becomes active. */
+		init_capacity = 1;
+		const char *capacityOverride = getenv("NFSIM_REACTANT_LIST_INITIAL_CAPACITY");
+		if (capacityOverride != 0) {
+			char *end = 0;
+			long parsed = strtol(capacityOverride, &end, 10);
+			if (end != capacityOverride && *end == '\0' && parsed >= 1 && parsed <= 1000000)
+				init_capacity = static_cast<unsigned int>(parsed);
+		}
+	}
 	this->capacity = init_capacity;
 	this->reactantIndex = reactantIndex;
 	this->ts=ts;
@@ -17,7 +33,7 @@ ReactantList::ReactantList(unsigned int reactantIndex, TransformationSet *ts,
 	this->msPositionMap = new unsigned int [init_capacity];
 	for(int i=0; i<this->capacity; i++)
 	{
-		mappingSets[i]=ts->generateBlankMappingSet(reactantIndex,i);
+		mappingSets[i]=0;
 		msPositionMap[i]=i;
 	}
 }
@@ -101,7 +117,7 @@ MappingSet * ReactantList::pushNextAvailableMappingSet()
 			new_msPositionMap[i] = msPositionMap[i];
 		}
 		for(int i=capacity; i<newCapacity; i++)  {
-			new_mappingSets[i] = ts->generateBlankMappingSet(reactantIndex, i);
+			new_mappingSets[i] = 0;
 			new_msPositionMap[i] = i;
 		}
 
@@ -117,14 +133,12 @@ MappingSet * ReactantList::pushNextAvailableMappingSet()
 					profileElapsedSeconds(profileStart));
 	}
 
-	//Increase the number of reactants, and return the activated mappingSet
-	n_mappingSets++;
-
-
-	//cout<<"pushing onto list."<<endl;
-	//this->printDetails();
-
-	return mappingSets[n_mappingSets-1];
+	// Materialize a mapping set only when its reusable slot is first needed.
+	MappingSet *&slot = mappingSets[n_mappingSets];
+	if (slot == 0)
+		slot = ts->generateBlankMappingSet(reactantIndex, n_mappingSets);
+	++n_mappingSets;
+	return slot;
 }
 
 
@@ -258,7 +272,7 @@ void ReactantList::printDetails() const
 
 		if(i==n_mappingSets-1) cout<<"  _"<<endl;
 		else cout<<endl;
-		mappingSets[i]->printDetails();
+		if (mappingSets[i]) mappingSets[i]->printDetails();
 	}
 	cout<<endl;
 }

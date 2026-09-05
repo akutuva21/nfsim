@@ -96,15 +96,58 @@ bool splitImpl(const string &filename, string &skeleton,
 			char c = buffer[k];
 
 			if (!inTag) {
+				/* Inside a streamed child, unrelated nested tags do not affect the
+				 * span boundary.  Avoid constructing/scanning them completely: only
+				 * a close or same-name open can change speciesDepth.  If a possible
+				 * marker straddles this fread block (or starts special markup), use
+				 * the normal tag scanner below as the conservative fallback. */
+				if (speciesDepth == 1 && activeChild != 0 && c == '<') {
+					const size_t nameLen = strlen(activeChild);
+					const size_t avail = got - k;
+					const size_t closeNeed = nameLen + 3; // </name plus one boundary byte
+					const size_t openNeed = nameLen + 2;  // <name plus one boundary byte
+					if (avail >= 2 && (buffer[k+1] == '!' || buffer[k+1] == '?')) {
+						// Preserve the old scanner's handling of comments/declarations/PIs.
+					} else if (avail >= closeNeed && buffer[k+1] == '/' &&
+							memcmp(&buffer[k+2], activeChild, nameLen) == 0) {
+						char boundary = buffer[k+2+nameLen];
+						if (!(boundary == '>' || boundary == ' ' || boundary == '\t' ||
+								boundary == '\n' || boundary == '\r')) {
+							// Similar prefix, not the active child name: skip it.
+							continue;
+						}
+						// Real close: fall through to the normal tag scanner.
+					} else if (avail >= openNeed &&
+							memcmp(&buffer[k+1], activeChild, nameLen) == 0) {
+						char boundary = buffer[k+1+nameLen];
+						if (!(boundary == '>' || boundary == '/' || boundary == ' ' || boundary == '\t' ||
+								boundary == '\n' || boundary == '\r')) {
+							continue;
+						}
+						// Same-name nesting: fall through so depth is tracked.
+					} else if (avail >= closeNeed) {
+						// Definitely unrelated markup.  Leave inTag false; the bulk text
+						// scan on the next iteration jumps directly to the next '<'.
+						continue;
+					}
+				}
 				if (c == '<') {
 					inTag = true;
 					quote = 0;
 					tag.assign(1, c);
 					// remember where this tag began in case it opens a Species
 					if (speciesDepth == 0) speciesStart = offset;
-				} else if (speciesDepth == 0) {
-					// character data outside any Species element
-					skeleton += c;
+				} else {
+					// Character data is common between XML tags.  Find the next tag
+					// boundary in one libc scan instead of branching once per byte;
+					// append the whole run only when it belongs in the skeleton.
+					const char *begin = &buffer[k];
+					const void *nextTag = memchr(begin, '<', got - k);
+					size_t run = nextTag ? static_cast<const char *>(nextTag) - begin : got - k;
+					if (speciesDepth == 0) skeleton.append(begin, run);
+					// The for-loop increment accounts for the final byte in this run.
+					k += run - 1;
+					offset += static_cast<long long>(run - 1);
 				}
 				continue;
 			}

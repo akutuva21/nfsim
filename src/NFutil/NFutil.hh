@@ -100,6 +100,7 @@ namespace NFutil {
 		double values.  Throws a run time exception if the parse failed.
 			@author Michael Sneddon
 	*/
+	bool tryConvertToDouble(const std::string& s, double& value);
 	double convertToDouble(const std::string& s);
 
 	//!  Parses and converts std::string objects to int values.

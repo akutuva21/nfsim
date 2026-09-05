@@ -561,7 +561,7 @@ int MoleculeType::getCompIndexFromName(const string& cName) const
 	throw std::runtime_error("Cannot find site name " + cName + " in MoleculeType: " + name);
 }
 
-int MoleculeType::getStateValueFromName(int cIndex, string stateName) const
+int MoleculeType::getStateValueFromName(int cIndex, const string& stateName) const
 {
 	for(unsigned int s=0; s<possibleCompStates.at(cIndex).size(); s++) {
 		if(possibleCompStates.at(cIndex).at(s)==stateName) {
@@ -723,7 +723,13 @@ namespace {
 	static unsigned int generalMembershipFilterMinRegistrations() {
 		static int threshold = -1;
 		if (threshold < 0) {
-			threshold = 16;
+			/* The membership filter is already opt-in.  Once enabled, even very
+			 * small registration lists benefit when updates repeatedly revisit
+			 * unchanged rules (notably translation lsu/mrna types).  The former
+			 * cutoff of 16 forced a full walk/tryToAdd path for those lists and
+			 * was consistently slower in fixed-seed sweeps.  Keep the environment
+			 * override for diagnostics/tuning. */
+			threshold = 1;
 			const char *value = getenv("NFSIM_MEMFILTER_MIN_REGISTRATIONS");
 			if (value != 0) {
 				char *end = 0;
@@ -844,6 +850,7 @@ void MoleculeType::buildMembershipDependencyIndex()
 					p.stateValue = rit->stateValue;
 					p.partnerType = rit->partnerType;
 					p.partnerComponentIndex = rit->partnerComponentIndex;
+					p.partnerStateComponentIndex = rit->partnerStateComponentIndex;
 					stored.push_back(p);
 				}
 				if (rit->componentIndex >= 0 && rit->componentIndex < 64) {
@@ -943,6 +950,15 @@ void MoleculeType::buildMembershipDependencyIndex()
 				}
 				break;
 			}
+			case MembershipPatternDependency::PARTNER_STATE_REQUIRED:
+			case MembershipPatternDependency::PARTNER_STATE_EXCLUDED:
+				/* Partner-state predicates are root-context refinements only.  The
+				 * full connected-pattern dependency list already contributes the
+				 * partner template's state constraint as STATE_REQUIRED/EXCLUDED,
+				 * keyed by the partner MoleculeType/component above.  Indexing these
+				 * again here would duplicate state-change triggers under the root
+				 * bond endpoint; retain them only in membershipRootContexts/views. */
+				break;
 			case MembershipPatternDependency::TOPOLOGY: {
 				if (d.partnerType == 0 || d.partnerComponentIndex < 0) {
 					appendUniqueMembershipIndex(unconditionalMembershipCandidates, r);
@@ -1026,7 +1042,29 @@ void MoleculeType::buildMembershipDependencyIndex()
 	const bool smallOccupancyRoot = numOfComponents > 0 && numOfComponents <= 6;
 	const unsigned int maskCount = smallOccupancyRoot ? (1u << numOfComponents) : 0;
 	auto ensureView = [&](const vector<unsigned int> *vec) {
-		if (vec == 0 || vec->empty() || membershipCandidateViews.count(vec)) return;
+		/* A candidate view only pays for itself when it can eliminate multiple
+		 * root-context probes. Occupancy indexing already requires four entries
+		 * and state indexing requires eight; previously 1-3 entry vectors could
+		 * still allocate a hash entry solely for the common-topology shortcut.
+		 * That creates thousands of startup-only objects in generated models to
+		 * save at most a couple of cheap checks per affected event. */
+		static const std::size_t minCandidateViewSize = []() -> std::size_t {
+			const char *value = getenv("NFSIM_MEMFILTER_MIN_VIEW_SIZE");
+			if (value != 0) {
+				char *end = 0;
+				unsigned long parsed = strtoul(value, &end, 10);
+				if (end != value && *end == '\0' && parsed <= 65536UL)
+					return static_cast<std::size_t>(parsed);
+			}
+			/* Small candidate vectors are faster to inspect directly than to build,
+			 * hash and retain an auxiliary occupancy/state/topology view.  A sweep
+			 * across RASI, uORF and the combinatorial stress fixtures put the startup
+			 * crossover near 16 entries; larger/selective families keep the indexed
+			 * path that delivers the large event-loop gains. */
+			return std::size_t(16);
+		}();
+		if (vec == 0 || vec->size() < minCandidateViewSize ||
+				membershipCandidateViews.count(vec)) return;
 		MembershipCandidateView view; view.candidates = vec;
 		if (smallOccupancyRoot && vec->size() >= 4) {
 			view.byBoundMask.resize(maskCount);
@@ -1039,6 +1077,295 @@ void MoleculeType::buildMembershipDependencyIndex()
 					std::uint64_t free = membershipRootRequiredFreeMasks[r];
 					if ((std::uint64_t(mask) & bound) == bound &&
 							(std::uint64_t(mask) & free) == 0) out.push_back(r);
+				}
+			}
+		}
+		/* Generated rule families often differ only by one finite root state
+		 * (for example R(x~0..63)).  Occupancy cannot separate those rules, so
+		 * build one state-indexed ordered view when it is both selective and
+		 * compact.  The 4x total-entry cap prevents wildcard/exclusion-heavy
+		 * vectors from trading CPU for a large startup/memory regression. */
+		if (vec->size() >= 8) {
+			set<int> stateComponents;
+			for (vector<unsigned int>::const_iterator it=vec->begin(); it!=vec->end(); ++it) {
+				unsigned int r = *it;
+				if (r >= membershipRootContexts.size() || !membershipRootContextSafe[r]) continue;
+				const vector<MembershipRootPredicate> &ctx = membershipRootContexts[r];
+				for (vector<MembershipRootPredicate>::const_iterator pit=ctx.begin(); pit!=ctx.end(); ++pit)
+					if ((pit->kind == MembershipPatternDependency::STATE_REQUIRED ||
+						 pit->kind == MembershipPatternDependency::STATE_EXCLUDED) &&
+						 pit->componentIndex >= 0 && pit->componentIndex < numOfComponents)
+						stateComponents.insert(pit->componentIndex);
+			}
+			size_t bestMaxBucket = vec->size();
+			int bestComponent = -1;
+			vector<size_t> bestCounts;
+			for (set<int>::const_iterator cit=stateComponents.begin(); cit!=stateComponents.end(); ++cit) {
+				int componentIndex = *cit;
+				size_t stateCount = possibleCompStates[componentIndex].size();
+				if (stateCount < 2 || stateCount > 256) continue;
+				vector<size_t> counts(stateCount, 0);
+				size_t totalEntries = 0;
+				for (vector<unsigned int>::const_iterator it=vec->begin(); it!=vec->end(); ++it) {
+					unsigned int r = *it;
+					const vector<MembershipRootPredicate> &ctx = membershipRootContexts[r];
+					for (size_t stateValue=0; stateValue<stateCount; ++stateValue) {
+						bool allowed = true;
+						for (vector<MembershipRootPredicate>::const_iterator pit=ctx.begin(); pit!=ctx.end(); ++pit) {
+							if (pit->componentIndex != componentIndex) continue;
+							if (pit->kind == MembershipPatternDependency::STATE_REQUIRED &&
+									pit->stateValue != static_cast<int>(stateValue)) { allowed = false; break; }
+							if (pit->kind == MembershipPatternDependency::STATE_EXCLUDED &&
+									pit->stateValue == static_cast<int>(stateValue)) { allowed = false; break; }
+						}
+						if (allowed) { ++counts[stateValue]; ++totalEntries; }
+					}
+				}
+				if (totalEntries > vec->size() * 4u) continue;
+				size_t maxBucket = 0;
+				for (size_t i=0; i<counts.size(); ++i) maxBucket = std::max(maxBucket, counts[i]);
+				if (maxBucket < bestMaxBucket) {
+					bestMaxBucket = maxBucket; bestComponent = componentIndex; bestCounts.swap(counts);
+				}
+			}
+			if (bestComponent >= 0 && bestMaxBucket * 4u <= vec->size() * 3u) {
+				view.stateComponentIndex = bestComponent;
+				view.byStateValue.resize(bestCounts.size());
+				for (size_t stateValue=0; stateValue<bestCounts.size(); ++stateValue)
+					view.byStateValue[stateValue].reserve(bestCounts[stateValue]);
+				for (vector<unsigned int>::const_iterator it=vec->begin(); it!=vec->end(); ++it) {
+					unsigned int r = *it;
+					const vector<MembershipRootPredicate> &ctx = membershipRootContexts[r];
+					for (size_t stateValue=0; stateValue<bestCounts.size(); ++stateValue) {
+						bool allowed = true;
+						for (vector<MembershipRootPredicate>::const_iterator pit=ctx.begin(); pit!=ctx.end(); ++pit) {
+							if (pit->componentIndex != bestComponent) continue;
+							if (pit->kind == MembershipPatternDependency::STATE_REQUIRED &&
+									pit->stateValue != static_cast<int>(stateValue)) { allowed = false; break; }
+							if (pit->kind == MembershipPatternDependency::STATE_EXCLUDED &&
+									pit->stateValue == static_cast<int>(stateValue)) { allowed = false; break; }
+						}
+						if (allowed) view.byStateValue[stateValue].push_back(r);
+					}
+				}
+			}
+		}
+		/* A directly bonded partner is just as cheap to inspect as a root-local
+		 * state once the root bond is known.  Build one selective partner-state
+		 * view so mutually-exclusive partner-state rule families do not scan and
+		 * reject every rule on every event. */
+		if (vec->size() >= 8) {
+			struct PartnerSelector {
+				int rootComponent; MoleculeType *partnerType;
+				int partnerBondComponent; int stateComponent;
+			};
+			vector<PartnerSelector> selectors;
+			for (vector<unsigned int>::const_iterator it=vec->begin(); it!=vec->end(); ++it) {
+				unsigned int r = *it;
+				if (r >= membershipRootContexts.size() || !membershipRootContextSafe[r]) continue;
+				const vector<MembershipRootPredicate> &ctx = membershipRootContexts[r];
+				for (vector<MembershipRootPredicate>::const_iterator pit=ctx.begin(); pit!=ctx.end(); ++pit) {
+					if (pit->kind != MembershipPatternDependency::PARTNER_STATE_REQUIRED &&
+						pit->kind != MembershipPatternDependency::PARTNER_STATE_EXCLUDED) continue;
+					if (pit->componentIndex < 0 || pit->componentIndex >= numOfComponents ||
+						pit->partnerType == 0 || pit->partnerComponentIndex < 0 ||
+						pit->partnerStateComponentIndex < 0 ||
+						pit->partnerStateComponentIndex >= pit->partnerType->numOfComponents) continue;
+					PartnerSelector candidate = {pit->componentIndex, pit->partnerType,
+						pit->partnerComponentIndex, pit->partnerStateComponentIndex};
+					bool seen = false;
+					for (vector<PartnerSelector>::const_iterator sit=selectors.begin(); sit!=selectors.end(); ++sit)
+						if (sit->rootComponent == candidate.rootComponent && sit->partnerType == candidate.partnerType &&
+							sit->partnerBondComponent == candidate.partnerBondComponent && sit->stateComponent == candidate.stateComponent) { seen = true; break; }
+					if (!seen) selectors.push_back(candidate);
+				}
+			}
+			size_t bestMaxBucket = vec->size();
+			int bestSelector = -1;
+			vector<size_t> bestCounts;
+			for (size_t si=0; si<selectors.size(); ++si) {
+				const PartnerSelector &selector = selectors[si];
+				size_t stateCount = selector.partnerType->possibleCompStates[selector.stateComponent].size();
+				if (stateCount < 2 || stateCount > 4096) continue;
+				vector<size_t> counts(stateCount, 0);
+				size_t totalEntries = 0;
+				if (stateCount <= 256) {
+					/* Small state spaces are faster with the original dense loop. */
+					for (vector<unsigned int>::const_iterator it=vec->begin(); it!=vec->end(); ++it) {
+						unsigned int r = *it;
+						const vector<MembershipRootPredicate> &ctx = membershipRootContexts[r];
+						for (size_t stateValue=0; stateValue<stateCount; ++stateValue) {
+							bool allowed = true;
+							for (vector<MembershipRootPredicate>::const_iterator pit=ctx.begin(); pit!=ctx.end(); ++pit) {
+								if (pit->componentIndex != selector.rootComponent || pit->partnerType != selector.partnerType ||
+									pit->partnerComponentIndex != selector.partnerBondComponent ||
+									pit->partnerStateComponentIndex != selector.stateComponent) continue;
+								if (pit->kind == MembershipPatternDependency::PARTNER_STATE_REQUIRED &&
+									pit->stateValue != static_cast<int>(stateValue)) { allowed = false; break; }
+								if (pit->kind == MembershipPatternDependency::PARTNER_STATE_EXCLUDED &&
+									pit->stateValue == static_cast<int>(stateValue)) { allowed = false; break; }
+							}
+							if (allowed) { ++counts[stateValue]; ++totalEntries; }
+						}
+					}
+				} else {
+					/* Large finite-state domains need sparse counting.  Exact requirements
+					 * touch one bucket; unconstrained rules contribute a wildcard base and
+					 * exclusions subtract from individual buckets. */
+					vector<size_t> exactCounts(stateCount, 0);
+					vector<size_t> excludedWildcardCounts(stateCount, 0);
+					size_t wildcardCount = 0;
+					const size_t entryLimit = vec->size() * 4u;
+					for (vector<unsigned int>::const_iterator it=vec->begin(); it!=vec->end(); ++it) {
+						unsigned int r = *it;
+						const vector<MembershipRootPredicate> &ctx = membershipRootContexts[r];
+						int requiredState = -1;
+						bool impossible = false;
+						vector<int> excludedStates;
+						for (vector<MembershipRootPredicate>::const_iterator pit=ctx.begin(); pit!=ctx.end(); ++pit) {
+							if (pit->componentIndex != selector.rootComponent || pit->partnerType != selector.partnerType ||
+								pit->partnerComponentIndex != selector.partnerBondComponent ||
+								pit->partnerStateComponentIndex != selector.stateComponent) continue;
+							if (pit->kind == MembershipPatternDependency::PARTNER_STATE_REQUIRED) {
+								if (requiredState >= 0 && requiredState != pit->stateValue) impossible = true;
+								requiredState = pit->stateValue;
+							} else if (pit->kind == MembershipPatternDependency::PARTNER_STATE_EXCLUDED &&
+									pit->stateValue >= 0 && static_cast<size_t>(pit->stateValue) < stateCount &&
+									std::find(excludedStates.begin(), excludedStates.end(), pit->stateValue) == excludedStates.end()) {
+								excludedStates.push_back(pit->stateValue);
+							}
+						}
+						if (impossible) continue;
+						if (requiredState >= 0) {
+							if (static_cast<size_t>(requiredState) >= stateCount ||
+									std::find(excludedStates.begin(), excludedStates.end(), requiredState) != excludedStates.end())
+								continue;
+							++exactCounts[requiredState];
+							++totalEntries;
+						} else {
+							const size_t allowedCount = stateCount - excludedStates.size();
+							if (totalEntries > entryLimit || allowedCount > entryLimit - totalEntries) {
+								totalEntries = entryLimit + 1;
+								break;
+							}
+							totalEntries += allowedCount;
+							++wildcardCount;
+							for (vector<int>::const_iterator eit=excludedStates.begin(); eit!=excludedStates.end(); ++eit)
+								++excludedWildcardCounts[*eit];
+						}
+					}
+					if (totalEntries <= entryLimit)
+						for (size_t stateValue=0; stateValue<stateCount; ++stateValue)
+							counts[stateValue] = exactCounts[stateValue] + wildcardCount - excludedWildcardCounts[stateValue];
+				}
+				if (totalEntries > vec->size() * 4u) continue;
+				size_t maxBucket = 0;
+				for (size_t i=0; i<counts.size(); ++i) maxBucket = std::max(maxBucket, counts[i]);
+				if (maxBucket < bestMaxBucket) { bestMaxBucket = maxBucket; bestSelector = static_cast<int>(si); bestCounts.swap(counts); }
+			}
+			if (bestSelector >= 0 && bestMaxBucket * 4u <= vec->size() * 3u) {
+				const PartnerSelector &selector = selectors[bestSelector];
+				view.partnerStateRootComponentIndex = selector.rootComponent;
+				view.partnerStateType = selector.partnerType;
+				view.partnerStateBondComponentIndex = selector.partnerBondComponent;
+				view.partnerStateComponentIndex = selector.stateComponent;
+				view.byPartnerStateValue.resize(bestCounts.size());
+				for (size_t stateValue=0; stateValue<bestCounts.size(); ++stateValue)
+					view.byPartnerStateValue[stateValue].reserve(bestCounts[stateValue]);
+				if (bestCounts.size() <= 256) {
+					for (vector<unsigned int>::const_iterator it=vec->begin(); it!=vec->end(); ++it) {
+						unsigned int r = *it;
+						const vector<MembershipRootPredicate> &ctx = membershipRootContexts[r];
+						for (size_t stateValue=0; stateValue<bestCounts.size(); ++stateValue) {
+							bool allowed = true;
+							for (vector<MembershipRootPredicate>::const_iterator pit=ctx.begin(); pit!=ctx.end(); ++pit) {
+								if (pit->componentIndex != selector.rootComponent || pit->partnerType != selector.partnerType ||
+									pit->partnerComponentIndex != selector.partnerBondComponent ||
+									pit->partnerStateComponentIndex != selector.stateComponent) continue;
+								if (pit->kind == MembershipPatternDependency::PARTNER_STATE_REQUIRED && pit->stateValue != static_cast<int>(stateValue)) { allowed = false; break; }
+								if (pit->kind == MembershipPatternDependency::PARTNER_STATE_EXCLUDED && pit->stateValue == static_cast<int>(stateValue)) { allowed = false; break; }
+							}
+							if (allowed) view.byPartnerStateValue[stateValue].push_back(r);
+						}
+					}
+				} else {
+					for (vector<unsigned int>::const_iterator it=vec->begin(); it!=vec->end(); ++it) {
+						unsigned int r = *it;
+						const vector<MembershipRootPredicate> &ctx = membershipRootContexts[r];
+						int requiredState = -1;
+						bool impossible = false;
+						vector<int> excludedStates;
+						for (vector<MembershipRootPredicate>::const_iterator pit=ctx.begin(); pit!=ctx.end(); ++pit) {
+							if (pit->componentIndex != selector.rootComponent || pit->partnerType != selector.partnerType ||
+								pit->partnerComponentIndex != selector.partnerBondComponent ||
+								pit->partnerStateComponentIndex != selector.stateComponent) continue;
+							if (pit->kind == MembershipPatternDependency::PARTNER_STATE_REQUIRED) {
+								if (requiredState >= 0 && requiredState != pit->stateValue) impossible = true;
+								requiredState = pit->stateValue;
+							} else if (pit->kind == MembershipPatternDependency::PARTNER_STATE_EXCLUDED &&
+									pit->stateValue >= 0 && static_cast<size_t>(pit->stateValue) < bestCounts.size() &&
+									std::find(excludedStates.begin(), excludedStates.end(), pit->stateValue) == excludedStates.end())
+								excludedStates.push_back(pit->stateValue);
+						}
+						if (impossible) continue;
+						if (requiredState >= 0) {
+							if (static_cast<size_t>(requiredState) < view.byPartnerStateValue.size() &&
+									std::find(excludedStates.begin(), excludedStates.end(), requiredState) == excludedStates.end())
+								view.byPartnerStateValue[requiredState].push_back(r);
+						} else {
+							for (size_t stateValue=0; stateValue<view.byPartnerStateValue.size(); ++stateValue)
+								if (std::find(excludedStates.begin(), excludedStates.end(), static_cast<int>(stateValue)) == excludedStates.end())
+									view.byPartnerStateValue[stateValue].push_back(r);
+						}
+					}
+				}
+			}
+		}
+		/* If both one-dimensional state views are selective, materialize their
+		 * exact intersections only when the table is small.  This collapses an
+		 * N x M generated rule family directly to the matching cell. */
+		if (!view.byStateValue.empty() && !view.byPartnerStateValue.empty()) {
+			const size_t rootStates = view.byStateValue.size();
+			const size_t partnerStates = view.byPartnerStateValue.size();
+			if (rootStates <= 4096u / partnerStates) {
+				const size_t cells = rootStates * partnerStates;
+				if (cells <= 4096u) {
+					vector<size_t> counts(cells, 0);
+					size_t totalEntries = 0;
+					size_t maxBucket = 0;
+					for (size_t rs=0; rs<rootStates; ++rs) {
+						const vector<unsigned int> &a = view.byStateValue[rs];
+						for (size_t ps=0; ps<partnerStates; ++ps) {
+							const vector<unsigned int> &b = view.byPartnerStateValue[ps];
+							size_t ai=0, bi=0, count=0;
+							while (ai<a.size() && bi<b.size()) {
+								if (a[ai] < b[bi]) ++ai;
+								else if (b[bi] < a[ai]) ++bi;
+								else { ++count; ++ai; ++bi; }
+							}
+							counts[rs * partnerStates + ps] = count;
+							totalEntries += count;
+							maxBucket = std::max(maxBucket, count);
+						}
+					}
+					if (totalEntries <= vec->size() * 4u && maxBucket * 4u <= vec->size() * 3u) {
+						view.statePartnerStride = partnerStates;
+						view.byStatePartnerValue.resize(cells);
+						for (size_t rs=0; rs<rootStates; ++rs) {
+							const vector<unsigned int> &a = view.byStateValue[rs];
+							for (size_t ps=0; ps<partnerStates; ++ps) {
+								vector<unsigned int> &out = view.byStatePartnerValue[rs * partnerStates + ps];
+								out.reserve(counts[rs * partnerStates + ps]);
+								const vector<unsigned int> &b = view.byPartnerStateValue[ps];
+								size_t ai=0, bi=0;
+								while (ai<a.size() && bi<b.size()) {
+									if (a[ai] < b[bi]) ++ai;
+									else if (b[bi] < a[ai]) ++bi;
+									else { out.push_back(a[ai]); ++ai; ++bi; }
+								}
+							}
+						}
+					}
 				}
 			}
 		}
@@ -1066,7 +1393,9 @@ void MoleculeType::buildMembershipDependencyIndex()
 			view.hasCommonRootTopology = true;
 			view.commonRootTopology = *common;
 		}
-		if (!view.byBoundMask.empty() || view.hasCommonRootTopology)
+		if (!view.byBoundMask.empty() || !view.byStateValue.empty() ||
+				!view.byPartnerStateValue.empty() || !view.byStatePartnerValue.empty() ||
+				view.hasCommonRootTopology)
 			membershipCandidateViews.emplace(vec, std::move(view));
 	};
 	for (auto &kv : membershipStateRequiredCandidates) ensureView(&kv.second);
@@ -1171,13 +1500,29 @@ bool MoleculeType::membershipRootPredicateMatches(
 		Molecule *partner = m->getBondedMolecule(d.componentIndex);
 		return partner != 0 && partner->getMoleculeType() == d.partnerType;
 	}
+	case MembershipPatternDependency::PARTNER_STATE_REQUIRED:
+	case MembershipPatternDependency::PARTNER_STATE_EXCLUDED: {
+		if (m->getBondedMoleculeBindingSiteIndex(d.componentIndex) !=
+				d.partnerComponentIndex)
+			return false;
+		Molecule *partner = m->getBondedMolecule(d.componentIndex);
+		if (partner == 0 || partner->getMoleculeType() != d.partnerType ||
+				d.partnerStateComponentIndex < 0 ||
+				d.partnerStateComponentIndex >= d.partnerType->getNumOfComponents())
+			return false;
+		const int state = partner->getComponentState(d.partnerStateComponentIndex);
+		return d.kind == MembershipPatternDependency::PARTNER_STATE_REQUIRED ?
+				state == d.stateValue : state != d.stateValue;
+	}
 	}
 	return false;
 }
 
 bool MoleculeType::membershipRootContextMatches(
 		Molecule *m, unsigned int reactionIndex, bool skipFirstPredicate,
-		bool skipOccupancyMasks) const
+		bool skipOccupancyMasks, int skipStateComponent,
+		int skipPartnerStateRootComponent, MoleculeType *skipPartnerStateType,
+		int skipPartnerStateBondComponent, int skipPartnerStateComponent) const
 {
 	if (m == 0 || reactionIndex >= membershipRootContexts.size() ||
 			reactionIndex >= membershipRootContextSafe.size() ||
@@ -1197,6 +1542,18 @@ bool MoleculeType::membershipRootContextMatches(
 	if (skipFirstPredicate && begin != context.end()) ++begin;
 	for (vector<MembershipRootPredicate>::const_iterator it = begin;
 			it != context.end(); ++it) {
+		if (skipStateComponent >= 0 && it->componentIndex == skipStateComponent &&
+				(it->kind == MembershipPatternDependency::STATE_REQUIRED ||
+				 it->kind == MembershipPatternDependency::STATE_EXCLUDED))
+			continue;
+		if (skipPartnerStateRootComponent >= 0 &&
+				it->componentIndex == skipPartnerStateRootComponent &&
+				it->partnerType == skipPartnerStateType &&
+				it->partnerComponentIndex == skipPartnerStateBondComponent &&
+				it->partnerStateComponentIndex == skipPartnerStateComponent &&
+				(it->kind == MembershipPatternDependency::PARTNER_STATE_REQUIRED ||
+				 it->kind == MembershipPatternDependency::PARTNER_STATE_EXCLUDED))
+			continue;
 		if (!membershipRootPredicateMatches(m, *it)) return false;
 	}
 	return true;
@@ -1208,11 +1565,59 @@ void MoleculeType::appendMembershipCandidateVector(
 {
 	if (candidates == 0) return;
 	bool occupancyProven = false;
+	int stateComponentProven = -1;
+	bool partnerStateProven = false;
 	if (requireCurrentRootContext && candidateView != 0 && m != 0) {
+		const vector<unsigned int> *occupancyCandidates = 0;
+		const vector<unsigned int> *stateCandidates = 0;
+		const vector<unsigned int> *partnerStateCandidates = 0;
+		const vector<unsigned int> *combinedStateCandidates = 0;
+		int rootStateValue = -1;
+		int partnerStateValue = -1;
 		unsigned int mask = static_cast<unsigned int>(m->getBoundComponentMask());
-		if (mask < candidateView->byBoundMask.size()) {
-			candidates = &candidateView->byBoundMask[mask];
-			occupancyProven = true;
+		if (mask < candidateView->byBoundMask.size())
+			occupancyCandidates = &candidateView->byBoundMask[mask];
+		if (candidateView->stateComponentIndex >= 0 &&
+				candidateView->stateComponentIndex < numOfComponents) {
+			rootStateValue = m->getComponentState(candidateView->stateComponentIndex);
+			if (rootStateValue >= 0 && static_cast<size_t>(rootStateValue) <
+					candidateView->byStateValue.size())
+				stateCandidates = &candidateView->byStateValue[rootStateValue];
+		}
+		if (candidateView->partnerStateRootComponentIndex >= 0 &&
+				candidateView->partnerStateRootComponentIndex < numOfComponents &&
+				candidateView->partnerStateType != 0 &&
+				m->getBondedMoleculeBindingSiteIndex(candidateView->partnerStateRootComponentIndex) ==
+					candidateView->partnerStateBondComponentIndex) {
+			Molecule *partner = m->getBondedMolecule(candidateView->partnerStateRootComponentIndex);
+			if (partner != 0 && partner->getMoleculeType() == candidateView->partnerStateType &&
+					candidateView->partnerStateComponentIndex >= 0 &&
+					candidateView->partnerStateComponentIndex < candidateView->partnerStateType->getNumOfComponents()) {
+				partnerStateValue = partner->getComponentState(candidateView->partnerStateComponentIndex);
+				if (partnerStateValue >= 0 && static_cast<size_t>(partnerStateValue) < candidateView->byPartnerStateValue.size())
+					partnerStateCandidates = &candidateView->byPartnerStateValue[partnerStateValue];
+			}
+		}
+		if (rootStateValue >= 0 && partnerStateValue >= 0 &&
+				candidateView->statePartnerStride != 0) {
+			const size_t flat = static_cast<size_t>(rootStateValue) * candidateView->statePartnerStride +
+					static_cast<size_t>(partnerStateValue);
+			if (flat < candidateView->byStatePartnerValue.size())
+				combinedStateCandidates = &candidateView->byStatePartnerValue[flat];
+		}
+		/* All views are exact ordered subsequences.  Select the smallest; any
+		 * unselected predicate class is still checked by the normal root filter. */
+		const vector<unsigned int> *best = occupancyCandidates;
+		int bestKind = occupancyCandidates != 0 ? 1 : 0;
+		if (stateCandidates != 0 && (best == 0 || stateCandidates->size() < best->size())) { best = stateCandidates; bestKind = 2; }
+		if (partnerStateCandidates != 0 && (best == 0 || partnerStateCandidates->size() < best->size())) { best = partnerStateCandidates; bestKind = 3; }
+		if (combinedStateCandidates != 0 && (best == 0 || combinedStateCandidates->size() < best->size())) { best = combinedStateCandidates; bestKind = 4; }
+		if (best != 0) {
+			candidates = best;
+			if (bestKind == 1) occupancyProven = true;
+			else if (bestKind == 2) stateComponentProven = candidateView->stateComponentIndex;
+			else if (bestKind == 3) partnerStateProven = true;
+			else if (bestKind == 4) { stateComponentProven = candidateView->stateComponentIndex; partnerStateProven = true; }
 		}
 	}
 	bool commonTopologyProven = false;
@@ -1228,7 +1633,11 @@ void MoleculeType::appendMembershipCandidateVector(
 			membershipRootContextChecked[r] = membershipCandidateGeneration;
 			membershipRootContextResult[r] =
 				membershipRootContextMatches(m, r, commonTopologyProven,
-						occupancyProven) ? 1 : 0;
+						occupancyProven, stateComponentProven,
+						partnerStateProven ? candidateView->partnerStateRootComponentIndex : -1,
+						partnerStateProven ? candidateView->partnerStateType : 0,
+						partnerStateProven ? candidateView->partnerStateBondComponentIndex : -1,
+						partnerStateProven ? candidateView->partnerStateComponentIndex : -1) ? 1 : 0;
 		}
 		return membershipRootContextResult[r] != 0;
 	};
@@ -1588,7 +1997,17 @@ void MoleculeType::prepareMembershipCandidates(Molecule *m)
 
 void MoleculeType::prepareForSimulation()
 {
-	buildMembershipDependencyIndex();
+	/* The dependency index is only consumed by the opt-in membership filter/diff
+	 * paths.  Historically it was built for every MoleculeType unconditionally,
+	 * including default NFsim runs and types below the filter's own activation
+	 * threshold.  Avoid that pure startup cost while preserving lazy construction
+	 * in prepareMembershipCandidates() for any future caller that actually needs it. */
+	const bool membershipDiffConfigured = generalMembershipDiffEnabled();
+	const bool membershipFilterConfigured = generalMembershipFilterEnabled() &&
+			(generalMembershipFilterForceEnabled() ||
+			 reactions.size() >= generalMembershipFilterMinRegistrations());
+	if (membershipDiffConfigured || membershipFilterConfigured)
+		buildMembershipDependencyIndex();
 	//cout<<"Preparing: "<<name<<endl;
 	//Check each reaction and add this molecule as a reactant if we have to
 	int r=0;
@@ -1600,10 +2019,8 @@ void MoleculeType::prepareForSimulation()
 
 	// Our iterators that we will use to loop through every molecule.
 	Molecule *mol;
-	const bool sparseInitialMembership = generalMembershipFilterEnabled() &&
-			!generalMembershipDiffEnabled() && !population_type &&
-			(generalMembershipFilterForceEnabled() ||
-			 reactions.size() >= generalMembershipFilterMinRegistrations());
+	const bool sparseInitialMembership = membershipFilterConfigured &&
+			!membershipDiffConfigured && !population_type;
 	/* Many seed states contain thousands of identical small machinery molecules
 	 * (e.g. free ribosomes). Their safe root-local candidate set depends only on
 	 * local state and immediate bond topology, so cache it by an exact local

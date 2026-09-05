@@ -104,6 +104,10 @@ DirectSelector::DirectSelector(vector <ReactionClass *> &rxns, System *sys) :
 					selectionBlockSize, 0.0);
 	this->reactionPropensities.assign(static_cast<std::size_t>(n_reactions), 0.0);
 	this->sparseSelectionSafe = n_reactions > 0;
+	bool lazySparseSelectionSafe = n_reactions > 0;
+	this->sparseSelectionTrackingActive = false;
+	this->denseSelectionSamples = 0;
+	this->denseSelectionIndexSum = 0;
 	for(int r=0; r<n_reactions; r++) {
 		reactionClassList[r] = rxns.at(r);
 		double propensity = reactionClassList[r]->get_a();
@@ -113,6 +117,8 @@ DirectSelector::DirectSelector(vector <ReactionClass *> &rxns, System *sys) :
 				selectionBlockSize] += propensity;
 		if (!reactionClassList[r]->supportsSparseSelection())
 			sparseSelectionSafe = false;
+		if (!reactionClassList[r]->supportsLazySparseSelection())
+			lazySparseSelectionSafe = false;
 	}
 	if (sparseSelectionSafe) {
 		activeReactionBits.assign(
@@ -126,8 +132,8 @@ DirectSelector::DirectSelector(vector <ReactionClass *> &rxns, System *sys) :
 		vector<double>().swap(reactionPropensities);
 	}
 	compactPoolGroupByReaction.assign(static_cast<std::size_t>(n_reactions), -1);
-	compactPoolCoefficients.assign(static_cast<std::size_t>(n_reactions), 0.0);
-	if (sparseSelectionSafe) {
+	if (sparseSelectionSafe && !lazySparseSelectionSafe) {
+		compactPoolCoefficients.assign(static_cast<std::size_t>(n_reactions), 0.0);
 		for (int r = 0; r < n_reactions; ++r) {
 			ReactionClass *reaction = reactionClassList[r];
 			if (!reaction->supportsCompactPartnerPoolScale()) continue;
@@ -158,6 +164,14 @@ DirectSelector::DirectSelector(vector <ReactionClass *> &rxns, System *sys) :
 			compactPoolSelectionGroups[groupIndex].reactionIndices.push_back(r);
 		}
 	}
+	/* Preserve eager tracking for reaction classes whose update paths have not
+	 * opted into lazy tracking (notably compact Energy reactions).  Pure
+	 * Basic/Functional/MM systems start dense and switch only after the observed
+	 * selected-index distribution proves that sparse scanning will amortize the
+	 * mirror bookkeeping. */
+	sparseSelectionTrackingActive = sparseSelectionSafe && !lazySparseSelectionSafe;
+	if (getenv("NFSIM_SELECTOR_SPARSE_EAGER") != 0 && sparseSelectionSafe)
+		sparseSelectionTrackingActive = true;
 }
 
 
@@ -168,11 +182,48 @@ DirectSelector::~DirectSelector()
 	n_reactions = 0;
 	delete [] reactionClassList;
 	sparseSelectionSafe = false;
+	sparseSelectionTrackingActive = false;
 	activeReactionBits.clear();
 	reactionPropensities.clear();
 	compactPoolGroupByReaction.clear();
 	compactPoolCoefficients.clear();
 	compactPoolSelectionGroups.clear();
+}
+
+void DirectSelector::activateSparseSelectionTracking()
+{
+	if (!sparseSelectionSafe || sparseSelectionTrackingActive) return;
+	std::fill(activeReactionBits.begin(), activeReactionBits.end(), 0);
+	for (int r = 0; r < n_reactions; ++r) {
+		double propensity = reactionClassList[r]->get_a();
+		reactionPropensities[static_cast<std::size_t>(r)] = propensity;
+		if (propensity != 0.0)
+			activeReactionBits[static_cast<std::size_t>(r) >> 6] |=
+					(std::uint64_t(1) << (r & 63));
+	}
+	sparseSelectionTrackingActive = true;
+}
+
+void DirectSelector::considerSparseSelectionActivation(std::size_t selectedReaction)
+{
+	if (!sparseSelectionSafe || sparseSelectionTrackingActive || n_reactions <= 128)
+		return;
+	denseSelectionIndexSum += selectedReaction;
+	++denseSelectionSamples;
+	if (denseSelectionSamples < 32) return;
+	/* Dense selection cost is proportional to the selected prefix length.
+	 * Switch only when a rolling 32-sample window averages at least 64 skipped
+	 * channels; low-index systems (common bind/unbind stressors) then retain the
+	 * cheaper legacy scan and pay no sparse-update bookkeeping. */
+	if (denseSelectionIndexSum >=
+			static_cast<unsigned long long>(denseSelectionSamples) * 64ULL) {
+		activateSparseSelectionTracking();
+		return;
+	}
+	/* Retain a half-window so a later phase can still trigger the switch without
+	 * letting a single ancient high-index event dominate forever. */
+	denseSelectionSamples /= 2;
+	denseSelectionIndexSum /= 2;
 }
 
 int DirectSelector::findCompactPoolGroup(CompactPartnerPool *pool) const
@@ -188,7 +239,7 @@ int DirectSelector::findCompactPoolGroup(CompactPartnerPool *pool) const
 void DirectSelector::updateCompactPoolActiveBits(
 		const CompactPoolSelectionGroup &group, bool active)
 {
-	if (!sparseSelectionSafe) return;
+	if (!sparseSelectionTrackingActive) return;
 	for (vector<int>::const_iterator it = group.reactionIndices.begin();
 			it != group.reactionIndices.end(); ++it) {
 		int reaction = *it;
@@ -246,7 +297,7 @@ double DirectSelector::refactorPropensities()
 	Atot = 0;
 	std::fill(selectionBlockPropensities.begin(),
 			selectionBlockPropensities.end(), 0.0);
-	if (sparseSelectionSafe)
+	if (sparseSelectionTrackingActive)
 		std::fill(activeReactionBits.begin(), activeReactionBits.end(), 0);
 	for (vector<CompactPoolSelectionGroup>::iterator it =
 			compactPoolSelectionGroups.begin();
@@ -258,7 +309,7 @@ double DirectSelector::refactorPropensities()
 	}
 	for(int r=0; r<n_reactions; r++) {
 		double propensity = reactionClassList[r]->update_a();
-		if (sparseSelectionSafe) {
+		if (sparseSelectionTrackingActive) {
 			reactionPropensities[static_cast<std::size_t>(r)] = propensity;
 			int groupIndex = compactPoolGroupByReaction[
 					static_cast<std::size_t>(r)];
@@ -276,7 +327,7 @@ double DirectSelector::refactorPropensities()
 		Atot += propensity;
 		selectionBlockPropensities[static_cast<std::size_t>(r) /
 				selectionBlockSize] += propensity;
-		if (sparseSelectionSafe && propensity != 0.0)
+		if (sparseSelectionTrackingActive && propensity != 0.0)
 			activeReactionBits[static_cast<std::size_t>(r) >> 6] |=
 				(std::uint64_t(1) << (r & 63));
 	}
@@ -325,7 +376,7 @@ double DirectSelector::update(ReactionClass *r,double oldA, double newA)
 			group.totalCoefficient += newCoefficient - oldCoefficient;
 			group.blockCoefficients[block] += newCoefficient - oldCoefficient;
 			compactPoolCoefficients[reactionIndex] = newCoefficient;
-			if (sparseSelectionSafe) {
+			if (sparseSelectionTrackingActive) {
 				reactionPropensities[reactionIndex] = newA;
 				std::uint64_t &word = activeReactionBits[reactionIndex >> 6];
 				std::uint64_t bit = std::uint64_t(1) << (reaction & 63);
@@ -342,10 +393,10 @@ double DirectSelector::update(ReactionClass *r,double oldA, double newA)
 				selectionBlockSize;
 		selectionBlockPropensities[block] -= oldA;
 		selectionBlockPropensities[block] += newA;
-		if (sparseSelectionSafe)
+		if (sparseSelectionTrackingActive)
 			reactionPropensities[static_cast<std::size_t>(reaction)] = newA;
 	}
-	if (sparseSelectionSafe) {
+	if (sparseSelectionTrackingActive) {
 		if (reaction < n_reactions) {
 			std::uint64_t &word =
 				activeReactionBits[static_cast<std::size_t>(reaction) >> 6];
@@ -381,7 +432,7 @@ double DirectSelector::updateBatch(vector<ReactionClass *> &rxns)
 				if (reactionClassList[reaction] == r) break;
 			}
 		}
-		bool indexedReaction = sparseSelectionSafe &&
+		bool indexedReaction = sparseSelectionTrackingActive &&
 			reaction >= 0 && reaction < n_reactions &&
 			reactionClassList[reaction] == r;
 		int groupIndex = indexedReaction &&
@@ -424,9 +475,9 @@ double DirectSelector::updateBatch(vector<ReactionClass *> &rxns)
 				selectionBlockSize;
 		selectionBlockPropensities[block] -= oldA;
 		selectionBlockPropensities[block] += newA;
-		if (sparseSelectionSafe)
+		if (sparseSelectionTrackingActive)
 			reactionPropensities[static_cast<std::size_t>(reaction)] = newA;
-		if (sparseSelectionSafe) {
+		if (sparseSelectionTrackingActive) {
 			std::uint64_t &word =
 				activeReactionBits[static_cast<std::size_t>(reaction) >> 6];
 			std::uint64_t bit =
@@ -484,7 +535,7 @@ double DirectSelector::updateCompactPartnerPoolBatch(
 		}
 
 		std::size_t reactionIndex = static_cast<std::size_t>(reaction);
-		double oldA = sparseSelectionSafe
+		double oldA = sparseSelectionTrackingActive
 				? reactionPropensities[reactionIndex] : r->get_a();
 		double newA = r->update_a_for_compact_partner_pool(newPoolSize);
 		Atot -= oldA;
@@ -495,7 +546,7 @@ double DirectSelector::updateCompactPartnerPoolBatch(
 		 * work, but must not perturb the block sums that drive selection. */
 		selectionBlockPropensities[block] -= oldA;
 		selectionBlockPropensities[block] += newA;
-		if (sparseSelectionSafe) {
+		if (sparseSelectionTrackingActive) {
 			reactionPropensities[reactionIndex] = newA;
 			std::uint64_t &word = activeReactionBits[reactionIndex >> 6];
 			std::uint64_t bit = std::uint64_t(1) << (reaction & 63);
@@ -516,7 +567,7 @@ double DirectSelector::getNextReactionClass(ReactionClass *&rc)
 	/* Compact EnergyPattern reactions are safe for an order-preserving sparse
 	 * scan.  Use bounded prefix blocks for that path; retain the legacy dense
 	 * scan for reaction classes whose zero-rate membership cannot be indexed. */
-	if (sparseSelectionSafe && selectionBlockPropensities.size() > 1) {
+	if (sparseSelectionTrackingActive && selectionBlockPropensities.size() > 1) {
 		for (std::size_t block = 0;
 				block < selectionBlockPropensities.size(); ++block) {
 			double blockPropensity = selectionBlockPropensities[block];
@@ -530,7 +581,7 @@ double DirectSelector::getNextReactionClass(ReactionClass *&rc)
 				 * words and enumerate set bits in ascending reaction order, preserving
 				 * exactly the scalar accumulation/RNG protocol while avoiding branches
 				 * over inactive rules. */
-				if (sparseSelectionSafe) {
+				if (sparseSelectionTrackingActive) {
 					std::size_t firstWord = first >> 6;
 					std::size_t lastWord = (last - 1) >> 6;
 					for (std::size_t wordIndex = firstWord; wordIndex <= lastWord; ++wordIndex) {
@@ -577,7 +628,7 @@ double DirectSelector::getNextReactionClass(ReactionClass *&rc)
 	//WARNING - DO NOT USE THE DEFAULT C++ RANDOM NUMBER GENERATOR FOR THIS STEP
 	// - IT INTRODUCES SMALL NUMERICAL ERRORS CAUSING THE ORDER OF RXNS TO
 	//   AFFECT SIMULATION RESULTS
-	if (sparseSelectionSafe) {
+	if (sparseSelectionTrackingActive) {
 		for(std::size_t wordIndex=0; wordIndex<activeReactionBits.size();
 				++wordIndex) {
 			std::uint64_t active = activeReactionBits[wordIndex];
@@ -600,7 +651,9 @@ double DirectSelector::getNextReactionClass(ReactionClass *&rc)
 			if(randNum <= a_sum)
 			{
 				rc = reactionClassList[r];
-				return (randNum-last_a_sum);
+				double residual = randNum-last_a_sum;
+				considerSparseSelectionActivation(static_cast<std::size_t>(r));
+				return residual;
 			}
 			last_a_sum = a_sum;
 		}

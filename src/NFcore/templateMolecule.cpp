@@ -219,6 +219,36 @@ bool TemplateMolecule::collectRootMembershipDependencies(
 		d.partnerType = partner->moleculeType;
 		d.partnerComponentIndex = partnerComponent;
 		out.push_back(d);
+
+		/* The concrete molecule bonded at a root component is known before the
+		 * recursive matcher runs.  State constraints on that directly bonded
+		 * template are therefore also sound root-local necessary conditions.
+		 * Skip symmetric partner templates because their component assignment can
+		 * be resolved dynamically by the full matcher. */
+		if (partner->n_symComps == 0) {
+			for (int j = 0; j < partner->n_compStateConstraint; ++j) {
+				MembershipPatternDependency ps;
+				ps.kind = MembershipPatternDependency::PARTNER_STATE_REQUIRED;
+				ps.moleculeType = moleculeType;
+				ps.componentIndex = bondComp[i];
+				ps.stateValue = partner->compStateConstraint_Constraint[j];
+				ps.partnerType = partner->moleculeType;
+				ps.partnerComponentIndex = partnerComponent;
+				ps.partnerStateComponentIndex = partner->compStateConstraint_Comp[j];
+				out.push_back(ps);
+			}
+			for (int j = 0; j < partner->n_compStateExclusion; ++j) {
+				MembershipPatternDependency ps;
+				ps.kind = MembershipPatternDependency::PARTNER_STATE_EXCLUDED;
+				ps.moleculeType = moleculeType;
+				ps.componentIndex = bondComp[i];
+				ps.stateValue = partner->compStateExclusion_Exclusion[j];
+				ps.partnerType = partner->moleculeType;
+				ps.partnerComponentIndex = partnerComponent;
+				ps.partnerStateComponentIndex = partner->compStateExclusion_Comp[j];
+				out.push_back(ps);
+			}
+		}
 	}
 	return true;
 }
@@ -630,8 +660,8 @@ void TemplateMolecule::addSymCompConstraint(string cName, string uniqueId,
 	canBeMappedTo.push_back(canBeMappedToVector);
 }
 
-void TemplateMolecule::addSymBond(string thisBsiteName, string thisCompId,
-		TemplateMolecule *t2, string bSiteName2)
+void TemplateMolecule::addSymBond(const string& thisBsiteName, const string& thisCompId,
+		TemplateMolecule *t2, const string& bSiteName2)
 {
 	//find thisCompId in our set of symmetric sites, and make changes
 	//to it.  We have to register this symmetric site before we can make
@@ -662,8 +692,8 @@ void TemplateMolecule::addSymBond(string thisBsiteName, string thisCompId,
 }
 
 
-void TemplateMolecule::addBond(string thisBsiteName,
-		TemplateMolecule *t2, string bSiteName2)
+void TemplateMolecule::addBond(const string& thisBsiteName,
+		TemplateMolecule *t2, const string& bSiteName2)
 {
 	//If we called this, then we are adding a bond to a nonsymmetric site
 
@@ -721,8 +751,8 @@ void TemplateMolecule::addBond(string thisBsiteName,
 
 
 
-void TemplateMolecule::bind(TemplateMolecule *t1, string bSiteName1, string compId1,
-				TemplateMolecule *t2, string bSiteName2, string compId2)
+void TemplateMolecule::bind(TemplateMolecule *t1, const string& bSiteName1, const string& compId1,
+				TemplateMolecule *t2, const string& bSiteName2, const string& compId2)
 {
 	if(t1->moleculeType->isEquivalentComponent(bSiteName1)) {
 		t1->addSymBond(bSiteName1, compId1, t2, bSiteName2);

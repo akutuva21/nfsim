@@ -173,6 +173,7 @@
 
 #include "NFsim.hh"
 namespace NFcore { void memprofReport(); }
+#ifdef NFSIM_ENABLE_BUILTIN_TESTS
 #include "NFtest/rng/test_rng.hh"
 #include "NFtest/util/test_util.hh"
 #include "NFtest/mapping/test_mapping.hh"
@@ -185,6 +186,7 @@ namespace NFcore { void memprofReport(); }
 #include "NFtest/input/test_input.hh"
 #include "NFtest/mappingSet/mappingSet_test.hh"
 #include "NFtest/reactantTree/reactantTree_test.hh"
+#endif
 
 #include <iostream>
 #include <string>
@@ -312,10 +314,11 @@ int runNFsimMain(int argc, char *argv[])
 		}
 
 
+#ifdef NFSIM_ENABLE_BUILTIN_TESTS
 		//Handle the case of running a predefined test
-		else if (auto testIt = argMap.find("test"); testIt!=argMap.end())
+		else if (argMap.find("test") != argMap.end())
 		{
-			string test = testIt->second;
+			string test = argMap.find("test")->second;
 			bool foundATest = false;
 			if(!test.empty())
 			{
@@ -431,6 +434,14 @@ int runNFsimMain(int argc, char *argv[])
 			}
 			parsed = true;
 		}
+
+#else
+		else if (argMap.find("test") != argMap.end())
+		{
+			cout << "This NFsim binary was built without the developer test suite." << endl;
+			parsed = true;
+		}
+#endif
 
 		//Finally, always give the logo to anyone who calls for it
 		if (argMap.find("logo")!=argMap.end() || argMap.find("version")!=argMap.end())

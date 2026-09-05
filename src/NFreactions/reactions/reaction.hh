@@ -54,6 +54,11 @@ namespace NFcore
 					int rxnIndex);
 			virtual void remove(Molecule *m, unsigned int reactantPos);
 			virtual double update_a();
+			/* DirectSelector mirrors every Basic/Functional/MM propensity update and
+			 * refactor, so zero-propensity Basic-family channels can be omitted from
+			 * the order-preserving scan without changing reaction order or RNG use. */
+			virtual bool supportsSparseSelection() const { return true; }
+			virtual bool supportsLazySparseSelection() const { return !supportsCompactPartnerPoolScale(); }
 			virtual bool propensityDependsOnlyOnMembership() const { return true; }
 			virtual void notifyRateFactorChange(Molecule * m, int reactantIndex, int rxnListIndex);
 			virtual int getReactantCount(unsigned int reactantIndex) const;

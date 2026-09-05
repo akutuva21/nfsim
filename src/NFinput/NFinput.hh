@@ -39,9 +39,8 @@ namespace NFinput {
 	 */
 	class component {
 		public:
-			component(TemplateMolecule *t, string name);
-			component(MoleculeType *mt, string name);
-			~component();
+			component(TemplateMolecule *t, const string& name);
+			component(MoleculeType *mt, const string& name);
 
 			TemplateMolecule * t;
 			MoleculeType *mt;
