@@ -1464,15 +1464,24 @@ void MoleculeType::buildMembershipDependencyIndex()
 		entry.partnerType = key.anchorPartnerType; entry.partnerComponent = key.anchorPartnerComponent;
 		entry.candidates = &it->second; entry.candidateView = candidateViewFor(&it->second); anchor->entries.push_back(entry);
 	}
-	for (auto &kv : membershipBondFreeGainLookups)
-		std::sort(kv.second.anchors.begin(), kv.second.anchors.end(),
+	auto orderGainLookup = [](MembershipGainLookup &lookup) {
+		std::sort(lookup.anchors.begin(), lookup.anchors.end(),
 			[](const MembershipAnchorCandidateLookup &a, const MembershipAnchorCandidateLookup &b){ return a.anchorComponent < b.anchorComponent; });
-	for (auto &kv : membershipBondBoundGainLookups)
-		std::sort(kv.second.anchors.begin(), kv.second.anchors.end(),
-			[](const MembershipAnchorCandidateLookup &a, const MembershipAnchorCandidateLookup &b){ return a.anchorComponent < b.anchorComponent; });
-	for (auto &kv : membershipTopologyGainLookups)
-		std::sort(kv.second.anchors.begin(), kv.second.anchors.end(),
-			[](const MembershipAnchorCandidateLookup &a, const MembershipAnchorCandidateLookup &b){ return a.anchorComponent < b.anchorComponent; });
+		for (auto &anchor : lookup.anchors) {
+			// Generated positional rules can put hundreds of partner components
+			// under one root anchor. Preserve ties so the first exact match stays
+			// unchanged even if different partner types share a component number.
+			if (anchor.entries.size() > 8u)
+				std::stable_sort(anchor.entries.begin(), anchor.entries.end(),
+					[](const MembershipPartnerCandidateEntry &a,
+						const MembershipPartnerCandidateEntry &b) {
+						return a.partnerComponent < b.partnerComponent;
+					});
+		}
+	};
+	for (auto &kv : membershipBondFreeGainLookups) orderGainLookup(kv.second);
+	for (auto &kv : membershipBondBoundGainLookups) orderGainLookup(kv.second);
+	for (auto &kv : membershipTopologyGainLookups) orderGainLookup(kv.second);
 
 	membershipDependencyIndexBuilt = true;
 }
@@ -1928,8 +1937,16 @@ void MoleculeType::applyMembershipEventPlan(Molecule *m)
 			if (partner == 0) return;
 			int pc = m->getBondedMoleculeBindingSiteIndex(c);
 			MoleculeType *pt = partner->getMoleculeType();
-			for (vector<MembershipPartnerCandidateEntry>::const_iterator eit =
-					anchor.entries.begin(); eit != anchor.entries.end(); ++eit) {
+			vector<MembershipPartnerCandidateEntry>::const_iterator first = anchor.entries.begin();
+			const bool ordered = anchor.entries.size() > 8u;
+			if (ordered)
+				first = std::lower_bound(first, anchor.entries.end(), pc,
+					[](const MembershipPartnerCandidateEntry &entry, int component) {
+						return entry.partnerComponent < component;
+					});
+			for (vector<MembershipPartnerCandidateEntry>::const_iterator eit = first;
+					eit != anchor.entries.end(); ++eit) {
+				if (ordered && eit->partnerComponent != pc) break;
 				if (eit->partnerType == pt && eit->partnerComponent == pc) {
 					appendMembershipCandidateVector(eit->candidates, m, false, true, eit->candidateView);
 					return;
