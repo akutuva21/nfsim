@@ -1564,6 +1564,15 @@ void MoleculeType::appendMembershipCandidateVector(
 		bool requireCurrentRootContext, const MembershipCandidateView *candidateView)
 {
 	if (candidates == 0) return;
+	// Reject a shared topology failure before resolving state/occupancy views.
+	// View selection only reads the molecule; it cannot change this predicate.
+	bool commonTopologyProven = false;
+	if (requireCurrentRootContext && candidateView != 0 &&
+			candidateView->hasCommonRootTopology) {
+		if (!membershipRootPredicateMatches(m, candidateView->commonRootTopology))
+			return;
+		commonTopologyProven = true;
+	}
 	bool occupancyProven = false;
 	int stateComponentProven = -1;
 	bool partnerStateProven = false;
@@ -1619,13 +1628,6 @@ void MoleculeType::appendMembershipCandidateVector(
 			else if (bestKind == 3) partnerStateProven = true;
 			else if (bestKind == 4) { stateComponentProven = candidateView->stateComponentIndex; partnerStateProven = true; }
 		}
-	}
-	bool commonTopologyProven = false;
-	if (requireCurrentRootContext && candidateView != 0 &&
-			candidateView->hasCommonRootTopology) {
-		if (!membershipRootPredicateMatches(m, candidateView->commonRootTopology))
-			return;
-		commonTopologyProven = true;
 	}
 	auto rootContextMatchesCached = [&](unsigned int r) -> bool {
 		if (!requireCurrentRootContext) return true;
