@@ -1929,6 +1929,9 @@ namespace NFcore
 			unordered_map<const vector<unsigned int> *, vector<std::uint64_t> >
 				membershipLossCandidateBitmaps;
 			vector<std::uint32_t> membershipCandidateSeen;
+			// Lazily snapshot active memberships once per candidate preparation.
+			vector<std::uint32_t> membershipActiveSnapshot;
+			std::uint32_t membershipActiveSnapshotGeneration = 0;
 			/* Root-context predicates are often reached through several dependency
 			 * vectors in the same molecule update. Cache the boolean result for the
 			 * current generation so each (molecule,reaction) context is evaluated at

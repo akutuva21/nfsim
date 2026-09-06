@@ -804,6 +804,8 @@ void MoleculeType::buildMembershipDependencyIndex()
 	membershipCandidateViews.clear();
 	membershipLossCandidateBitmaps.clear();
 	membershipCandidateSeen.assign(reactions.size(), 0);
+	membershipActiveSnapshot.assign(reactions.size(), 0);
+	membershipActiveSnapshotGeneration = 0;
 	membershipRootContextChecked.assign(reactions.size(), 0);
 	membershipRootContextResult.assign(reactions.size(), 0);
 	membershipCandidateScratch.clear();
@@ -1689,6 +1691,14 @@ void MoleculeType::appendMembershipCandidateVector(
 			}
 			return;
 		}
+		// Memberships do not change during candidate preparation. Reuse a
+		// type-local snapshot for all small loss lists in this update.
+		if (membershipActiveSnapshotGeneration != membershipCandidateGeneration) {
+			for (vector<int>::const_iterator ait = active.begin(); ait != active.end(); ++ait)
+				if (*ait >= 0 && static_cast<size_t>(*ait) < membershipActiveSnapshot.size())
+					membershipActiveSnapshot[*ait] = membershipCandidateGeneration;
+			membershipActiveSnapshotGeneration = membershipCandidateGeneration;
+		}
 	}
 	if (memprofEnabled())
 		NFcore::memprofCandidateProbe(name,
@@ -1698,7 +1708,7 @@ void MoleculeType::appendMembershipCandidateVector(
 			it != candidates->end(); ++it) {
 		unsigned int r = *it;
 		if (membershipCandidateSeen[r] == membershipCandidateGeneration) continue;
-		if (lossOnly && m->getRxnListMappingSet(r).empty()) continue;
+		if (lossOnly && membershipActiveSnapshot[r] != membershipCandidateGeneration) continue;
 		if (!rootContextMatchesCached(r)) continue;
 		membershipCandidateSeen[r] = membershipCandidateGeneration;
 		membershipCandidateScratch.push_back(r);
@@ -1975,6 +1985,8 @@ void MoleculeType::prepareMembershipCandidates(Molecule *m)
 		buildMembershipDependencyIndex();
 	if (++membershipCandidateGeneration == 0) {
 		std::fill(membershipCandidateSeen.begin(), membershipCandidateSeen.end(), 0);
+		std::fill(membershipActiveSnapshot.begin(), membershipActiveSnapshot.end(), 0);
+		membershipActiveSnapshotGeneration = 0;
 		std::fill(membershipRootContextChecked.begin(), membershipRootContextChecked.end(), 0);
 		membershipCandidateGeneration = 1;
 	}
