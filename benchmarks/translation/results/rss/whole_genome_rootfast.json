@@ -1,0 +1,36 @@
+{
+  "binary_sha256": "5df697a45cea78ee0fbd41109e66d3863a5f7cb1d9501b2a91dc71965ecfe1b3",
+  "command": [
+    "/private/tmp/nfsim-rasi-build-candidate/NFsim",
+    "-xml",
+    "/Users/akutuva/Documents/NFsim-vis/rasi_local_function_package_20260902/models/whole_genome/yeast_genome.original.xml",
+    "-sim",
+    "10",
+    "-oSteps",
+    "3",
+    "-seed",
+    "1339",
+    "-o",
+    "/private/tmp/nfsim-rasi-rss-final-whole_genome-rootfast/simulation.gdat",
+    "-utl",
+    "3",
+    "-gml",
+    "5000000",
+    "-maxcputime",
+    "600"
+  ],
+  "engine": "rootfast",
+  "environment": {
+    "NFSIM_MEMFILTER": "1"
+  },
+  "mode": "normal",
+  "model": "whole_genome",
+  "output_sha256": "9b5f73937f7b5cadebe84d084a278f3628ebdeee7d6af10b9a88dafc59e092e1",
+  "peak_rss_kb": 2587120.0,
+  "returncode": 0,
+  "seed": 1339,
+  "system_seconds": 0.432376,
+  "user_seconds": 7.317249,
+  "wall_seconds": 7.8306914999999995,
+  "xml_sha256": "1a7b7d7bf6d80c34f3ecbeeb5c7dc4b3f0bb236eba3362b9ddaaa6975a1c63d2"
+}

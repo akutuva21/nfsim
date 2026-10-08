@@ -6,6 +6,8 @@
  */
 
 #include "NFfunction.hh"
+#include <algorithm>
+#include <cctype>
 #include <stdexcept>
 
 
@@ -59,8 +61,28 @@ CompositeFunction::CompositeFunction(System *s,
 	this->ctrType = "";
 	this->ctrName = "";
 	this->counterParamName = "";
+	this->identityLocalFunction = false;
+	this->simpleStateSelector = false;
+	this->simpleStateSelectorFunction = 0;
+	this->simpleStateIntactParamIndex = -1;
+	this->simpleStateEndocleavedParamIndex = -1;
+	this->simpleStateIntactRate = 0.0;
+	this->simpleStateEndocleavedRate = 0.0;
 	// AS-2021
 }
+bool CompositeFunction::isMembershipOnlyRate() const
+{
+	if (fileFunc || !ctrType.empty() || containsTimeExpression(originalExpression) ||
+			n_lfs != 0 || n_refLfs != 0)
+		return false;
+	for (int i = 0; i < n_gfs; ++i)
+		if (gfs[i] == 0 || !gfs[i]->isRuntimeInvariant())
+			return false;
+	/* Reactant-count references are allowed: they are exactly the quantities
+	 * maintained by membership updates. Parameters are parser constants. */
+	return true;
+}
+
 CompositeFunction::~CompositeFunction()
 {
 	delete [] allFuncNames;
@@ -298,6 +320,94 @@ void CompositeFunction::finalizeInitialization(System *s)
 		reactantCount[r]=0;
 	}
 
+	/* A large class of generated DOR rate laws is only a type-safe
+	 * CompositeFunction wrapper around one LocalFunction.  The parser still
+	 * builds the wrapper so existing XML is accepted, but evaluating another
+	 * muParser bytecode program for the identity adds avoidable work to every
+	 * propensity lookup. */
+	if (n_gfs == 0 && n_lfs == 1 && n_refLfs == 1 &&
+			n_params == 0 && n_reactantCounts == 0 && !fileFunc) {
+		string identityExpression = "_" +
+				argNames[refLfScopes[0]];
+		string normalizedExpression = parsedExpression;
+		NFutil::trim(normalizedExpression);
+		identityLocalFunction = normalizedExpression == identityExpression;
+	}
+
+	/* Recognize the compact state selector emitted by the indexed translation
+	 * XML generator.  This remains deliberately narrow: arbitrary composite
+	 * expressions continue through the parser, while this exact algebraic
+	 * form can be evaluated without a second parser dispatch. */
+	if (n_gfs == 0 && n_lfs == 1 && n_refLfs == 1 && n_params == 2 &&
+			n_reactantCounts == 0 && !fileFunc && lfs[0] != 0 &&
+			lfs[0]->isSimpleStateDependency() && n_args > 0) {
+		string normalizedExpression = parsedExpression;
+		normalizedExpression.erase(
+			std::remove_if(normalizedExpression.begin(), normalizedExpression.end(),
+				[](unsigned char c) { return std::isspace(c) != 0; }),
+			normalizedExpression.end());
+		string stateValue = lfs[0]->getName() + "_" +
+				argNames[refLfScopes[0]];
+		string expectedIntactFirst = paramNames[0] + "*" + stateValue + "*(2-" +
+				stateValue + ")+" + paramNames[1] + "*" + stateValue + "*(" +
+				stateValue + "-1)/2";
+		string expectedIntactSecond = paramNames[1] + "*" + stateValue + "*(2-" +
+				stateValue + ")+" + paramNames[0] + "*" + stateValue + "*(" +
+				stateValue + "-1)/2";
+		if (normalizedExpression == expectedIntactFirst ||
+				normalizedExpression == expectedIntactSecond) {
+				simpleStateSelector = true;
+				simpleStateSelectorFunction = lfs[0];
+				if (normalizedExpression == expectedIntactFirst) {
+					simpleStateIntactParamIndex = 0;
+					simpleStateEndocleavedParamIndex = 1;
+				} else {
+					simpleStateIntactParamIndex = 1;
+					simpleStateEndocleavedParamIndex = 0;
+				}
+				simpleStateIntactRate = s->getParameter(
+						paramNames[simpleStateIntactParamIndex]);
+				simpleStateEndocleavedRate = s->getParameter(
+						paramNames[simpleStateEndocleavedParamIndex]);
+		}
+	}
+
+	/* The channel-preserving control uses one of the complementary state
+	 * gates.  It keeps the original pair of reaction channels (important for
+	 * fixed-seed event-log parity) while still avoiding a parser evaluation for
+	 * the gate itself. */
+	if (n_gfs == 0 && n_lfs == 1 && n_refLfs == 1 && n_params == 1 &&
+			n_reactantCounts == 0 && !fileFunc && lfs[0] != 0 &&
+			lfs[0]->isSimpleStateDependency() && n_args > 0) {
+		string normalizedExpression = parsedExpression;
+		normalizedExpression.erase(
+			std::remove_if(normalizedExpression.begin(), normalizedExpression.end(),
+				[](unsigned char c) { return std::isspace(c) != 0; }),
+			normalizedExpression.end());
+		string stateValue = lfs[0]->getName() + "_" +
+				argNames[refLfScopes[0]];
+		string expectedIntact = paramNames[0] + "*" + stateValue + "*(2-" +
+				stateValue + ")";
+		string expectedEndocleaved = paramNames[0] + "*" + stateValue + "*(" +
+				stateValue + "-1)/2";
+		if (normalizedExpression == expectedIntact ||
+				normalizedExpression == expectedEndocleaved) {
+			simpleStateSelector = true;
+			simpleStateSelectorFunction = lfs[0];
+			if (normalizedExpression == expectedIntact) {
+				simpleStateIntactParamIndex = 0;
+				simpleStateEndocleavedParamIndex = -1;
+			} else {
+				simpleStateIntactParamIndex = -1;
+				simpleStateEndocleavedParamIndex = 0;
+			}
+			simpleStateIntactRate = simpleStateIntactParamIndex >= 0
+					? s->getParameter(paramNames[simpleStateIntactParamIndex]) : 0.0;
+			simpleStateEndocleavedRate = simpleStateEndocleavedParamIndex >= 0
+					? s->getParameter(paramNames[simpleStateEndocleavedParamIndex]) : 0.0;
+		}
+	}
+
 }
 
 int CompositeFunction::getNumOfArgs() const {
@@ -311,13 +421,32 @@ string CompositeFunction::getArgName(int aIndex) const {
 
 void CompositeFunction::updateParameters(System *s)
 {
-	for(unsigned int i=0; i<n_params; i++) {
-		p->DefineConst(paramNames[i],s->getParameter(paramNames[i]));
+	/* A simple state selector is evaluated by the direct C++ path below and
+	 * deliberately has no muParser program.  Keep parameter refreshes for the
+	 * general path, but never dereference the absent parser for this compact
+	 * representation. */
+	if (!simpleStateSelector && p != 0) {
+		for(unsigned int i=0; i<n_params; i++) {
+			p->DefineConst(paramNames[i],s->getParameter(paramNames[i]));
+		}
+	}
+	if (simpleStateSelector) {
+		simpleStateIntactRate = simpleStateIntactParamIndex >= 0
+				? s->getParameter(paramNames[simpleStateIntactParamIndex]) : 0.0;
+		simpleStateEndocleavedRate = simpleStateEndocleavedParamIndex >= 0
+				? s->getParameter(paramNames[simpleStateEndocleavedParamIndex]) : 0.0;
 	}
 }
 
 void CompositeFunction::prepareForSimulation(System *s)
 {
+	/* The indexed Rasi selectors are finite-state rate lookups.  Their
+	 * evaluator is entirely in C++ (simpleStateSelector), so constructing a
+	 * second muParser object for each selector only increases parse/startup
+	 * memory and time.  General composite functions retain the existing path. */
+	if (simpleStateSelector)
+		return;
+
 	try {
 		const string expression = normalizeTimeExpression(this->parsedExpression);
 		p=FuncFactory::create();
@@ -414,12 +543,13 @@ void CompositeFunction::printDetails(System *s) {
 
 
 
-void CompositeFunction::addTypeIMoleculeDependency(MoleculeType *mt) {
+void CompositeFunction::addTypeIMoleculeDependency(MoleculeType *mt,
+		ReactionClass *rxn, int reactionPosition) {
 
 	for(int i=0; i<n_lfs; i++) {
 		// add typeI dependency, which means this local function influences
 		//  the propensity of some DOR reaction for which mt is the head template molecule.
-		lfs[i]->addTypeIMoleculeDependency(mt);
+		lfs[i]->addTypeIMoleculeDependency(mt, rxn, reactionPosition);
 		if ( refLfScopes[i]==LocalFunction::SPECIES ) {
 			// enable complex-scoped evaluation for this local fcn!
 			lfs[i]->setEvaluateComplexScope( true );
@@ -429,6 +559,36 @@ void CompositeFunction::addTypeIMoleculeDependency(MoleculeType *mt) {
 
 
 double CompositeFunction::evaluateOn(Molecule **molList, int *scope, int *curReactantCounts, int n_reactants) {
+	if (simpleStateSelector) {
+		if (molList == 0 || scope == 0) {
+			cout<<"Error evaluating composite function: "<<name<<endl;
+			cout<<"This function depends on a local function, but you gave no molecules"<<endl;
+			cout<<"or scope when calling this function.  Time to quit."<<endl;
+			exit(1);
+		}
+		try {
+			return evaluateSimpleStateSelector(molList[refLfScopes[0]]);
+		} catch (LocalFunctionException &lfe) {
+			lfe.setIndex(0);
+			throw lfe;
+		}
+	}
+
+	if (identityLocalFunction) {
+		if (molList == 0 || scope == 0) {
+			cout<<"Error evaluating composite function: "<<name<<endl;
+			cout<<"This function depends on a local function, but you gave no molecules"<<endl;
+			cout<<"or scope when calling this function.  Time to quit."<<endl;
+			exit(1);
+		}
+		try {
+			return lfs[refLfInds[0]]->getValue(
+					molList[refLfScopes[0]], scope[refLfScopes[0]]);
+		} catch (LocalFunctionException &lfe) {
+			lfe.setIndex(0);
+			throw lfe;
+		}
+	}
 
 	//1 evaluate all global functions
 	for(int f=0; f<n_gfs; f++) {
@@ -485,6 +645,21 @@ double CompositeFunction::evaluateOn(Molecule **molList, int *scope, int *curRea
 	// AS-2021
 	return FuncFactory::Eval(p);
 	//evaluate this function
+}
+
+double CompositeFunction::evaluateSimpleStateSelector(Molecule *m)
+{
+	if (!simpleStateSelector || m == 0)
+		return 0.0;
+	if (m->getMoleculeType() !=
+			simpleStateSelectorFunction->getSimpleStateMoleculeType())
+		return simpleStateSelectorFunction->getValue(m, LocalFunction::MOLECULE);
+	simpleStateSelectorFunction->cacheSimpleStateValue(m);
+	double stateCode = simpleStateSelectorFunction->getSimpleStateValueForState(
+			m->getComponentState(
+				simpleStateSelectorFunction->getSimpleStateComponent()));
+	return simpleStateIntactRate * stateCode * (2.0 - stateCode) +
+			 simpleStateEndocleavedRate * stateCode * (stateCode - 1.0) / 2.0;
 }
 
 // AS-2021

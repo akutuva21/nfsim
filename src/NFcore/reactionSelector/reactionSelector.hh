@@ -94,6 +94,11 @@ namespace NFcore
 			int n_reactions;
 			ReactionClass ** reactionClassList;
 			bool sparseSelectionSafe;
+			bool sparseSelectionTrackingActive;
+			unsigned int denseSelectionSamples;
+			unsigned long long denseSelectionIndexSum;
+			void activateSparseSelectionTracking();
+			void considerSparseSelectionActivation(std::size_t selectedReaction);
 			/* -1 until the first update; 1 when prepared reaction IDs match
 			 * selector positions, 0 for direct-selector compatibility callers. */
 			int reactionIndexMode;

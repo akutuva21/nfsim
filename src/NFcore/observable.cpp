@@ -18,6 +18,7 @@ Observable::Observable(string name)
 	this->dependentRxns= new ReactionClass *[n_dependentRxns];
 	this->count=0;
 	this->type=Observable::NO_TYPE;
+	this->outputEnabled=true;
 }
 
 Observable::~Observable()
@@ -110,6 +111,15 @@ void Observable::getTemplateMoleculeList(int &n_templates, TemplateMolecule **&t
 {
 	n_templates = this->n_templates;
 	tmList = this->templateMolecules;
+}
+
+bool Observable::getSimpleStatePredicate(MoleculeType *&moleculeType,
+		int &componentIndex, int &stateValue) const
+{
+	(void)moleculeType;
+	(void)componentIndex;
+	(void)stateValue;
+	return false;
 }
 // AS-2021
 void Observable::addReferenceToGlobalFunction(GlobalFunction *f) {
@@ -310,7 +320,11 @@ int MoleculesObservable::isObservable(Molecule *m) const
 		//cout<< "\n"<< "\n"<< "\n";
 		//cout<<"starting!"<< "\n";
 
-		if ( templateMolecules[t]->compare(m) ) {
+		bool usedCompiledSimple = false;
+		bool matched = templateMolecules[t]->matchesCompiledSimple(
+				m, usedCompiledSimple);
+		if (!usedCompiledSimple) matched = templateMolecules[t]->compare(m);
+		if (matched) {
 			//cout<<"  adding one"<< "\n";
 			matches += m->getPopulation();
 			//return 1;
@@ -368,6 +382,18 @@ int MoleculesObservable::isObservable(Complex *c) const
 		}
 	}
 	return total;
+}
+
+bool MoleculesObservable::getSimpleStatePredicate(MoleculeType *&moleculeType,
+		int &componentIndex, int &stateValue) const
+{
+	if (hasStoichiometricConstraints || n_templates != 1 ||
+			templateMolecules[0] == 0 ||
+			!templateMolecules[0]->getSimpleStateConstraint(componentIndex, stateValue)) {
+		return false;
+	}
+	moleculeType = templateMolecules[0]->getMoleculeType();
+	return true;
 }
 
 

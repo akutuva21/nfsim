@@ -17,6 +17,7 @@
 
 using namespace std;
 using namespace NFcore;
+namespace NFcore { bool shadowOn(); extern long long shadowEvent; }
 
 int System::NULL_EVENT_COUNTER = 0;
 
@@ -623,6 +624,54 @@ int System::getNumOfMolecules()
 }
 
 
+void System::beginMembershipMutationCapture()
+{
+	++membershipMutationGeneration;
+	if (membershipMutationGeneration == 0) ++membershipMutationGeneration;
+	membershipEventMutations.clear();
+	newMembershipMolecules.clear();
+	membershipMutationCaptureActive = true;
+}
+
+void System::endMembershipMutationCapture()
+{
+	membershipMutationCaptureActive = false;
+}
+
+void System::recordMembershipBondMutation(Molecule *m1, int c1,
+		Molecule *m2, int c2, bool added)
+{
+	if (!membershipMutationCaptureActive || m1 == 0 || m2 == 0) return;
+	MembershipEventMutation mutation;
+	mutation.kind = added ? MembershipEventMutation::BOND_ADD
+			: MembershipEventMutation::BOND_DEL;
+	mutation.type1 = m1->getMoleculeType();
+	mutation.component1 = c1;
+	mutation.type2 = m2->getMoleculeType();
+	mutation.component2 = c2;
+	membershipEventMutations.push_back(mutation);
+}
+
+void System::recordMembershipStateMutation(Molecule *m, int component,
+		int oldState, int newState)
+{
+	if (!membershipMutationCaptureActive || m == 0 || oldState == newState) return;
+	MembershipEventMutation mutation;
+	mutation.kind = MembershipEventMutation::STATE_CHANGE;
+	mutation.type1 = m->getMoleculeType();
+	mutation.component1 = component;
+	mutation.oldState = oldState;
+	mutation.newState = newState;
+	membershipEventMutations.push_back(mutation);
+}
+
+void System::recordNewMembershipMolecule(Molecule *m)
+{
+	if (!membershipMutationCaptureActive || m == 0) return;
+	newMembershipMolecules.insert(m);
+}
+
+
 Compartment * System::getCompartment(string id) const
 {
 	map<string, Compartment*>::const_iterator it = compartments.find(id);
@@ -677,7 +726,6 @@ void System::prepareForSimulation()
 		rxnIndexMap = 0;
 	}
 
-	this->selector = new DirectSelector(allReactions, this);
 
 	cout<<"preparing simulation..."<<endl;
 	//Note!!  : the order of preparing the system matters!  You have to prepare
@@ -711,6 +759,18 @@ void System::prepareForSimulation()
 		rxnIndexMap[r] = new int[allReactions.at(r)->getNumOfReactants()];
   		allReactions.at(r)->setRxnId(r);
   	}
+
+	/* Reaction selector choice.  DirectSelector is a linear prefix scan over
+	 * every reaction channel, so its per-event cost grows with the rule count;
+	 * on the indexed translation models that is the dominant per-event term.
+	 * LogClassSelector is composition-rejection: it scans only the active
+	 * log2 propensity classes (bounded by a constant) and then rejection-samples
+	 * within the chosen class, giving per-event cost independent of the number
+	 * of rules. */
+	if (getenv("NFSIM_LOGSEL") != 0)
+		this->selector = new LogClassSelector(allReactions, this);
+	else
+		this->selector = new DirectSelector(allReactions, this);
 
   	// Infer connected reactions if asked to do so from command line
   	// Arvind Rasi Subramaniam
@@ -1184,7 +1244,8 @@ double System::sim(double duration, long int sampleTimes, bool verbose)
 			if(DEBUG && verbose && iteration < 5) {
 				cout << "Calling fire()..." << endl;
 			}
-			nextReaction->fire(randElement);
+if (NFcore::shadowOn()) { NFcore::shadowEvent++; cout << "@EVT " << NFcore::shadowEvent << " " << nextReaction->getRxnId() << " " << nextReaction->getName() << endl; }
+nextReaction->fire(randElement);
 			if(DEBUG && verbose && iteration < 5) {
 				cout << "Fire returned" << endl;
 			}
@@ -1274,7 +1335,8 @@ double System::stepTo(double stoppingTime)
 		current_time = pendingStepEventTime;
 		globalEventCounter++;
 
-		nextReaction->fire(randElement);
+if (NFcore::shadowOn()) { NFcore::shadowEvent++; cout << "@EVT " << NFcore::shadowEvent << " " << nextReaction->getRxnId() << " " << nextReaction->getName() << endl; }
+nextReaction->fire(randElement);
 		invalidateStepToCache();
 
 		// Replenish fixed species after reaction fires
@@ -1321,7 +1383,8 @@ void System::singleStep()
 	nextReaction->printDetails();;
 
 	//5: Fire Reaction! (takes care of updates to lists and observables)
-	nextReaction->fire(randElement);
+if (NFcore::shadowOn()) { NFcore::shadowEvent++; cout << "@EVT " << NFcore::shadowEvent << " " << nextReaction->getRxnId() << " " << nextReaction->getName() << endl; }
+nextReaction->fire(randElement);
 	cout<<"  -System time is now at time: "<<current_time<<endl;
 
 	// Replenish fixed species after reaction fires
@@ -1527,7 +1590,8 @@ void System::outputAllObservableNames()
 			int totalSpaces = 16;
 
 			for(obsIter = obsToOutput.begin(); obsIter != obsToOutput.end(); obsIter++) {
-				string nm = (*obsIter)->getName();
+				if (!(*obsIter)->isOutputEnabled()) continue;
+					string nm = (*obsIter)->getName();
 				int spaces = totalSpaces-nm.length();
 				if(spaces<1) { spaces = 1; }
 				for(int k=0; k<spaces; k++) {
@@ -1567,7 +1631,8 @@ void System::outputAllObservableNames()
 			outputFileStream<<"time";
 
 			for(obsIter = obsToOutput.begin(); obsIter != obsToOutput.end(); obsIter++) {
-				string nm = (*obsIter)->getName();
+				if (!(*obsIter)->isOutputEnabled()) continue;
+					string nm = (*obsIter)->getName();
 				outputFileStream<<", "<<nm;;
 			}
 
@@ -1651,6 +1716,7 @@ void System::outputAllObservableCounts(double cSampleTime, int eventCounter)
 
 		outputFileStream.write((char *)&cSampleTime, sizeof(double));
 		for(obsIter = obsToOutput.begin(); obsIter != obsToOutput.end(); obsIter++) {
+			if (!(*obsIter)->isOutputEnabled()) continue;
 			count=((double)(*obsIter)->getCount());
 			outputFileStream.write((char *) &count, sizeof(double));
 		}
@@ -1678,6 +1744,7 @@ void System::outputAllObservableCounts(double cSampleTime, int eventCounter)
 		if(!csvFormat) {
 			outputFileStream<<cSampleTime;
 			for(obsIter = obsToOutput.begin(); obsIter != obsToOutput.end(); obsIter++) {
+				if (!(*obsIter)->isOutputEnabled()) continue;
 				outputFileStream<<"\t"<<((double)(*obsIter)->getCount());
 			}
 
@@ -1703,6 +1770,7 @@ void System::outputAllObservableCounts(double cSampleTime, int eventCounter)
 		} else {
 			outputFileStream<<cSampleTime;
 			for(obsIter = obsToOutput.begin(); obsIter != obsToOutput.end(); obsIter++) {
+				if (!(*obsIter)->isOutputEnabled()) continue;
 				outputFileStream<<", "<<((double)(*obsIter)->getCount());
 			}
 
@@ -1748,8 +1816,9 @@ void System::printAllObservableCounts(double cSampleTime,int eventCounter)
 	current_time = cSampleTime;
 
 	cout<<"Time";
-	for(obsIter = obsToOutput.begin(); obsIter != obsToOutput.end(); obsIter++)
-		cout<<"\t"<<(*obsIter)->getName();
+		for(obsIter = obsToOutput.begin(); obsIter != obsToOutput.end(); obsIter++)
+			if ((*obsIter)->isOutputEnabled())
+			cout<<"\t"<<(*obsIter)->getName();
 	if(outputGlobalFunctionValues)
 		for( functionIter = globalFunctions.begin(); functionIter != globalFunctions.end(); functionIter++ )
 			cout<<"\t"<<(*functionIter)->getNiceName();
@@ -1760,8 +1829,9 @@ void System::printAllObservableCounts(double cSampleTime,int eventCounter)
 	cout<<endl;
 
   	cout<<cSampleTime;
-	for(obsIter = obsToOutput.begin(); obsIter != obsToOutput.end(); obsIter++)
-		cout<<"\t"<<(*obsIter)->getCount();
+		for(obsIter = obsToOutput.begin(); obsIter != obsToOutput.end(); obsIter++)
+			if ((*obsIter)->isOutputEnabled())
+				cout<<"\t"<<(*obsIter)->getCount();
 	if(outputGlobalFunctionValues) {
 		for( functionIter = globalFunctions.begin(); functionIter != globalFunctions.end(); functionIter++ ) {
 					// AS-2021
@@ -2196,6 +2266,27 @@ Observable * System::getObservableByName(const string& obsName)
 	cerr<<"!!Warning, the system could not identify the observable: "<<obsName<<".\n";
 	cerr<<"The calling function might catch this, or your program might crash now."<<endl;
 	return 0;
+}
+
+
+int System::getNumOfObsForOutput() const
+{
+	int count = 0;
+	for(vector<Observable *>::const_iterator obsIter = obsToOutput.begin();
+			obsIter != obsToOutput.end(); ++obsIter) {
+		if((*obsIter)->isOutputEnabled()) ++count;
+	}
+	return count;
+}
+
+Observable * System::getObsForOutput(int index) const
+{
+	for(vector<Observable *>::const_iterator obsIter = obsToOutput.begin();
+			obsIter != obsToOutput.end(); ++obsIter) {
+		if(!(*obsIter)->isOutputEnabled()) continue;
+		if(index-- == 0) return *obsIter;
+	}
+	throw out_of_range("observable output index out of range");
 }
 
 

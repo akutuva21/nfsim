@@ -99,6 +99,14 @@ bool createCompositeFunction(string name,
 			System *s,
 			bool verbose);
 
+bool createStateLookupFunction(
+		TiXmlElement *pFunction,
+		string name,
+		vector <string> &argNames,
+		System *s,
+		map<string,int> &allowedStates,
+		bool verbose);
+
 
 
 
@@ -202,6 +210,136 @@ bool createCompositeFunction(string name,
 	CompositeFunction *cf = new CompositeFunction(s,name, expression,functionsCalled,argNames,paramNames);
 	s->addCompositeFunction(cf);
 
+	return true;
+}
+
+bool createStateLookupFunction(
+		TiXmlElement *pFunction,
+		string name,
+		vector <string> &argNames,
+		System *s,
+		map<string,int> &allowedStates,
+		bool verbose)
+{
+	if (pFunction == 0 || s == 0 || argNames.size() != 1) {
+		cerr << "!!!Error: state lookup function '" << name
+			 << "' must have exactly one argument. Quitting." << endl;
+		return false;
+	}
+	if (pFunction->Attribute("stateMoleculeType") == 0 ||
+			pFunction->Attribute("stateComponent") == 0 ||
+			pFunction->Attribute("stateValues") == 0) {
+		cerr << "!!!Error: state lookup function '" << name
+			 << "' requires stateMoleculeType, stateComponent, and stateValues."
+			 << " Quitting." << endl;
+		return false;
+	}
+
+	string moleculeTypeName = tfun_trim_copy(
+			pFunction->Attribute("stateMoleculeType"));
+	string componentName = tfun_trim_copy(
+			pFunction->Attribute("stateComponent"));
+	if (moleculeTypeName.empty() || componentName.empty()) {
+		cerr << "!!!Error: state lookup function '" << name
+			 << "' has an empty molecule type or component. Quitting." << endl;
+		return false;
+	}
+
+	MoleculeType *moleculeType = 0;
+	try {
+		moleculeType = s->getMoleculeTypeByName(moleculeTypeName);
+	} catch (const exception &e) {
+		cerr << "!!!Error: state lookup function '" << name
+			 << "' refers to an unknown molecule type: " << moleculeTypeName
+			 << ". " << e.what() << endl;
+		return false;
+	}
+	int componentIndex = moleculeType->getCompIndexFromName(componentName);
+	vector<vector<string> > possibleStates =
+			moleculeType->getPossibleCompStates();
+	if (componentIndex < 0 || componentIndex >=
+				static_cast<int>(possibleStates.size()) ||
+			possibleStates[componentIndex].empty()) {
+		cerr << "!!!Error: state lookup function '" << name
+			 << "' refers to a component without enumerated states: "
+			 << moleculeTypeName << "." << componentName << ". Quitting." << endl;
+		return false;
+	}
+
+	vector<double> stateValues(possibleStates[componentIndex].size(), 0.0);
+	vector<bool> assigned(stateValues.size(), false);
+	stringstream entries(pFunction->Attribute("stateValues"));
+	string entry;
+	while (getline(entries, entry, ',')) {
+		entry = tfun_trim_copy(entry);
+		size_t separator = entry.find(':');
+		if (separator == string::npos) {
+			cerr << "!!!Error: state lookup function '" << name
+				 << "' has a malformed stateValues entry '" << entry
+				 << "'. Use state:value pairs separated by commas. Quitting." << endl;
+			return false;
+		}
+		string stateName = tfun_trim_copy(entry.substr(0, separator));
+		string valueText = tfun_trim_copy(entry.substr(separator + 1));
+		if (stateName.empty() || valueText.empty()) {
+			cerr << "!!!Error: state lookup function '" << name
+				 << "' has an empty state or value in stateValues. Quitting." << endl;
+			return false;
+		}
+		map<string,int>::const_iterator stateIt = allowedStates.find(
+				moleculeTypeName + "_" + componentName + "_" + stateName);
+		if (stateIt == allowedStates.end() || stateIt->second < 0 ||
+				stateIt->second >= static_cast<int>(stateValues.size())) {
+			cerr << "!!!Error: state lookup function '" << name
+				 << "' refers to unknown state '" << stateName << "' for "
+				 << moleculeTypeName << "." << componentName << ". Quitting." << endl;
+			return false;
+		}
+		const char *start = valueText.c_str();
+		char *end = 0;
+		errno = 0;
+		double value = strtod(start, &end);
+		if (start == end || errno == ERANGE) {
+			cerr << "!!!Error: state lookup function '" << name
+				 << "' has a non-numeric lookup value '" << valueText
+				 << "'. Quitting." << endl;
+			return false;
+		}
+		while (*end != '\0' && isspace(static_cast<unsigned char>(*end))) ++end;
+		if (*end != '\0') {
+			cerr << "!!!Error: state lookup function '" << name
+				 << "' has a malformed lookup value '" << valueText
+				 << "'. Quitting." << endl;
+			return false;
+		}
+		int stateIndex = stateIt->second;
+		if (assigned[stateIndex]) {
+			cerr << "!!!Error: state lookup function '" << name
+				 << "' assigns state '" << stateName << "' more than once. Quitting."
+				 << endl;
+			return false;
+		}
+		stateValues[stateIndex] = value;
+		assigned[stateIndex] = true;
+	}
+
+	vector<string> emptyStrings;
+	vector<Observable *> emptyObservables;
+	vector<int> emptyScopes;
+	LocalFunction *lf = new LocalFunction(
+			s, name, "stateLookup", "stateLookup", argNames,
+			emptyStrings, emptyStrings, emptyObservables, emptyScopes,
+			emptyStrings);
+	if (!lf->configureSimpleStateLookup(
+			moleculeType, componentIndex, stateValues)) {
+		delete lf;
+		cerr << "!!!Error: state lookup function '" << name
+			 << "' could not be configured. Quitting." << endl;
+		return false;
+	}
+	s->addLocalFunction(lf);
+	if (verbose)
+		cout << "\t\tUsing direct state lookup for Function: " << name << endl;
 	return true;
 }
 
@@ -704,6 +842,7 @@ bool NFinput::initFunctions(
 
 			//Read in the actual function definition
 			string funcExpression = "";
+			bool stateLookup = pFunction->Attribute("stateLookup") != 0;
 			TiXmlElement *pExpression = pFunction->FirstChildElement("Expression");
 			if(pExpression) {
 				if(!pExpression->GetText()) {
@@ -715,6 +854,12 @@ bool NFinput::initFunctions(
 				}
 				funcExpression = pExpression->GetText();
 				if(verbose) cout<<"\t\t\t = "<<funcExpression<<endl;
+			} else if (stateLookup) {
+				/* A state lookup is a parser primitive, so it does not need a
+				 * muParser expression.  Keep the expression optional in the XML
+				 * extension rather than forcing generated files to carry a dummy
+				 * expression solely for the legacy reader. */
+				funcExpression = "0";
 			} else {
 				cout<<"\n!!!Warning:  Expression tag for a function does not exist!  Function will not be generated."<<endl;
 				continue;
@@ -783,7 +928,21 @@ bool NFinput::initFunctions(
 
 
 			//Here we actually generate the function or the function generator
-			if(!createFunction(funcName,
+			if (stateLookup) {
+				if (!refNamesSorted.empty() ||
+						pFunction->Attribute("stateMoleculeType") == 0 ||
+						pFunction->Attribute("stateComponent") == 0 ||
+						pFunction->Attribute("stateValues") == 0) {
+					cerr << "!!!Error: state lookup Function '" << funcName
+						 << "' must have no references and must define its state lookup"
+						 << " attributes. Quitting." << endl;
+					return false;
+				}
+				if (!createStateLookupFunction(
+						pFunction, funcName, argNames, system,
+						allowedStates, verbose))
+					return false;
+			} else if(!createFunction(funcName,
 					funcExpression,
 					argNames,
 					refNamesSorted,

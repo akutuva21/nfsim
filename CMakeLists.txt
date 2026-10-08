@@ -1,8 +1,16 @@
 cmake_minimum_required(VERSION 3.5...3.27)
 
-set(CMAKE_OSX_ARCHITECTURES "x86_64;arm64" CACHE STRING "Build universal binary" FORCE)
-
 project(NFsim)
+
+# Do not force Apple Silicon hosts to build a universal x86_64+arm64 binary.
+# Universal output remains available for distribution builds, while the default
+# follows the host/toolchain architecture and can therefore use native tuning.
+option(NFSIM_MACOS_UNIVERSAL
+    "Build a universal x86_64+arm64 executable on macOS" OFF)
+if(APPLE AND NFSIM_MACOS_UNIVERSAL)
+    set(CMAKE_OSX_ARCHITECTURES "x86_64;arm64" CACHE STRING
+        "Architectures for macOS universal build" FORCE)
+endif()
 
 set(CMAKE_BUILD_TYPE Release)
 
@@ -11,6 +19,9 @@ option(NFSIM_BUILD_EXECUTABLE "Build the NFsim command line executable" ON)
 option(NFSIM_BUILD_LIBRARY "Build NFsim as a reusable library target" OFF)
 option(NFSIM_ENABLE_LTO
     "Enable release link-time optimization when supported by the toolchain"
+    ON)
+option(NFSIM_ENABLE_BUILTIN_TESTS
+    "Compile the built-in -test command suite into the NFsim executable"
     ON)
 
 # Option to use ExprTk instead of muParser for expression parsing
@@ -99,6 +110,16 @@ endif()
 # be packaged as a library.
 list(FILTER src_files EXCLUDE REGEX "[/\\\\]src[/\\\\]NFsim_main\\.cpp$")
 
+# Production builds do not need the developer-only NFtest command suite. Keep
+# AgentCell because -agentcell is a supported CLI mode rather than a test.
+# This option defaults ON to preserve NFsim's historical command surface.
+if(NOT NFSIM_ENABLE_BUILTIN_TESTS)
+    file(GLOB_RECURSE nfsim_agentcell_sources
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/NFtest/agentcell/*cpp")
+    list(FILTER src_files EXCLUDE REGEX "[/\\]src[/\\]NFtest[/\\].*\\.cpp$")
+    list(APPEND src_files ${nfsim_agentcell_sources})
+endif()
+
 set(SRC_FILES
     ${src_files}
     ${c_src_files}
@@ -148,6 +169,10 @@ else()
 endif()
 
 target_compile_features(${NFSIM_OBJECT_TARGET} PRIVATE ${NFSIM_CXX_STANDARD_FEATURE})
+
+if(NFSIM_ENABLE_BUILTIN_TESTS)
+    target_compile_definitions(${NFSIM_OBJECT_TARGET} PRIVATE NFSIM_ENABLE_BUILTIN_TESTS=1)
+endif()
 
 if(NOT MSVC)
     target_compile_options(${NFSIM_OBJECT_TARGET} PRIVATE -Wno-deprecated-declarations)

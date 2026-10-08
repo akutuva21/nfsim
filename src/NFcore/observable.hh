@@ -96,6 +96,8 @@ namespace NFcore
 			int getCount() const { return (int)count; };
 			string getName() const { return obsName; };
 			int getType() const { return type; };
+			bool isOutputEnabled() const { return outputEnabled; };
+			void setOutputEnabled(bool enabled) { outputEnabled = enabled; };
 
 			void getTemplateMoleculeList(int &n_templates, TemplateMolecule **&tmList);
 
@@ -110,6 +112,8 @@ namespace NFcore
 
 			virtual int isObservable(Molecule *m) const = 0;
 			virtual int isObservable(Complex *c) const = 0;
+			virtual bool getSimpleStatePredicate(MoleculeType *&moleculeType,
+					int &componentIndex, int &stateValue) const;
 
 
 			//Indentifiers
@@ -140,6 +144,7 @@ namespace NFcore
 			string obsName;
 			int type;
 			double count;
+			bool outputEnabled;
 
 
 			int n_templates;
@@ -168,6 +173,8 @@ namespace NFcore
 
 			virtual int isObservable(Molecule *m) const;
 			virtual int isObservable(Complex *c) const;
+			virtual bool getSimpleStatePredicate(MoleculeType *&moleculeType,
+					int &componentIndex, int &stateValue) const;
 
 
 		protected:

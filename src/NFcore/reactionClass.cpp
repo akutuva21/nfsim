@@ -8,6 +8,32 @@
 using namespace std;
 using namespace NFcore;
 
+namespace {
+
+bool productNodeReuseEnabled()
+{
+	static int enabled = -1;
+	if (enabled < 0) {
+		const char *value = getenv("NFSIM_PRODUCT_NODE_REUSE");
+		enabled = value == 0 || value[0] != '0' ? 1 : 0;
+	}
+	return enabled == 1;
+}
+
+inline void appendRecycledProductNode(list<Molecule *> &products,
+		Molecule *molecule, list<Molecule *> *recycledNodes)
+{
+	if (recycledNodes == 0 || recycledNodes->empty()) {
+		products.push_back(molecule);
+		return;
+	}
+	list<Molecule *>::iterator node = recycledNodes->begin();
+	*node = molecule;
+	products.splice(products.end(), *recycledNodes, node);
+}
+
+}
+
 
 
 ReactionClass::ReactionClass(string name, double baseRate, string baseRateParameterName, TransformationSet *transformationSet, System *s)
@@ -390,6 +416,20 @@ bool ReactionClass::isDirectProductMolecule(Molecule *molecule,
 		directProductMolecules->find(molecule) != directProductMolecules->end();
 }
 
+void ReactionClass::recycleProductNodes()
+{
+	list<Molecule *> &recycledProductNodes = system->getRecycledProductNodes();
+	if (!productNodeReuseEnabled()) {
+		products.clear();
+		recycledProductNodes.clear();
+		return;
+	}
+	recycledProductNodes.splice(recycledProductNodes.end(), products);
+	const std::size_t retainedNodeLimit = 16;
+	while (recycledProductNodes.size() > retainedNodeLimit)
+		recycledProductNodes.pop_back();
+}
+
 
 void ReactionClass::printDetails() const {
 	cout << name << "  (id=" << this->rxnId << ", baseRate=" << baseRate
@@ -488,6 +528,8 @@ string ReactionClass::fire(double random_A_number, bool track) {
 	// already proven that no observable, Type-II function, or indirect
 	// membership dependency needs the rest of the bonded complex.
 	bool directProductsPrepared = false;
+	list<Molecule *> *productNodePool = productNodeReuseEnabled()
+		? &system->getRecycledProductNodes() : 0;
 	if (this->canUseDirectProductList()) {
 		ProfileTime directProductStart = system->isProfileReactionActive()
 			? profileNow() : ProfileTime();
@@ -505,7 +547,7 @@ string ReactionClass::fire(double random_A_number, bool track) {
 						directProductMoleculeList.end())
 				{
 					directProductMoleculeList.push_back(molecule);
-					products.push_back(molecule);
+					appendRecycledProductNode(products, molecule, productNodePool);
 				}
 			}
 		}
@@ -517,13 +559,13 @@ string ReactionClass::fire(double random_A_number, bool track) {
 	} else {
 		this->transformationSet->getListOfProducts(
 				mappingSet, products, traversalLimit, &productComponentSizes,
-				&productComponentsTruncated);
+				&productComponentsTruncated, productNodePool);
 	}
 
 	// Check product-side filters (include_products / exclude_products).
 	// If the resulting products don't pass the filter, treat this as a null event.
 	if (!transformationSet->checkProductFilters(products)) {
-		products.clear();
+		recycleProductNodes();
 		++(System::NULL_EVENT_COUNTER);
 		return string("");
 	}
@@ -590,6 +632,16 @@ string ReactionClass::fire(double random_A_number, bool track) {
 	// Through the MappingSet, transform all the molecules as neccessary
 	//  This will also create new molecules, as required.  As a side effect,
 	//  deleted molecules will be removed from observables.
+	// Clear sparse state-change markers before the transformation.  They are
+	// used below to invalidate only state-indexed local functions; markers from
+	// an earlier firing must never make an unrelated firing do extra work.
+	for (molIter = products.begin(); molIter != products.end(); ++molIter)
+		(*molIter)->clearChangedStateComponents();
+	// Capture every state/bond mutation performed by this transform.  The
+	// membership phase consumes the same event-level mutation set for every
+	// molecule reached by the existing product walk.
+	this->system->beginMembershipMutationCapture();
+
 	// AS2023 - if tracking is turned on, transform needs a string to build up
 	string logstr;
 	if (this->system->getReactionTrackingStatus()) {
@@ -600,7 +652,8 @@ string ReactionClass::fire(double random_A_number, bool track) {
 	}
 
 	// Add newly created molecules to the list of products
-	this->transformationSet->getListOfAddedMolecules(mappingSet,products,traversalLimit);
+	this->transformationSet->getListOfAddedMolecules(
+			mappingSet, products, traversalLimit, productNodePool);
 
 	// Track molecules that were explicitly mapped by this firing when either
 	// connectivity-aware membership or a compact energy reaction may use the
@@ -770,6 +823,7 @@ string ReactionClass::fire(double random_A_number, bool track) {
 	}
 	if (deferMembershipPropensityUpdates)
 		this->system->endDeferredMembershipPropensityUpdates();
+	this->system->endMembershipMutationCapture();
 	if (profileMembership)
 		system->recordProfileMembershipPhase(
 			profileElapsedSeconds(profileMembershipStart));
@@ -823,10 +877,51 @@ string ReactionClass::fire(double random_A_number, bool track) {
 
 					for ( typeII_iter = typeII_products.begin(); typeII_iter != typeII_products.end(); ++typeII_iter ) {
 						MoleculeType * mt = *typeII_iter;
-						for (int i=0; i<mt->getNumOfTypeIIFunctions(); i++)
-							mt->getTypeIILocalFunction(i)->evaluateOn( mol, connectedMols );
+						/* Generic local functions still need their existing
+						 * per-component refresh.  State-only functions are
+						 * indexed by the changed component below, so the common
+						 * no-state-change path does not scan all of them. */
+						for (int i=0; i<mt->getNumOfTypeIIFunctions(); i++) {
+							LocalFunction *lf = mt->getTypeIILocalFunction(i);
+							if (!lf->isSimpleStateDependency())
+								lf->evaluateOn( mol, connectedMols );
+						}
+						for (list<Molecule *>::const_iterator batchMolecule =
+								connectedMols.begin();
+								batchMolecule != connectedMols.end(); ++batchMolecule)
+							if (*batchMolecule != 0)
+								(*batchMolecule)->beginDeferredDORUpdates();
+						for (list<Molecule *>::const_iterator changedMolecule =
+								connectedMols.begin();
+								changedMolecule != connectedMols.end();
+								++changedMolecule) {
+							if (*changedMolecule == 0) continue;
+							const vector<int> &changedComponents =
+									(*changedMolecule)->getChangedStateComponents();
+							for (vector<int>::const_iterator changedComponent =
+									changedComponents.begin();
+									changedComponent != changedComponents.end();
+									++changedComponent) {
+								const vector<LocalFunction *> &stateFunctions =
+										mt->getSimpleStateLocalFunctions(*changedComponent);
+								for (vector<LocalFunction *>::const_iterator stateFunction =
+										stateFunctions.begin();
+										stateFunction != stateFunctions.end();
+										++stateFunction) {
+									if ((*stateFunction)->getSimpleStateMoleculeType() ==
+											(*changedMolecule)->getMoleculeType())
+										(*stateFunction)->evaluateOn(*changedMolecule,
+												connectedMols);
+									}
+								}
+							}
+						}
+						for (list<Molecule *>::const_iterator batchMolecule =
+								connectedMols.begin();
+								batchMolecule != connectedMols.end(); ++batchMolecule)
+							if (*batchMolecule != 0)
+								(*batchMolecule)->endDeferredDORUpdates();
 					}
-				}
 			}
 			else {
 				// this is the hard way: find a representative molecule from each connected set
@@ -851,14 +946,61 @@ string ReactionClass::fire(double random_A_number, bool track) {
 						// evaluate typeII local functions on this connected set
 						for ( typeII_iter = typeII_products.begin(); typeII_iter != typeII_products.end(); ++typeII_iter ) {
 							MoleculeType * mt = *typeII_iter;
-							for (int i=0; i<mt->getNumOfTypeIIFunctions(); i++)
-								mt->getTypeIILocalFunction(i)->evaluateOn( mol, connectedMols );
+							/* Topology-changing reactions still need the full connected
+							 * component for generic Type-II functions.  State-only
+							 * functions are different: their value can change only when
+							 * the indexed component changes, so avoid calling every
+							 * selector after every elongation/bond event. */
+							for (int i=0; i<mt->getNumOfTypeIIFunctions(); i++) {
+								LocalFunction *lf = mt->getTypeIILocalFunction(i);
+								if (!lf->isSimpleStateDependency())
+									lf->evaluateOn( mol, connectedMols );
+							}
+							for (list<Molecule *>::const_iterator batchMolecule =
+									connectedMols.begin();
+									batchMolecule != connectedMols.end(); ++batchMolecule)
+								if (*batchMolecule != 0)
+									(*batchMolecule)->beginDeferredDORUpdates();
+							for (list<Molecule *>::const_iterator changedMolecule =
+									connectedMols.begin();
+									changedMolecule != connectedMols.end();
+									++changedMolecule) {
+								if (*changedMolecule == 0) continue;
+								const vector<int> &changedComponents =
+										(*changedMolecule)->getChangedStateComponents();
+								for (vector<int>::const_iterator changedComponent =
+										changedComponents.begin();
+										changedComponent != changedComponents.end();
+										++changedComponent) {
+									const vector<LocalFunction *> &stateFunctions =
+											mt->getSimpleStateLocalFunctions(*changedComponent);
+									for (vector<LocalFunction *>::const_iterator stateFunction =
+											stateFunctions.begin();
+										stateFunction != stateFunctions.end();
+										++stateFunction) {
+										if ((*stateFunction)->getSimpleStateMoleculeType() ==
+												(*changedMolecule)->getMoleculeType())
+											(*stateFunction)->evaluateOn(*changedMolecule,
+													connectedMols);
+										}
+									}
+								}
+							}
+							for (list<Molecule *>::const_iterator batchMolecule =
+									connectedMols.begin();
+									batchMolecule != connectedMols.end(); ++batchMolecule)
+								if (*batchMolecule != 0)
+									(*batchMolecule)->endDeferredDORUpdates();
+						}
 						}
 					}
 				}
 			}
-		}
-	}
+
+		// State markers are meaningful only during this firing.  Clear them after
+	// all Type-II refreshes, including the newly created product molecules.
+	for (molIter = products.begin(); molIter != products.end(); ++molIter)
+		(*molIter)->clearChangedStateComponents();
 
 	// update the last reaction firing time
 	// this is written to molecule_type_list.tsv at the end of the simulation
@@ -892,13 +1034,13 @@ string ReactionClass::fire(double random_A_number, bool track) {
 			// close firing 
 			track_str += std::string(level,' ') + "}";
 			//Tidy up
-			products.clear();
+			recycleProductNodes();
 			productComplexes.clear();
 			return track_str;
 		}
 	}
 	//Tidy up
-	products.clear();
+	recycleProductNodes();
 	productComplexes.clear();
 	// AS2023 - returning empty, if we are here logging was off
 	return "";

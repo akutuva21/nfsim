@@ -188,6 +188,10 @@ namespace NFcore {
 
 
 			int getNumOfVarRefs() const { return (int) n_varRefs; };
+			bool isRuntimeInvariant() const {
+				return n_varRefs == 0 && !fileFunc && ctrType.empty() &&
+					!containsTimeExpression(funcExpression);
+			}
 			string getVarRefName(int varRefIndex) const {
 				return varRefNames[varRefIndex];
 			}
@@ -312,6 +316,11 @@ namespace NFcore {
 			string getNiceName() const;
 			string getExpression() const;
 			string getParsedExpression() const;
+			bool isSimpleStateDependency() const { return hasSimpleStateDependency; };
+			MoleculeType *getSimpleStateMoleculeType() const {
+				return simpleStateMoleculeType;
+			};
+			int getSimpleStateComponent() const { return simpleStateComponent; };
 
 			// set/get whether this evaluates on complex complex
 			bool getEvaluateComplexScope() const;
@@ -323,7 +332,25 @@ namespace NFcore {
 
 
 			double getValue(Molecule *m, int scope);
-			double evaluateOn(Molecule *m, int scope);
+				/* Evaluate a recognized state-only function directly from the
+				 * component value.  CompositeFunction uses this for indexed
+				 * translation selectors to avoid repeated observable matching. */
+				double getSimpleStateValueForState(int stateValue);
+				/* Configure a parser-level state lookup.  This is an input-format
+				 * extension for generated state-only functions: it keeps the
+				 * LocalFunction dependency/update contract, but avoids cloning
+				 * evaluator observables and building a muParser program for a
+				 * finite state lookup. */
+				bool configureSimpleStateLookup(
+					MoleculeType *moleculeType,
+					int componentIndex,
+					const vector<double> &stateValues);
+				/* Seed the Type-I value cache without notifying DOR reactions.
+				 * The direct state-selector fast path is also used while a
+				 * reaction mapping is being inserted, before a rate-tree update
+				 * is safe. */
+				void cacheSimpleStateValue(Molecule *m);
+				double evaluateOn(Molecule *m, int scope);
 			// evaluates a species-scoped local function on a connected component
 			// that was already traversed by the caller
 			double evaluateOn(Molecule *m, const list <Molecule *> &members);
@@ -331,7 +358,8 @@ namespace NFcore {
 			double evaluateOn(Complex *c);
 
 
-			void addTypeIMoleculeDependency(MoleculeType *mt);
+			void addTypeIMoleculeDependency(MoleculeType *mt,
+					ReactionClass *rxn = 0, int reactionPosition = -1);
 			void updateParameters(System *s);
 
 			static const int SPECIES = 0;
@@ -346,6 +374,20 @@ namespace NFcore {
 			// function molecule requests to be evaluated over the species scope, because,
 			// by golly, that is never needed.  Is that clear?
 			bool isEverEvaluatedOnSpeciesScope;
+				/* Conservative fast path for the common local-function form used by
+				 * indexed translation models: all local references are single-state
+				 * predicates on one molecule component. */
+				bool hasSimpleStateDependency;
+				bool directStateLookup;
+				MoleculeType *simpleStateMoleculeType;
+				int simpleStateComponent;
+				int *simpleStateValues;
+				bool simpleStateCacheEnabled;
+				int simpleStateCacheSize;
+				double *simpleStateCacheValues;
+				bool *simpleStateCacheValid;
+				double evaluateSimpleState(Molecule *m);
+				double evaluateSimpleStateValue(int stateValue);
 
 			string name;
 			string nicename;
@@ -399,7 +441,10 @@ namespace NFcore {
 				~CompositeFunction();
 
 
-				string getName() const {return name;};
+					string getName() const {return name;};
+					bool isSimpleStateSelector() const { return simpleStateSelector; };
+					bool isMembershipOnlyRate() const;
+					double evaluateSimpleStateSelector(Molecule *m);
 
 				void updateParameters(System *s);
 
@@ -417,7 +462,8 @@ namespace NFcore {
 				int getNumOfArgs() const;
 				string getArgName(int aIndex) const;
 
-				void addTypeIMoleculeDependency(MoleculeType *mt);
+			void addTypeIMoleculeDependency(MoleculeType *mt,
+					ReactionClass *rxn = 0, int reactionPosition = -1);
 
 				// AS-2021
 				void fileUpdate();
@@ -474,6 +520,19 @@ namespace NFcore {
 				string *refLfRefNames;
 				int *refLfScopes;
 				double * refLfValues;
+					/* A parser-generated wrapper whose expression is exactly one
+					 * local-function call can dispatch directly to that function. */
+					bool identityLocalFunction;
+					/* The indexed translation optimizer emits this stable two-state
+					 * selector shape.  Keep the XML/function interface, but evaluate
+					 * its small polynomial directly instead of invoking a second
+					 * muParser program for every DOR mapping. */
+					bool simpleStateSelector;
+					LocalFunction *simpleStateSelectorFunction;
+					int simpleStateIntactParamIndex;
+					int simpleStateEndocleavedParamIndex;
+					double simpleStateIntactRate;
+					double simpleStateEndocleavedRate;
 
 				mu::Parser *p;
 

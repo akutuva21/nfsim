@@ -1,0 +1,128 @@
+{
+  "baseline_engine": "release_v1.14.3",
+  "created_at_utc": "2026-09-04T03:34:01Z",
+  "engines": {
+    "current_master": {
+      "environment": {},
+      "path": "/private/tmp/nfsim-rasi-build-current-master/NFsim",
+      "sha256": "bfe0760b2c583c79927601b8fd5c2fd19147955ff264df6e45d0bff7b6462662"
+    },
+    "release_v1.14.3": {
+      "environment": {},
+      "path": "/private/tmp/nfsim-rasi-build-v1.14.3/NFsim",
+      "sha256": "4af14c93f298b295231ec130894f10c2aeb76d83f571964c2d25d702440f93e6"
+    },
+    "rootfast": {
+      "environment": {
+        "NFSIM_MEMFILTER": "1"
+      },
+      "path": "/private/tmp/nfsim-rasi-build-candidate/NFsim",
+      "sha256": "5df697a45cea78ee0fbd41109e66d3863a5f7cb1d9501b2a91dc71965ecfe1b3"
+    }
+  },
+  "host": {
+    "machine": "arm64",
+    "node": "Achyudhans-MBP",
+    "release": "25.6.0",
+    "system": "Darwin",
+    "version": "Darwin Kernel Version 25.6.0: Fri Jul 31 19:19:08 PDT 2026; root:xnu-12377.161.14~5/RELEASE_ARM64_T6050"
+  },
+  "max_cpu_time": 600,
+  "max_molecules": 5000000,
+  "metadata": {
+    "candidate_source": "rootfast_recovered",
+    "current_master_revision": "c51c7a34128d188189485bd318aeae4d936bcb29",
+    "release_revision": "8ead2baac1873d9bb01ad95e1b44fa16c48000fe"
+  },
+  "models": {
+    "nonstop_circrna": {
+      "bytes": 592807,
+      "path": "/Users/akutuva/Documents/NFsim-vis/rasi_local_function_package_20260902/models/registered_pysb/nonstop_circrna_translation/original.xml",
+      "sha256": "fc45f4d240653fa67370b1c6be3c01e4491f6d72ec99d7fc8e967e1d07cd56a3",
+      "simulation_time": "100"
+    },
+    "promoter_pausing": {
+      "bytes": 6660784,
+      "path": "/Users/akutuva/Documents/NFsim-vis/rasi_local_function_package_20260902/models/registered_pysb/promoter_proximal_pausing/original.xml",
+      "sha256": "85311b02e7756910e41ff1ffb3bb8be1e1947b0cd0d3b948311e4707518829d5",
+      "simulation_time": "10"
+    },
+    "rasi100_canonical": {
+      "bytes": 7348521,
+      "path": "/Users/akutuva/Documents/NFsim-vis/rasi_local_function_package_20260902/models/rasi_100/canonical.original.xml",
+      "sha256": "ff8841df917cf0e2eebf0967b9f9ed7b975b4f24fe21320a6475179c1c7f5775",
+      "simulation_time": "30"
+    },
+    "rasi100_cat": {
+      "bytes": 7348463,
+      "path": "/Users/akutuva/Documents/NFsim-vis/rasi_local_function_package_20260902/models/rasi_100/cat.original.xml",
+      "sha256": "5705de1dca475de9a662742dcbf8fe447fda7fe2033d59b72570ed26b777d26d",
+      "simulation_time": "30"
+    },
+    "rasi100_csat": {
+      "bytes": 7348452,
+      "path": "/Users/akutuva/Documents/NFsim-vis/rasi_local_function_package_20260902/models/rasi_100/csat.original.xml",
+      "sha256": "8863782c8553b7b9827d95186e94a2974e8363071de79a9443152dd7be8e591f",
+      "simulation_time": "30"
+    },
+    "rasi100_csec": {
+      "bytes": 7348468,
+      "path": "/Users/akutuva/Documents/NFsim-vis/rasi_local_function_package_20260902/models/rasi_100/csec.original.xml",
+      "sha256": "868eb85d2d2e11e156f0b7d798b56ddf7ad0bd70e2545d23589b51f1c868de05",
+      "simulation_time": "30"
+    },
+    "rasi100_sat": {
+      "bytes": 7348463,
+      "path": "/Users/akutuva/Documents/NFsim-vis/rasi_local_function_package_20260902/models/rasi_100/sat.original.xml",
+      "sha256": "26e972cca71126b9cca464ff8428492a7b688aac2b824e613da3d39b2797faf7",
+      "simulation_time": "30"
+    },
+    "rasi100_sec": {
+      "bytes": 7348467,
+      "path": "/Users/akutuva/Documents/NFsim-vis/rasi_local_function_package_20260902/models/rasi_100/sec.original.xml",
+      "sha256": "fb2692471955f4098dac1e258b299486501300e033d370f58f432a62e6746b21",
+      "simulation_time": "30"
+    },
+    "rasi100_tj": {
+      "bytes": 7348450,
+      "path": "/Users/akutuva/Documents/NFsim-vis/rasi_local_function_package_20260902/models/rasi_100/tj.original.xml",
+      "sha256": "f5230e4e8d287396ffd9f2b7d2e60aea2eb4d6ed33bd0f06bd3c9411b1cebd05",
+      "simulation_time": "30"
+    },
+    "rasi500_tasep": {
+      "bytes": 39757330,
+      "path": "/Users/akutuva/Documents/NFsim-vis/rasi_local_function_package_20260902/models/rasi_500/tasep.original.xml",
+      "sha256": "cb9c6aa55a2a10b7433676696d41c4cb869c8d137e76a18bd32e281ea1f11c4d",
+      "simulation_time": "10"
+    },
+    "simple_translation": {
+      "bytes": 300461,
+      "path": "/Users/akutuva/Documents/NFsim-vis/rasi_local_function_package_20260902/models/registered_pysb/simple_translation/original.xml",
+      "sha256": "372affd4fd62b81f1601c6c46244e1202962400232b718772aefe702530671bf",
+      "simulation_time": "1000"
+    },
+    "uorf_translation": {
+      "bytes": 30005238,
+      "path": "/Users/akutuva/Documents/NFsim-vis/rasi_local_function_package_20260902/models/registered_pysb/uorf_translation/original.xml",
+      "sha256": "a93374c96351c4fae25ab1e44f1950f838eefc272f67529dc03c79323c3d7ef8",
+      "simulation_time": "100"
+    }
+  },
+  "modes": [
+    "normal",
+    "connect"
+  ],
+  "psutil": "7.2.2",
+  "python": "3.9.6 (default, May 22 2026, 11:13:45) \n[Clang 21.0.0 (clang-2100.1.1.101)]",
+  "reference_engine": "current_master",
+  "repeats": 2,
+  "seeds": [
+    1339,
+    1340,
+    1341,
+    1342,
+    1343
+  ],
+  "steps": 3,
+  "update_limit": 3
+}
